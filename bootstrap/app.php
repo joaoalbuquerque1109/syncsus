@@ -7,6 +7,7 @@ use App\Http\Middleware\SecurityHeaders;
 use App\Modules\Identity\Presentation\Http\Middleware\EnsureActiveHealthUnit;
 use App\Modules\Identity\Presentation\Http\Middleware\EnsurePasswordWasChanged;
 use App\Modules\Identity\Presentation\Http\Middleware\EnsureUserIsActive;
+use App\Support\DeploymentNetworkConfiguration;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,27 +19,24 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $trustedHosts = array_values(array_filter(array_map(
-            'trim',
-            explode(',', (string) env('SYNC_SUS_TRUSTED_HOSTS', 'localhost,127.0.0.1')),
-        )));
-        $railwayPublicDomain = trim((string) env('RAILWAY_PUBLIC_DOMAIN', ''));
-        if ($railwayPublicDomain !== '') {
-            $trustedHosts[] = $railwayPublicDomain;
-        }
+        $railwayServiceId = (string) env('RAILWAY_SERVICE_ID', '');
+        $railwayPublicDomain = (string) env('RAILWAY_PUBLIC_DOMAIN', '');
         $middleware->trustHosts(
-            at: $trustedHosts,
+            at: DeploymentNetworkConfiguration::trustedHostPatterns(
+                (string) env('APP_URL', 'http://localhost'),
+                (string) env('SYNC_SUS_TRUSTED_HOSTS', 'localhost,127.0.0.1'),
+                $railwayServiceId,
+                $railwayPublicDomain,
+            ),
             subdomains: false,
         );
-        $trustedProxies = array_values(array_filter(array_map(
-            'trim',
-            explode(',', (string) env('SYNC_SUS_TRUSTED_PROXIES', '')),
-        )));
-        if ($trustedProxies !== []) {
-            $proxyValue = count($trustedProxies) === 1 && in_array($trustedProxies[0], ['*', '**'], true)
-                ? $trustedProxies[0]
-                : $trustedProxies;
-            $middleware->trustProxies(at: $proxyValue);
+        $trustedProxies = DeploymentNetworkConfiguration::trustedProxies(
+            (string) env('SYNC_SUS_TRUSTED_PROXIES', ''),
+            $railwayServiceId,
+            $railwayPublicDomain,
+        );
+        if ($trustedProxies !== null) {
+            $middleware->trustProxies(at: $trustedProxies);
         }
         $middleware->append(EnforceHttps::class);
         $middleware->append(SecurityHeaders::class);

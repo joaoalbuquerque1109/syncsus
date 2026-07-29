@@ -13,6 +13,10 @@ final class EnforceHttps
     /** @param Closure(Request): Response $next */
     public function handle(Request $request, Closure $next): Response
     {
+        if ($request->is('health/live', 'health/ready')) {
+            return $next($request);
+        }
+
         if (! config('sync_sus.require_https') || $request->isSecure()) {
             return $next($request);
         }

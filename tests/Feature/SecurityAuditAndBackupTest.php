@@ -121,10 +121,11 @@ final class SecurityAuditAndBackupTest extends TestCase
         );
 
         config(['sync_sus.require_https' => true]);
-        $this->get(route('health.live'))
+        $this->get(route('health.live'))->assertOk();
+        $this->get(route('login'))
             ->assertStatus(308)
-            ->assertRedirect('https://localhost/health/live');
-        $this->get('https://localhost/health/live')
+            ->assertRedirect('https://localhost/login');
+        $this->get('https://localhost/login')
             ->assertOk()
             ->assertHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
         $this->post('http://localhost/login', [])->assertStatus(400);

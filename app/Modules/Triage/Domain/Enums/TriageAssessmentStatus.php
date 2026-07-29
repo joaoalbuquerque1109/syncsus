@@ -15,6 +15,7 @@ enum TriageAssessmentStatus: string
         return match ($this) {
             self::Draft => 'Em preenchimento',
             self::Finalized => 'Finalizada',
+            self::Cancelled => 'Cancelada',
         };
     }
 }

@@ -29,6 +29,7 @@ COPY --from=frontend --chown=www-data:www-data /build/public/build ./public/buil
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/sync-sus.ini
 
 RUN mkdir -p storage/app/private storage/framework/cache storage/framework/sessions storage/framework/views storage/logs \
+    && php artisan package:discover --ansi \
     && chown -R www-data:www-data storage bootstrap/cache
 
 USER www-data
@@ -47,8 +48,11 @@ ENTRYPOINT ["/usr/local/bin/sync-sus-backup"]
 
 FROM app AS railway
 USER root
+RUN apk add --no-cache gettext-envsubst nginx supervisor su-exec \
+    && mkdir -p /run/nginx
 COPY docker/railway/start.sh /usr/local/bin/sync-sus-railway
+COPY docker/railway/nginx.conf.template /etc/nginx/http.d/default.conf.template
+COPY docker/railway/supervisord.conf /etc/supervisord.conf
 RUN chmod 0555 /usr/local/bin/sync-sus-railway
-USER www-data
 EXPOSE 8080
 CMD ["/usr/local/bin/sync-sus-railway"]
