@@ -11,12 +11,28 @@ export default function queueBoard(config) {
         error: "",
         updatedAt: "",
         timer: null,
+        errorTimer: null,
+        minimumAlertDurationMs: 5000,
 
         init() {
             this.refresh();
             this.timer = window.setInterval(() => {
                 if (!document.hidden && !this.busyEntry) this.refresh();
             }, 5000);
+        },
+
+        destroy() {
+            window.clearInterval(this.timer);
+            window.clearTimeout(this.errorTimer);
+        },
+
+        showError(message) {
+            this.error = message;
+            window.clearTimeout(this.errorTimer);
+            this.errorTimer = window.setTimeout(() => {
+                this.error = "";
+                this.errorTimer = null;
+            }, this.minimumAlertDurationMs);
         },
 
         async refresh() {
@@ -30,10 +46,10 @@ export default function queueBoard(config) {
                 });
                 this.entries = response.data.data;
                 this.updatedAt = new Date().toLocaleTimeString("pt-BR");
-                this.error = "";
             } catch {
-                this.error =
-                    "Não foi possível atualizar a fila. Tentaremos novamente.";
+                this.showError(
+                    "Não foi possível atualizar a fila. Tentaremos novamente.",
+                );
             } finally {
                 this.loading = false;
             }
@@ -42,7 +58,6 @@ export default function queueBoard(config) {
         async perform(entry, action, extra = {}) {
             this.busyEntry = entry.public_id;
             this.message = "";
-            this.error = "";
             try {
                 const url = config.actions[action].replace(
                     "__ENTRY__",
@@ -60,9 +75,11 @@ export default function queueBoard(config) {
                 await this.refresh();
             } catch (error) {
                 const errors = error.response?.data?.errors;
-                this.error = errors
-                    ? Object.values(errors).flat().join(" ")
-                    : "A operação não pôde ser concluída. Atualize a fila.";
+                this.showError(
+                    errors
+                        ? Object.values(errors).flat().join(" ")
+                        : "A operação não pôde ser concluída. Atualize a fila.",
+                );
                 await this.refresh();
             } finally {
                 this.busyEntry = null;
@@ -71,8 +88,9 @@ export default function queueBoard(config) {
 
         call(entry, recall = false) {
             if (!this.servicePoint) {
-                this.error =
-                    "Selecione o ponto de atendimento antes de chamar.";
+                this.showError(
+                    "Selecione o ponto de atendimento antes de chamar.",
+                );
                 return;
             }
             this.perform(entry, recall ? "recall" : "call", {
@@ -106,7 +124,7 @@ export default function queueBoard(config) {
 
         transfer(entry) {
             if (!this.transferQueue) {
-                this.error = "Selecione a fila de destino.";
+                this.showError("Selecione a fila de destino.");
                 return;
             }
             const reason = window.prompt("Motivo da transferência:");

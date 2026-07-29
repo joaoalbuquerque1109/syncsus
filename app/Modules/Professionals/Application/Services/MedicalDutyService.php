@@ -42,6 +42,10 @@ final class MedicalDutyService
 
     public function ensureCheckedIn(User $user, HealthUnit $unit): void
     {
+        if ($user->isPlatformAdministrator()) {
+            return;
+        }
+
         if (! $this->isCheckedIn($user, $unit)) {
             throw ValidationException::withMessages([
                 'medical_duty' => 'Faça o check-in do plantão nesta unidade antes de operar a fila médica.',

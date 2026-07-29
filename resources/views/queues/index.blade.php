@@ -89,7 +89,14 @@
             </x-card>
 
             <div x-show="message" x-cloak class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800" x-text="message"></div>
-            <div x-show="error" x-cloak class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800" x-text="error"></div>
+            <div
+                x-show="error"
+                x-cloak
+                role="alert"
+                data-minimum-visible-ms="5000"
+                class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800"
+                x-text="error"
+            ></div>
 
             <x-card class="overflow-hidden">
                 <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">

@@ -40,4 +40,19 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     await expect(page.locator("[x-data]").first()).toBeVisible();
     expect(failedAssets).toEqual([]);
     expect(pageErrors).toEqual([]);
+
+    await page.goto("/queues");
+    const queueBoard = page.locator('[x-data^="queueBoard"]').first();
+    await expect(queueBoard).toBeVisible();
+    await queueBoard.evaluate((element) => {
+        element._x_dataStack[0].showError("Aviso temporizado de teste.");
+    });
+    const errorFlag = page.locator(
+        '[role="alert"][data-minimum-visible-ms="5000"][x-text="error"]',
+    );
+    await expect(errorFlag).toHaveText("Aviso temporizado de teste.");
+    await expect(errorFlag).toBeVisible();
+    await page.waitForTimeout(4800);
+    await expect(errorFlag).toBeVisible();
+    await expect(errorFlag).toBeHidden({ timeout: 1500 });
 });

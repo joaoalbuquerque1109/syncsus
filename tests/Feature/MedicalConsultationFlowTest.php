@@ -32,6 +32,29 @@ final class MedicalConsultationFlowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_platform_administrator_starts_medical_care_without_check_in(): void
+    {
+        [$unit, , $entry] = $this->context();
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->postJson(route('medical.start', $entry), ['version' => 1])
+            ->assertOk()
+            ->assertJsonPath('message', 'Atendimento médico iniciado.');
+
+        $this->assertDatabaseHas('medical_consultations', [
+            'queue_entry_id' => $entry->getKey(),
+            'professional_id' => $administrator->getKey(),
+            'status' => 'draft',
+        ]);
+        $this->assertDatabaseMissing('medical_shift_attendances', [
+            'user_id' => $administrator->getKey(),
+            'health_unit_id' => $unit->getKey(),
+        ]);
+    }
+
     public function test_only_one_doctor_starts_called_patient_and_record_is_protected(): void
     {
         [$unit, $doctor, $entry] = $this->context();
