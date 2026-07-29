@@ -1,0 +1,54 @@
+FROM node:24-alpine AS frontend
+WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY resources ./resources
+COPY vite.config.js ./
+RUN npm run build
+
+FROM composer:2.9 AS composer
+WORKDIR /build
+COPY composer.json composer.lock ./
+RUN composer install \
+    --no-dev \
+    --no-interaction \
+    --no-progress \
+    --prefer-dist \
+    --no-scripts
+
+FROM php:8.5-fpm-alpine AS app
+RUN apk add --no-cache icu-libs libzip libpng oniguruma \
+    && apk add --no-cache --virtual .build-deps icu-dev libzip-dev libpng-dev oniguruma-dev \
+    && docker-php-ext-install bcmath intl pcntl pdo_mysql zip \
+    && apk del .build-deps
+
+WORKDIR /var/www/html
+COPY --chown=www-data:www-data . .
+COPY --from=composer --chown=www-data:www-data /build/vendor ./vendor
+COPY --from=frontend --chown=www-data:www-data /build/public/build ./public/build
+COPY docker/php/php.ini /usr/local/etc/php/conf.d/sync-sus.ini
+
+RUN mkdir -p storage/app/private storage/framework/cache storage/framework/sessions storage/framework/views storage/logs \
+    && chown -R www-data:www-data storage bootstrap/cache
+
+USER www-data
+EXPOSE 9000
+CMD ["php-fpm"]
+
+FROM nginx:1.28-alpine AS web
+COPY --from=app /var/www/html/public /var/www/html/public
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+
+FROM alpine:3.22 AS backup
+RUN apk add --no-cache bash coreutils gzip mysql-client openssl tar
+COPY docker/backup/backup.sh /usr/local/bin/sync-sus-backup
+RUN chmod 0555 /usr/local/bin/sync-sus-backup
+ENTRYPOINT ["/usr/local/bin/sync-sus-backup"]
+
+FROM app AS railway
+USER root
+COPY docker/railway/start.sh /usr/local/bin/sync-sus-railway
+RUN chmod 0555 /usr/local/bin/sync-sus-railway
+USER www-data
+EXPOSE 8080
+CMD ["/usr/local/bin/sync-sus-railway"]

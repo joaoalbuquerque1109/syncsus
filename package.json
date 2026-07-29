@@ -1,0 +1,29 @@
+{
+    "$schema": "https://www.schemastore.org/package.json",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite",
+        "lint": "eslint resources/js tests/Browser playwright.config.js vite.config.js eslint.config.js",
+        "format": "prettier --write resources/js resources/css vite.config.js eslint.config.js package.json",
+        "format:check": "prettier --check resources/js resources/css tests/Browser playwright.config.js vite.config.js eslint.config.js package.json",
+        "test:browser": "node tests/Browser/run-browser-tests.js"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@playwright/test": "^1.62.0",
+        "@tailwindcss/vite": "^4.0.0",
+        "axios": "^1.11.0",
+        "concurrently": "^9.0.1",
+        "eslint": "^10.7.0",
+        "globals": "^17.7.0",
+        "laravel-vite-plugin": "^2.0.0",
+        "prettier": "^3.9.6",
+        "tailwindcss": "^4.0.0",
+        "vite": "^7.0.7"
+    },
+    "dependencies": {
+        "alpinejs": "^3.15.12"
+    }
+}

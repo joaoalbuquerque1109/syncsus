@@ -1,0 +1,114 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Identity\Application\Actions;
+
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\Organization;
+use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
+use App\Modules\Identity\Application\Services\LimitConcurrentSessions;
+use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Identity\Presentation\Http\Requests\LoginRequest;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
+
+final readonly class AuthenticateUserAction
+{
+    public function __construct(
+        private RecordAuditEventAction $recordAuditEvent,
+        private LimitConcurrentSessions $sessions,
+    ) {}
+
+    public function execute(LoginRequest $request): User
+    {
+        $request->ensureIsNotRateLimited();
+
+        $unitCode = mb_strtoupper(trim((string) $request->string('unit_code')));
+        $email = mb_strtolower(trim((string) $request->string('email')));
+        $isAdministrativeAccess = hash_equals(
+            (string) config('sync_sus.admin.access_code'),
+            $unitCode,
+        );
+        $organization = $isAdministrativeAccess
+            ? null
+            : Organization::query()->where('code', $unitCode)->where('is_active', true)->first();
+        $user = $isAdministrativeAccess
+            ? User::query()
+                ->where('platform_admin_slot', 1)
+                ->whereNull('organization_id')
+                ->where('email', $email)
+                ->first()
+            : ($organization === null ? null : User::query()
+                ->where('organization_id', $organization->getKey())
+                ->where('email', $email)
+                ->first());
+        $selectedHealthUnit = $user === null ? null : $this->resolveHealthUnit($user);
+        $auditHealthUnitId = $selectedHealthUnit?->getKey();
+        $passwordIsValid = $user !== null && Hash::check((string) $request->string('password'), $user->password);
+
+        $hasAccessContext = $user?->isPlatformAdministrator() === true
+            || $selectedHealthUnit instanceof HealthUnit;
+        if (! $passwordIsValid || ! $user->is_active || ! $hasAccessContext) {
+            $request->recordFailedAttempt();
+            $this->recordAuditEvent->execute(
+                action: 'user.login_failed',
+                request: $request,
+                user: $user,
+                context: [
+                    'reason' => match (true) {
+                        $user !== null && ! $user->is_active => 'inactive_user',
+                        $user !== null && ! $hasAccessContext => 'unit_access_unavailable',
+                        default => 'invalid_credentials',
+                    },
+                    'unit_code' => $unitCode,
+                ],
+                healthUnitId: $auditHealthUnitId,
+            );
+
+            throw ValidationException::withMessages([
+                'email' => __('auth.failed'),
+            ]);
+        }
+
+        DB::transaction(function () use ($request, $user, $auditHealthUnitId): void {
+            $user->forceFill(['last_login_at' => now()])->save();
+            $this->recordAuditEvent->execute(
+                'user.logged_in',
+                $request,
+                $user,
+                healthUnitId: $auditHealthUnitId,
+            );
+        });
+
+        Auth::login($user);
+        $request->session()->regenerate();
+        $this->sessions->enforce($user);
+        $request->clearRateLimit();
+
+        if ($selectedHealthUnit instanceof HealthUnit) {
+            $request->session()->put('active_health_unit_id', $selectedHealthUnit->getKey());
+            $request->session()->put('authenticated_organization_id', $user->organization_id);
+        } else {
+            $request->session()->forget(['active_health_unit_id', 'authenticated_organization_id']);
+        }
+
+        return $user;
+    }
+
+    private function resolveHealthUnit(User $user): ?HealthUnit
+    {
+        if ($user->isPlatformAdministrator()) {
+            return null;
+        }
+
+        return $user->healthUnits()
+            ->where('health_units.organization_id', $user->organization_id)
+            ->where('health_units.is_active', true)
+            ->whereHas('organization', fn ($query) => $query->where('is_active', true))
+            ->orderByRaw('health_units.id = ? desc', [$user->default_health_unit_id])
+            ->first();
+    }
+}

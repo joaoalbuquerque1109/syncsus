@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    --color-brand-50: #eff8ff;
+    --color-brand-100: #dbeeff;
+    --color-brand-500: #1684e8;
+    --color-brand-600: #0874d5;
+    --color-brand-700: #075eae;
+    --color-navy-900: #071f33;
+    --color-navy-950: #051827;
+}
+
+@layer base {
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        @apply bg-slate-50 text-slate-800 antialiased;
+    }
+
+    [x-cloak] {
+        display: none !important;
+    }
+
+    :focus-visible {
+        @apply outline-3 outline-offset-2 outline-brand-500;
+    }
+}
+
+@layer components {
+    .field-label {
+        @apply mb-1.5 block text-sm font-semibold text-slate-700;
+    }
+
+    .field-control {
+        @apply block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:ring-3 focus:ring-brand-100 focus:outline-none;
+    }
+
+    .field-control-invalid {
+        @apply border-red-500 focus:border-red-500 focus:ring-red-100;
+    }
+
+    .app-card {
+        @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+    }
+}

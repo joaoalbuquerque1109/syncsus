@@ -1,0 +1,76 @@
+<header class="sticky top-0 z-30 flex min-h-18 items-center justify-between border-b border-slate-200 bg-white px-5 lg:px-8">
+    <div class="flex items-center gap-3">
+        @if(auth()->user()->isPlatformAdministrator())
+            <span class="hidden rounded-full bg-violet-100 px-3 py-2 text-xs font-extrabold text-violet-800 md:inline">
+                Administrador global
+            </span>
+        @endif
+        <button
+            type="button"
+            class="grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"
+            @click="sidebarOpen = !sidebarOpen"
+            aria-label="Abrir menu"
+        >☰</button>
+        <div>
+            <p class="text-xs font-medium tracking-wide text-slate-500">
+                {{ $activeHealthUnit->organization->code }} · {{ $activeHealthUnit->code }}
+            </p>
+            <h1 class="text-lg font-extrabold text-slate-900">{{ $title ?? 'SYNC SUS' }}</h1>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+        @role('doctor')
+            @if($medicalDutyAttendance?->checked_out_at === null && $medicalDutyAttendance !== null)
+                <details class="relative">
+                    <summary class="cursor-pointer list-none rounded-full bg-emerald-100 px-3 py-2 text-xs font-extrabold text-emerald-800">
+                        Plantão ativo
+                    </summary>
+                    <form method="POST" action="{{ route('medical-duty.check-out') }}" class="absolute right-0 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
+                        @csrf
+                        <label class="field-label" for="checkout_reason">Motivo do encerramento</label>
+                        <input id="checkout_reason" name="reason" class="field-control" required minlength="5" maxlength="255" value="Fim do plantão">
+                        <button class="mt-3 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm font-bold text-white" type="submit">Encerrar plantão</button>
+                    </form>
+                </details>
+            @else
+                <form method="POST" action="{{ route('medical-duty.check-in') }}">
+                    @csrf
+                    <button class="rounded-full bg-amber-100 px-3 py-2 text-xs font-extrabold text-amber-900 hover:bg-amber-200" type="submit">
+                        Fazer check-in
+                    </button>
+                </form>
+            @endif
+        @endrole
+
+        @if($availableHealthUnits->count() > 1)
+            <form method="POST" action="{{ route('active-health-unit.update') }}">
+                @csrf
+                @method('PUT')
+                <label class="sr-only" for="health-unit">Unidade ativa</label>
+                <select id="health-unit" name="health_unit" class="field-control py-2" onchange="this.form.submit()">
+                    @foreach($availableHealthUnits as $unit)
+                        <option value="{{ $unit->public_id }}" @selected($unit->is($activeHealthUnit))>{{ auth()->user()->isPlatformAdministrator() ? $unit->organization->trade_name.' · ' : '' }}{{ $unit->name }}</option>
+                    @endforeach
+                </select>
+            </form>
+        @else
+            <span class="hidden rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-700 sm:inline">
+                {{ $activeHealthUnit->name }}
+            </span>
+        @endif
+
+        <details class="relative">
+            <summary class="grid size-10 cursor-pointer list-none place-items-center rounded-full bg-brand-50 text-sm font-extrabold text-brand-700">
+                {{ mb_substr(auth()->user()->name, 0, 1) }}
+            </summary>
+            <div class="absolute right-0 mt-2 w-52 rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+                <a href="{{ route('password.edit') }}" class="block rounded-md px-3 py-2 text-sm hover:bg-slate-50">Alterar senha</a>
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button class="w-full rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50" type="submit">Sair</button>
+                </form>
+            </div>
+        </details>
+    </div>
+</header>

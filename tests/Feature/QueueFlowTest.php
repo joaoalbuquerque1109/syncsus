@@ -1,0 +1,292 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
+use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
+use App\Modules\Patients\Domain\Enums\PatientSex;
+use App\Modules\Patients\Domain\Enums\PatientStatus;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Patients\Infrastructure\Eloquent\PatientIdentifier;
+use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
+use App\Modules\Queues\Infrastructure\Eloquent\Panel;
+use App\Modules\Queues\Infrastructure\Eloquent\Queue;
+use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
+use App\Modules\Reception\Domain\Enums\AdministrativePriority;
+use App\Modules\Reception\Domain\Enums\EncounterStatus;
+use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use Database\Seeders\OperationalCatalogSeeder;
+use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+final class QueueFlowTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_authorized_professional_can_call_recall_and_start_with_version_conflict_protection(): void
+    {
+        [$unit, $user, $entry, $point] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($user)->withSession($session)->get(route('queues.index'))
+            ->assertOk()
+            ->assertSee('Filas e chamadas');
+        $this->actingAs($user)->withSession($session)->getJson(route('queues.entries', $entry->queue))
+            ->assertOk()
+            ->assertJsonPath('data.0.ticket', 'T001');
+
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
+            'version' => 1,
+            'service_point' => $point->public_id,
+        ])->assertOk()->assertJsonPath('entry.status', 'called')->assertJsonPath('entry.version', 2);
+
+        $this->assertDatabaseHas('queue_calls', [
+            'queue_entry_id' => $entry->getKey(),
+            'call_type' => 'call',
+            'call_number' => 1,
+        ]);
+
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.recall', $entry), [
+            'version' => 2,
+            'service_point' => $point->public_id,
+        ])->assertOk()->assertJsonPath('entry.version', 3);
+        $this->assertDatabaseCount('queue_calls', 2);
+        $this->assertDatabaseHas('queue_calls', ['call_type' => 'recall', 'call_number' => 2]);
+
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.start', $entry), [
+            'version' => 3,
+        ])->assertOk()->assertJsonPath('entry.status', 'in_service')->assertJsonPath('entry.version', 4);
+
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.start', $entry), [
+            'version' => 3,
+        ])->assertUnprocessable()->assertJsonValidationErrors('version');
+
+        $this->assertDatabaseHas('queue_entries', [
+            'id' => $entry->getKey(),
+            'status' => 'in_service',
+            'assigned_user_id' => $user->getKey(),
+            'lock_version' => 4,
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'queue.service_started']);
+    }
+
+    public function test_absence_return_and_transfer_preserve_complete_history(): void
+    {
+        [$unit, $user, $entry, $point] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
+            'version' => 1,
+            'service_point' => $point->public_id,
+        ])->assertOk();
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.absent', $entry), [
+            'version' => 2,
+            'confirmation' => true,
+            'reason' => 'Paciente não se apresentou.',
+        ])->assertOk()->assertJsonPath('entry.status', 'absent');
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.return', $entry), [
+            'version' => 3,
+            'reason' => 'Paciente localizado na recepção.',
+        ])->assertOk()->assertJsonPath('entry.status', 'waiting');
+
+        $destinationQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.transfer', $entry), [
+            'version' => 4,
+            'destination_queue' => $destinationQueue->public_id,
+            'reason' => 'Encaminhamento operacional.',
+            'preserve_priority' => true,
+        ])->assertOk()->assertJsonPath('entry.status', 'waiting');
+
+        $source = $entry->fresh();
+        $this->assertSame(QueueEntryStatus::Transferred, $source?->status);
+        $destination = QueueEntry::query()->where('queue_id', $destinationQueue->getKey())->sole();
+        $this->assertSame($entry->priority_weight, $destination->priority_weight);
+        $this->assertSame('C001', $destination->ticket_number);
+        $this->assertDatabaseCount('queue_transfers', 1);
+        $this->assertDatabaseHas('queue_entry_history', ['queue_entry_id' => $entry->getKey(), 'action' => 'marked_absent']);
+        $this->assertDatabaseHas('queue_entry_history', ['queue_entry_id' => $entry->getKey(), 'action' => 'returned']);
+        $this->assertDatabaseHas('queue_entry_history', ['queue_entry_id' => $entry->getKey(), 'action' => 'transferred']);
+        $this->assertDatabaseHas('queue_entry_history', ['queue_entry_id' => $destination->getKey(), 'action' => 'entered_by_transfer']);
+    }
+
+    public function test_public_panel_payload_is_incremental_and_contains_no_sensitive_or_clinical_data(): void
+    {
+        [$unit, $user, $entry, $point, $patient] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        PatientIdentifier::query()->create([
+            'patient_id' => $patient->getKey(),
+            'type' => 'cpf',
+            'normalized_value' => '52998224725',
+            'display_value' => '529.982.247-25',
+            'is_primary' => true,
+        ]);
+        $panel = Panel::query()->where('health_unit_id', $unit->getKey())->sole();
+
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
+            'version' => 1,
+            'service_point' => $point->public_id,
+        ])->assertOk();
+
+        $state = $this->getJson(route('panels.state', $panel))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.ticket', 'T001')
+            ->assertJsonPath('data.0.person_label', null)
+            ->assertJsonMissingPath('data.0.patient')
+            ->assertJsonMissingPath('data.0.medical_record_number')
+            ->assertJsonMissingPath('data.0.cpf')
+            ->assertJsonMissingPath('data.0.risk');
+        $state->assertDontSee($patient->full_name)
+            ->assertDontSee($patient->medical_record_number)
+            ->assertDontSee('52998224725');
+        $cursor = $state->json('data.0.event');
+
+        $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.recall', $entry), [
+            'version' => 2,
+            'service_point' => $point->public_id,
+        ])->assertOk();
+        $this->getJson(route('panels.state', ['panel' => $panel, 'after' => $cursor]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.is_recall', true);
+
+        $this->postJson(route('panels.heartbeat', $panel))->assertOk()->assertJsonPath('ok', true);
+        $this->assertNotNull($panel->fresh()?->last_heartbeat_at);
+    }
+
+    public function test_user_without_call_permission_cannot_change_queue_state(): void
+    {
+        [$unit, , $entry, $point] = $this->context();
+        $receptionist = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $receptionist->assignRole('receptionist');
+
+        $this->actingAs($receptionist)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->postJson(route('queue-entries.call', $entry), [
+                'version' => 1,
+                'service_point' => $point->public_id,
+            ])
+            ->assertForbidden();
+        $this->assertDatabaseCount('queue_calls', 0);
+    }
+
+    public function test_administrator_can_configure_panel_privacy_and_associated_queues(): void
+    {
+        $context = $this->context();
+        $unit = $context[0];
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $panel = Panel::query()->where('health_unit_id', $unit->getKey())->sole();
+        $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($administrator)->withSession($session)
+            ->get(route('administration.flow.index'))
+            ->assertOk()
+            ->assertSee('Filas e painéis');
+
+        $this->actingAs($administrator)->withSession($session)
+            ->put(route('administration.flow.panels.update', $panel), [
+                'name' => 'Painel da recepção',
+                'identification_mode' => 'first_name_initial',
+                'previous_calls_count' => 7,
+                'sound_enabled' => true,
+                'suggested_volume' => 70,
+                'institutional_message' => 'Acompanhe sua senha.',
+                'queues' => [$queue->getKey()],
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('panels', [
+            'id' => $panel->getKey(),
+            'name' => 'Painel da recepção',
+            'identification_mode' => 'first_name_initial',
+            'previous_calls_count' => 7,
+        ]);
+        $this->assertDatabaseCount('panel_queue', 1);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'panel.configuration_updated']);
+    }
+
+    public function test_waiting_queue_query_uses_the_compound_operational_index(): void
+    {
+        [$unit] = $this->context();
+        $queueId = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->value('id');
+        $isSqlite = DB::connection()->getDriverName() === 'sqlite';
+        if (! $isSqlite) {
+            $indexes = collect(DB::select('SHOW INDEX FROM queue_entries'))
+                ->pluck('Key_name')
+                ->unique()
+                ->join(' ');
+            $this->assertStringContainsString(
+                'queue_entries_queue_id_status_priority_weight_entered_at_index',
+                $indexes,
+            );
+
+            return;
+        }
+        $plan = DB::select(
+            'EXPLAIN QUERY PLAN SELECT id, ticket_number, priority_weight, entered_at
+             FROM queue_entries
+             WHERE queue_id = ? AND status = ?
+             ORDER BY priority_weight DESC, entered_at ASC
+             LIMIT 100',
+            [$queueId, 'waiting'],
+        );
+        $details = collect($plan)->map(fn (object $row): string => (string) $row->detail)->join(' ');
+
+        $this->assertStringContainsString(
+            'queue_entries_queue_id_status_priority_weight_entered_at_index',
+            $details,
+        );
+    }
+
+    /** @return array{0: mixed, 1: mixed, 2: QueueEntry, 3: mixed, 4: Patient} */
+    private function context(): array
+    {
+        $unit = $this->createHealthUnit();
+        $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
+        $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $user->assignRole('triage_professional');
+
+        $patient = Patient::query()->create([
+            'organization_id' => $unit->organization_id,
+            'medical_record_number' => 'P00000001',
+            'full_name' => 'Paciente Sigiloso da Silva',
+            'normalized_name' => 'PACIENTE SIGILOSO DA SILVA',
+            'birth_date' => '1985-04-12',
+            'sex' => PatientSex::Female,
+            'status' => PatientStatus::Active,
+            'reference_health_unit_id' => $unit->getKey(),
+            'created_by' => $user->getKey(),
+            'updated_by' => $user->getKey(),
+        ]);
+        $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $encounter = Encounter::query()->create([
+            'encounter_number' => 'CENTRAL-20260724-0001',
+            'patient_id' => $patient->getKey(),
+            'health_unit_id' => $unit->getKey(),
+            'entry_type_id' => EntryType::query()->where('code', 'EMERGENCY')->value('id'),
+            'arrival_method_id' => ArrivalMethod::query()->where('code', 'WALK_IN')->value('id'),
+            'current_status' => EncounterStatus::WaitingTriage,
+            'administrative_priority' => AdministrativePriority::None,
+            'arrival_at' => now()->subMinutes(15),
+            'registration_at' => now()->subMinutes(15),
+            'current_department_id' => $queue->department_id,
+            'created_by' => $user->getKey(),
+        ]);
+        $entry = QueueEntry::query()->create([
+            'encounter_id' => $encounter->getKey(),
+            'queue_id' => $queue->getKey(),
+            'ticket_number' => 'T001',
+            'priority_weight' => 10,
+            'status' => QueueEntryStatus::Waiting,
+            'entered_at' => now()->subMinutes(15),
+        ]);
+
+        return [$unit, $user, $entry, $queue->servicePoints()->sole(), $patient];
+    }
+}

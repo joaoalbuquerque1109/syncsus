@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <style>
+        @page { margin: 28mm 22mm 24mm; }
+        body { font-family: "DejaVu Sans", sans-serif; color: #172033; font-size: 11pt; line-height: 1.55; }
+        .header { border-bottom: 2px solid #1476d4; padding-bottom: 14px; margin-bottom: 28px; }
+        .brand { color: #0b3558; font-size: 19pt; font-weight: bold; }
+        .unit { color: #53657b; font-size: 9pt; }
+        h1 { text-align: center; font-size: 16pt; text-transform: uppercase; margin: 25px 0; }
+        .metadata { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+        .metadata td { padding: 6px 8px; border-bottom: 1px solid #d9e2ec; }
+        .metadata td:first-child { width: 30%; color: #53657b; font-weight: bold; }
+        .body { white-space: pre-wrap; text-align: justify; min-height: 220px; }
+        .extra { margin-top: 20px; padding: 12px; background: #f2f6fa; }
+        .signature { margin: 60px auto 25px; width: 65%; text-align: center; border-top: 1px solid #172033; padding-top: 8px; }
+        .footer { position: fixed; bottom: -10mm; left: 0; right: 0; border-top: 1px solid #d9e2ec; padding-top: 8px; font-size: 8pt; color: #53657b; }
+        .code { font-family: "DejaVu Sans Mono", monospace; font-weight: bold; }
+        .void { color: #a00; border: 2px solid #a00; padding: 10px; text-align: center; font-weight: bold; }
+    @media screen {
+    html { background: #dfe5eb; }
+    body {
+        box-sizing: border-box;
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 28mm 22mm 24mm;
+        background: #fff;
+    }
+    .footer { bottom: 10mm; left: 22mm; right: 22mm; }
+}
+</style>
+</head>
+<body>
+    <header class="header">
+        <div class="brand">SYNC SUS</div>
+        <div class="unit">Hospital Demonstrativo · Urgência Central</div>
+            </header>
+
+    
+    <h1>Solicitação de exames</h1>
+
+    <table class="metadata">
+        <tr><td>Paciente</td><td>Gabriela Alves Freitas</td></tr>
+        <tr><td>Prontuário</td><td>DEMO-0007</td></tr>
+        <tr><td>Atendimento</td><td>DEMO-ATD-007</td></tr>
+        <tr><td>Emissão</td><td>29/07/2026 12:07</td></tr>
+                            </table>
+
+    <div class="body">Solicito a realização dos seguintes exames:
+
+• Hemograma completo
+• Glicemia em jejum
+• Proteína C reativa
+• Urina tipo I
+
+Indicação clínica: investigação complementar conforme quadro apresentado no atendimento.</div>
+
+                <div class="extra">Os resultados não são registrados manualmente no SYNC SUS nesta versão.</div>
+    
+    <div class="signature">
+                <strong>Dra. Camila Andrade Médica</strong><br>
+                    CRM/CE 123456
+             · RQE RQE-DEMO-001            <br>
+                        Profissional emissor · identificação profissional conforme cadastro institucional
+    </div>
+
+    <footer class="footer">
+        Documento 01kyd1kftwpxwdhzznpw74ds4w · versão 1<br>
+        Verificação local: <span class="code">DF55478C97BCB69435F7</span> ·
+        http://127.0.0.1:8000/document-verification/DF55478C97BCB69435F7
+    </footer>
+</body>
+</html>
