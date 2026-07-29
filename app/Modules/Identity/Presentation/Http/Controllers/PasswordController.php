@@ -16,8 +16,11 @@ final class PasswordController extends Controller
 {
     public function edit(Request $request): View
     {
+        $user = $request->user();
+
         return view('auth.change-password', [
-            'isRequired' => $request->user()?->must_change_password === true,
+            'isRequired' => $user?->must_change_password === true
+                && ! $user->isPlatformAdministrator(),
         ]);
     }
 

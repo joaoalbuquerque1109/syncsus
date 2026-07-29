@@ -24,7 +24,9 @@ final class AuthenticatedSessionController extends Controller
     public function store(LoginRequest $request, AuthenticateUserAction $authenticate): RedirectResponse
     {
         $user = $authenticate->execute($request);
-        $destination = $user->must_change_password ? 'password.edit' : 'dashboard';
+        $destination = $user->must_change_password && ! $user->isPlatformAdministrator()
+            ? 'password.edit'
+            : 'dashboard';
 
         return redirect()->intended(route($destination, absolute: false));
     }

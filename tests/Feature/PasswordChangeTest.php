@@ -22,6 +22,18 @@ final class PasswordChangeTest extends TestCase
             ->assertRedirect('/password/change');
     }
 
+    public function test_platform_administrator_is_exempt_from_initial_password_change(): void
+    {
+        $this->createHealthUnit();
+        $administrator = $this->createPlatformAdministrator([
+            'must_change_password' => true,
+        ]);
+
+        $this->actingAs($administrator)
+            ->get('/dashboard')
+            ->assertOk();
+    }
+
     public function test_user_can_change_password_and_action_is_audited(): void
     {
         $unit = $this->createHealthUnit();

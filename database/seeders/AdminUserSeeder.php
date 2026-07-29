@@ -46,13 +46,14 @@ final class AdminUserSeeder extends Seeder
                 'name' => $name,
                 'password' => Hash::make($password),
                 'is_active' => true,
-                'must_change_password' => true,
+                'must_change_password' => false,
             ]);
         }
         $user->forceFill([
             'organization_id' => null,
             'platform_admin_slot' => 1,
             'default_health_unit_id' => null,
+            'must_change_password' => false,
         ])->save();
 
         $user->healthUnits()->detach();

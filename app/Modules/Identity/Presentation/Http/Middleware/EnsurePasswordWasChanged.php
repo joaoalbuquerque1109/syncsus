@@ -13,7 +13,9 @@ final class EnsurePasswordWasChanged
     /** @param  Closure(Request): Response  $next */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user()?->must_change_password === true) {
+        $user = $request->user();
+
+        if ($user?->must_change_password === true && ! $user->isPlatformAdministrator()) {
             return redirect()
                 ->route('password.edit')
                 ->with('warning', 'Defina uma nova senha antes de continuar.');

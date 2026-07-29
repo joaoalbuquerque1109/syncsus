@@ -158,6 +158,7 @@ final class AuthenticationTest extends TestCase
         $administrator = $this->createPlatformAdministrator([
             'email' => 'global@example.test',
             'password' => 'Initial#Password2026',
+            'must_change_password' => true,
         ]);
 
         $this->post('/login', [
