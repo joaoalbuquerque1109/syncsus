@@ -23,9 +23,11 @@ use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
 use App\Modules\Reception\Domain\Enums\AdministrativePriority;
 use App\Modules\Reception\Domain\Enums\EncounterStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use App\Modules\Reports\Application\Queries\OperationalDashboardQuery;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -138,6 +140,13 @@ final class DocumentsAndReportsTest extends TestCase
             ->assertJsonPath('data.0.patient', 'A*** B*** d*** S***')
             ->assertJsonPath('data.0.ticket', 'T101');
 
+        $this->actingAs($manager)->withSession($session)
+            ->getJson(route('dashboard.state'))
+            ->assertOk()
+            ->assertJsonPath('data.metrics.waiting_triage', 1)
+            ->assertJsonCount(1, 'data.active_encounters')
+            ->assertJsonPath('data.active_encounters.0.ticket', 'T101');
+
         $filters = [
             'date_from' => today()->subDay()->toDateString(),
             'date_to' => today()->toDateString(),
@@ -186,6 +195,28 @@ final class DocumentsAndReportsTest extends TestCase
             ]))
             ->assertRedirect(route('reports.index'))
             ->assertSessionHasErrors('date_to');
+    }
+
+    public function test_dashboard_metrics_use_two_aggregate_queries_and_the_new_index_exists(): void
+    {
+        [$unit, , $manager] = $this->context();
+        $this->createActiveEncounter($unit, $manager);
+        config()->set('sync_sus.performance_cache.enabled', false);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        app(OperationalDashboardQuery::class)->metrics($unit);
+        $queries = collect(DB::getQueryLog())
+            ->filter(fn (array $query): bool => str_starts_with(
+                mb_strtolower(ltrim((string) $query['query'])),
+                'select',
+            ));
+        DB::disableQueryLog();
+
+        $this->assertCount(2, $queries);
+        $indexes = collect(DB::select("PRAGMA index_list('encounters')"))
+            ->pluck('name');
+        $this->assertContains('encounters_unit_status_closed_at_index', $indexes);
     }
 
     /** @return array{HealthUnit, User, User, User, MedicalConsultation, Encounter} */

@@ -2,8 +2,8 @@
     <div x-data="dashboard({
         metrics: @js($metrics),
         encounters: @js($activeEncounters),
-        metricsUrl: @js(route('dashboard.metrics')),
-        encountersUrl: @js(route('dashboard.active-encounters'))
+        stateUrl: @js(route('dashboard.state')),
+        pollMs: {{ max(5, (int) config('sync_sus.dashboard_poll_seconds', 15)) * 1000 }}
     })">
         <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>

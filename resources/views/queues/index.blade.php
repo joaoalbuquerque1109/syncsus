@@ -8,6 +8,7 @@
         <div
             x-data="queueBoard({
                 entriesUrl: @js(route('queues.entries', $selectedQueue)),
+                pollMs: {{ max(2, (int) config('sync_sus.queue_poll_seconds', 5)) * 1000 }},
                 defaultServicePoint: @js($selectedQueue->servicePoints->first()?->public_id),
                 actions: {
                     call: @js(route('queue-entries.call', ['entry' => '__ENTRY__'])),

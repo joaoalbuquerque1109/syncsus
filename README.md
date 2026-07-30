@@ -9,7 +9,7 @@ As sete fases planejadas estão executáveis. A fundação inclui:
 
 - Laravel 13, PHP 8.5, Blade, Alpine.js e Tailwind CSS;
 - autenticação local sem cadastro público;
-- sessão e cache em banco;
+- sessão em banco e cache Redis com fallback automático para o banco;
 - troca obrigatória de senha inicial;
 - bloqueio temporário de tentativas de login;
 - usuários ativos/inativos;
@@ -17,7 +17,7 @@ As sete fases planejadas estão executáveis. A fundação inclui:
 - vínculo e seleção de unidade ativa;
 - auditoria de login, falha, logout, senha e troca de unidade;
 - health checks e armazenamento privado;
-- Docker Compose com Nginx, aplicação, MySQL, worker, scheduler e backup;
+- Docker Compose com Nginx, aplicação, MySQL, Redis, worker, scheduler e backup;
 - PHPUnit, Pint, Larastan, ESLint e Prettier.
 
 Pacientes e recepção incluem:

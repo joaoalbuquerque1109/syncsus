@@ -5,6 +5,7 @@
 - `nginx`: única porta HTTP exposta;
 - `app`: PHP-FPM e aplicação;
 - `mysql`: rede interna, sem porta publicada;
+- `redis`: cache descartável; a aplicação volta ao cache MySQL em caso de falha;
 - `queue-worker`: jobs persistidos em banco;
 - `scheduler`: agendador do Laravel;
 - `backup`: dump diário, arquivos privados, hash e retenção.
@@ -16,9 +17,11 @@ docker compose ps
 curl http://localhost:8080/health/live
 curl http://localhost:8080/health/ready
 docker compose logs --tail=100 app queue-worker scheduler
+docker compose exec redis redis-cli ping
 ```
 
 `live` confirma o processo HTTP. `ready` verifica banco e leitura/escrita no armazenamento privado.
+Uma falha no Redis degrada o desempenho, mas não deve interromper o atendimento.
 
 ## Atualização
 
@@ -94,7 +97,7 @@ próximo login e registra auditoria sem gravar a senha.
 ## Filas e painéis
 
 - A tela autenticada de filas atualiza os dados a cada cinco segundos.
-- O painel público usa polling incremental a cada dois segundos e envia heartbeat a cada cinco.
+- O painel público usa polling incremental a cada dois segundos e envia heartbeat a cada quinze.
 - O código público do painel é uma credencial técnica de alta entropia. Não publique esse endereço
   fora da rede interna.
 - Após alterar `APP_KEY`, execute novamente o seeder e reprovisione o endereço dos painéis.
@@ -139,3 +142,8 @@ Relatórios por período usam `encounters_health_unit_id_arrival_at_index`. Audi
 índices compostos de unidade, usuário, paciente e horário. O dashboard limita a lista ativa a 20
 episódios; exportações são limitadas a 1.000 linhas, 366 dias e 20 solicitações por minuto por
 usuário.
+
+Os indicadores do dashboard usam o índice
+`encounters_unit_status_closed_at_index`, uma consulta agregada por unidade e
+cache curto de três segundos. As chaves incluem organização e unidade para não
+misturar dados entre tenants.

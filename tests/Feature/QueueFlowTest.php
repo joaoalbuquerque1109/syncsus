@@ -20,6 +20,7 @@ use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -156,6 +157,14 @@ final class QueueFlowTest extends TestCase
 
         $this->postJson(route('panels.heartbeat', $panel))->assertOk()->assertJsonPath('ok', true);
         $this->assertNotNull($panel->fresh()?->last_heartbeat_at);
+        $this->assertSame(1, $panel->fresh()?->heartbeat_count);
+
+        $this->postJson(route('panels.heartbeat', $panel))->assertOk();
+        $this->assertSame(1, $panel->fresh()?->heartbeat_count);
+
+        $this->travel(16)->seconds();
+        $this->postJson(route('panels.heartbeat', $panel))->assertOk();
+        $this->assertSame(2, $panel->fresh()?->heartbeat_count);
     }
 
     public function test_user_without_call_permission_cannot_change_queue_state(): void
@@ -183,6 +192,8 @@ final class QueueFlowTest extends TestCase
         $panel = Panel::query()->where('health_unit_id', $unit->getKey())->sole();
         $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
         $session = ['active_health_unit_id' => $unit->getKey()];
+        $cacheKey = "syncsus:unit:{$unit->getKey()}:panel:{$panel->getKey()}:queue-ids";
+        Cache::put($cacheKey, [-1], 60);
 
         $this->actingAs($administrator)->withSession($session)
             ->get(route('administration.flow.index'))
@@ -201,6 +212,7 @@ final class QueueFlowTest extends TestCase
             ])
             ->assertRedirect();
 
+        $this->assertNull(Cache::get($cacheKey));
         $this->assertDatabaseHas('panels', [
             'id' => $panel->getKey(),
             'name' => 'Painel da recepção',

@@ -11,6 +11,7 @@ use App\Modules\Identity\Application\Actions\ResetUserPasswordAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -68,6 +69,7 @@ final class UserManagementController extends Controller
             'must_change_password' => true,
         ]);
         $this->syncAccess($user, $data);
+        $this->forgetManagerCache((int) $unit->organization_id);
         $audit->execute('user.created', $request, $actor, [
             'managed_user' => $user->public_id,
             'roles' => $data['roles'],
@@ -108,6 +110,7 @@ final class UserManagementController extends Controller
         ];
         $managedUser->update($attributes);
         $this->syncAccess($managedUser, $data);
+        $this->forgetManagerCache((int) $unit->organization_id);
         if (filled($data['password'] ?? null)) {
             $resetPassword->execute(
                 $actor,
@@ -178,5 +181,10 @@ final class UserManagementController extends Controller
         abort_unless($unit instanceof HealthUnit, 403);
 
         return $unit;
+    }
+
+    private function forgetManagerCache(int $organizationId): void
+    {
+        Cache::forget("syncsus:organization:{$organizationId}:has-manager");
     }
 }

@@ -23,6 +23,9 @@ services:
       context: .
       target: app
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
     volumes:
       - private-files:/var/www/html/storage/app/private
       - backups:/backups:ro
@@ -71,10 +74,34 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
+  redis:
+    image: redis:8-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   queue-worker:
     image: sync-sus-app:local
     command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--timeout=120"]
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
     volumes:
       - private-files:/var/www/html/storage/app/private
       - app-logs:/var/www/html/storage/logs
@@ -98,6 +125,9 @@ services:
     image: sync-sus-app:local
     command: ["php", "artisan", "schedule:work"]
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
     volumes:
       - private-files:/var/www/html/storage/app/private
       - app-logs:/var/www/html/storage/logs

@@ -17,7 +17,9 @@
             heartbeatUrl: @js(route('panels.heartbeat', $panel)),
             previousCalls: {{ $panel->previous_calls_count }},
             soundEnabled: @js($panel->sound_enabled),
-            volume: {{ $panel->suggested_volume }}
+            volume: {{ $panel->suggested_volume }},
+            pollMs: {{ max(1, (int) config('sync_sus.panel_poll_seconds', 2)) * 1000 }},
+            heartbeatMs: {{ max(5, (int) config('sync_sus.panel_heartbeat_seconds', 15)) * 1000 }}
         })"
     >
         <header class="flex items-center justify-between gap-6 border-b border-white/15 pb-6">

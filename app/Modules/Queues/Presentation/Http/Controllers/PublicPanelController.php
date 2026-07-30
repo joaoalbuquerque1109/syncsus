@@ -11,6 +11,8 @@ use App\Modules\Queues\Infrastructure\Eloquent\Panel;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueCall;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 final class PublicPanelController extends Controller
@@ -26,7 +28,7 @@ final class PublicPanelController extends Controller
     {
         abort_unless($panel->is_active, 404);
         $validated = $request->validate(['after' => ['nullable', 'string', 'max:64']]);
-        $queueIds = $panel->queues()->pluck('queues.id');
+        $queueIds = $this->queueIds($panel);
         $query = QueueCall::query()
             ->with(['servicePoint', 'entry.encounter.patient'])
             ->whereIn('queue_id', $queueIds);
@@ -67,7 +69,7 @@ final class PublicPanelController extends Controller
             'meta' => [
                 'panel' => $panel->name,
                 'server_time' => now()->toIso8601String(),
-                'poll_after_ms' => 2000,
+                'poll_after_ms' => max(1, (int) config('sync_sus.panel_poll_seconds', 2)) * 1000,
             ],
         ])->withHeaders([
             'Cache-Control' => 'no-store, no-cache, must-revalidate, private',
@@ -78,9 +80,39 @@ final class PublicPanelController extends Controller
     public function heartbeat(Panel $panel): JsonResponse
     {
         abort_unless($panel->is_active, 404);
-        $panel->increment('heartbeat_count', 1, ['last_heartbeat_at' => now()]);
+        $minimumInterval = max(5, (int) config('sync_sus.panel_heartbeat_seconds', 15));
+        Panel::query()
+            ->whereKey($panel->getKey())
+            ->where(function ($query) use ($minimumInterval): void {
+                $query->whereNull('last_heartbeat_at')
+                    ->orWhere('last_heartbeat_at', '<=', now()->subSeconds($minimumInterval));
+            })
+            ->update([
+                'last_heartbeat_at' => now(),
+                'heartbeat_count' => DB::raw('heartbeat_count + 1'),
+                'updated_at' => now(),
+            ]);
 
         return response()->json(['ok' => true, 'server_time' => now()->toIso8601String()])
             ->header('Cache-Control', 'no-store');
+    }
+
+    /** @return list<int> */
+    private function queueIds(Panel $panel): array
+    {
+        $resolve = static fn (): array => $panel->queues()
+            ->pluck('queues.id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+
+        if (! config('sync_sus.performance_cache.enabled', true)) {
+            return $resolve();
+        }
+
+        return Cache::remember(
+            "syncsus:unit:{$panel->health_unit_id}:panel:{$panel->getKey()}:queue-ids",
+            (int) config('sync_sus.performance_cache.panel_configuration_seconds', 60),
+            $resolve,
+        );
     }
 }

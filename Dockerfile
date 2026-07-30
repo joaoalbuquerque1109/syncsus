@@ -18,8 +18,10 @@ RUN composer install \
 
 FROM php:8.5-fpm-alpine AS app
 RUN apk add --no-cache icu-libs libzip libpng oniguruma \
-    && apk add --no-cache --virtual .build-deps icu-dev libzip-dev libpng-dev oniguruma-dev \
+    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS icu-dev libzip-dev libpng-dev oniguruma-dev \
     && docker-php-ext-install bcmath intl pcntl pdo_mysql zip \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
     && apk del .build-deps
 
 WORKDIR /var/www/html
@@ -27,6 +29,7 @@ COPY --chown=www-data:www-data . .
 COPY --from=composer --chown=www-data:www-data /build/vendor ./vendor
 COPY --from=frontend --chown=www-data:www-data /build/public/build ./public/build
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/sync-sus.ini
+COPY docker/php/fpm.conf /usr/local/etc/php-fpm.d/zz-sync-sus.conf
 
 RUN mkdir -p storage/app/private storage/framework/cache storage/framework/sessions storage/framework/views storage/logs \
     && php artisan package:discover --ansi \

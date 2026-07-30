@@ -7,14 +7,29 @@ export default function publicPanel(config) {
         initialized: false,
         cursor:
             window.localStorage.getItem(`syncsus-panel-${config.code}`) || "",
-        retryMs: 2000,
+        retryMs: Math.max(1000, Number(config.pollMs) || 2000),
         clock: "",
+        heartbeatTimer: null,
+        clockTimer: null,
+        pollTimer: null,
 
         init() {
             this.updateClock();
-            window.setInterval(() => this.updateClock(), 1000);
+            this.clockTimer = window.setInterval(
+                () => this.updateClock(),
+                1000,
+            );
             this.poll();
-            window.setInterval(() => this.heartbeat(), 5000);
+            this.heartbeatTimer = window.setInterval(
+                () => this.heartbeat(),
+                Math.max(5000, Number(config.heartbeatMs) || 15000),
+            );
+        },
+
+        destroy() {
+            window.clearInterval(this.clockTimer);
+            window.clearInterval(this.heartbeatTimer);
+            window.clearTimeout(this.pollTimer);
         },
 
         async poll() {
@@ -35,12 +50,20 @@ export default function publicPanel(config) {
                 }
                 this.initialized = true;
                 this.connected = true;
-                this.retryMs = 2000;
+                this.retryMs = Math.max(
+                    1000,
+                    Number(response.data.meta?.poll_after_ms) ||
+                        Number(config.pollMs) ||
+                        2000,
+                );
             } catch {
                 this.connected = false;
                 this.retryMs = Math.min(this.retryMs * 2, 30000);
             } finally {
-                window.setTimeout(() => this.poll(), this.retryMs);
+                this.pollTimer = window.setTimeout(
+                    () => this.poll(),
+                    this.retryMs,
+                );
             }
         },
 

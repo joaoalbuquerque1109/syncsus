@@ -13,7 +13,15 @@ return [
     'backup_retention_days' => (int) env('SYNC_SUS_BACKUP_RETENTION_DAYS', 14),
     'backup_path' => env('SYNC_SUS_BACKUP_PATH', storage_path('app/backups')),
     'panel_poll_seconds' => (int) env('SYNC_SUS_PANEL_POLL_SECONDS', 2),
+    'panel_heartbeat_seconds' => max(5, (int) env('SYNC_SUS_PANEL_HEARTBEAT_SECONDS', 15)),
+    'queue_poll_seconds' => max(2, (int) env('SYNC_SUS_QUEUE_POLL_SECONDS', 5)),
     'dashboard_poll_seconds' => (int) env('SYNC_SUS_DASHBOARD_POLL_SECONDS', 15),
+    'performance_cache' => [
+        'enabled' => (bool) env('SYNC_SUS_PERFORMANCE_CACHE_ENABLED', true),
+        'dashboard_seconds' => max(1, (int) env('SYNC_SUS_DASHBOARD_CACHE_SECONDS', 3)),
+        'navigation_seconds' => max(5, (int) env('SYNC_SUS_NAVIGATION_CACHE_SECONDS', 60)),
+        'panel_configuration_seconds' => max(5, (int) env('SYNC_SUS_PANEL_CONFIGURATION_CACHE_SECONDS', 60)),
+    ],
     'vite_dev_server_origins' => array_values(array_filter(array_map(
         'trim',
         explode(',', (string) env(

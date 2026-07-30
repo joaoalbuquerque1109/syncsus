@@ -52,6 +52,7 @@ Route::middleware(['auth', 'active'])->group(function (): void {
 
     Route::middleware(['password.changed', 'active.unit'])->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        Route::get('/dashboard/state', [DashboardController::class, 'state'])->name('dashboard.state');
         Route::get('/dashboard/metrics', [DashboardController::class, 'metrics'])->name('dashboard.metrics');
         Route::get('/dashboard/active-encounters', [DashboardController::class, 'activeEncounters'])->name('dashboard.active-encounters');
         Route::put('/active-health-unit', [ActiveHealthUnitController::class, 'update'])

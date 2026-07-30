@@ -42,6 +42,21 @@ final class DashboardController extends Controller
         ])->header('Cache-Control', 'no-store, private');
     }
 
+    public function state(Request $request, OperationalDashboardQuery $dashboard): JsonResponse
+    {
+        $unit = $this->unit($request);
+
+        return response()->json([
+            'data' => [
+                'metrics' => $dashboard->metrics($unit),
+                'active_encounters' => $dashboard->activeEncounters(
+                    $unit,
+                    $request->user()?->can('patients.view') ?? false,
+                ),
+            ],
+        ])->header('Cache-Control', 'no-store, private');
+    }
+
     private function unit(Request $request): HealthUnit
     {
         $unit = $request->attributes->get('active_health_unit');
