@@ -137,12 +137,12 @@ final class OperationalCatalogSeeder extends Seeder
             ['health_unit_id' => $unit->getKey(), 'name' => 'Painel principal'],
             [
                 'public_code' => 'p-'.substr(hash('sha256', (string) config('app.key').'|'.$unit->public_id), 0, 40),
-                'identification_mode' => 'ticket_only',
+                'identification_mode' => 'full_name',
                 'previous_calls_count' => 5,
                 'sound_enabled' => true,
                 'suggested_volume' => 80,
                 'theme' => 'institutional',
-                'institutional_message' => 'Aguarde sua senha e dirija-se ao local indicado.',
+                'institutional_message' => 'Aguarde a chamada pelo seu nome e dirija-se ao local indicado.',
                 'is_active' => true,
             ],
         );

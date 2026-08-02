@@ -43,9 +43,13 @@
         <section class="grid flex-1 gap-6 py-8 lg:grid-cols-[1.6fr_1fr]">
             <div class="grid place-items-center rounded-3xl bg-white p-8 text-center text-navy-950 shadow-2xl">
                 <div x-show="current">
-                    <p class="text-xl font-bold uppercase tracking-[0.25em] text-brand-700" x-text="current?.is_recall ? 'Rechamada' : 'Senha chamada'"></p>
-                    <p class="mt-4 text-[clamp(5rem,16vw,13rem)] font-black leading-none tracking-tight text-navy-950" x-text="current?.ticket"></p>
-                    <p x-show="current?.person_label" class="mt-5 text-3xl font-extrabold text-slate-700" x-text="current?.person_label"></p>
+                    <p class="text-xl font-bold uppercase tracking-[0.25em] text-brand-700" x-text="current?.is_recall ? 'Paciente rechamado' : 'Paciente chamado'"></p>
+                    <p class="mt-6 max-w-[18ch] break-words text-[clamp(2.8rem,7vw,7rem)] font-black leading-tight tracking-tight text-navy-950" x-text="current?.person_label"></p>
+                    {{--
+                        Fluxo visual por senha preservado para uso futuro:
+                        <p class="text-xl font-bold uppercase tracking-[0.25em] text-brand-700" x-text="current?.is_recall ? 'Rechamada' : 'Senha chamada'"></p>
+                        <p class="mt-4 text-[clamp(5rem,16vw,13rem)] font-black leading-none tracking-tight text-navy-950" x-text="current?.ticket"></p>
+                    --}}
                     <div class="mx-auto mt-8 max-w-2xl rounded-2xl bg-brand-600 px-8 py-6 text-white">
                         <p class="text-lg font-semibold uppercase tracking-wider text-brand-100">Dirija-se a</p>
                         <p class="mt-1 text-4xl font-black" x-text="current?.destination"></p>
@@ -53,7 +57,7 @@
                 </div>
                 <div x-show="!current" class="text-slate-500">
                     <p class="text-4xl font-black">Aguardando chamadas</p>
-                    <p class="mt-3 text-xl">Acompanhe sua senha neste painel.</p>
+                    <p class="mt-3 text-xl">Aguarde a chamada pelo seu nome.</p>
                 </div>
             </div>
 
@@ -63,8 +67,8 @@
                     <template x-for="call in calls.slice(0, -1).reverse()" :key="call.event">
                         <div class="flex items-center justify-between gap-4 rounded-xl bg-white/10 px-5 py-4">
                             <div>
-                                <strong class="block text-3xl font-black" x-text="call.ticket"></strong>
-                                <span class="text-sm text-slate-300" x-text="call.person_label || 'Identificação por senha'"></span>
+                                <strong class="block break-words text-2xl font-black" x-text="call.person_label || 'Paciente'"></strong>
+                                {{-- Fluxo anterior por senha: <strong class="block text-3xl font-black" x-text="call.ticket"></strong> --}}
                             </div>
                             <span class="text-right text-lg font-bold text-brand-100" x-text="call.destination"></span>
                         </div>

@@ -6,6 +6,7 @@ namespace App\Modules\Queues\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Queues\Application\Services\PanelPatientNameFormatter;
+use App\Modules\Queues\Domain\Enums\PanelIdentificationMode;
 use App\Modules\Queues\Domain\Enums\QueueCallType;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueCall;
@@ -57,7 +58,12 @@ final class PublicPanelController extends Controller
             $data[] = [
                 'event' => $call->public_id,
                 'ticket' => $call->ticket_snapshot,
-                'person_label' => $formatter->format($call->entry->encounter->patient, $panel->identificationMode()),
+                'person_label' => $formatter->format(
+                    $call->entry->encounter->patient,
+                    PanelIdentificationMode::FullName,
+                ),
+                // Fluxo configurável por senha preservado para reativação futura:
+                // 'person_label' => $formatter->format($call->entry->encounter->patient, $panel->identificationMode()),
                 'destination' => $call->servicePoint->name,
                 'called_at' => $call->calledAt()->toIso8601String(),
                 'is_recall' => $call->callTypeEnum() === QueueCallType::Recall,

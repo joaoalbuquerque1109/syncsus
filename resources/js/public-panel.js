@@ -34,11 +34,14 @@ export default function publicPanel(config) {
 
         async poll() {
             try {
+                const initialLoad = !this.initialized;
                 const response = await window.axios.get(config.stateUrl, {
-                    params: { after: this.cursor || undefined },
+                    // A primeira leitura sempre hidrata a chamada atual. O cursor
+                    // volta a ser usado nas leituras incrementais seguintes.
+                    params: { after: initialLoad ? undefined : this.cursor || undefined },
                 });
                 const incoming = response.data.data;
-                const shouldAnnounce = this.initialized || Boolean(this.cursor);
+                const shouldAnnounce = !initialLoad;
                 for (const call of incoming) {
                     this.upsert(call);
                     this.cursor = call.event;
@@ -92,8 +95,12 @@ export default function publicPanel(config) {
             if ("speechSynthesis" in window) {
                 window.speechSynthesis.cancel();
                 const phrase = new SpeechSynthesisUtterance(
-                    `Senha ${this.spellTicket(call.ticket)}. Dirija-se a ${call.destination}.`,
+                    `${call.person_label || "Paciente"}. Dirija-se a ${call.destination}.`,
                 );
+                /*
+                 * Fluxo de locução por senha preservado para reativação futura:
+                 * `Senha ${this.spellTicket(call.ticket)}. Dirija-se a ${call.destination}.`
+                 */
                 phrase.lang = "pt-BR";
                 phrase.volume = config.volume / 100;
                 window.speechSynthesis.speak(phrase);
