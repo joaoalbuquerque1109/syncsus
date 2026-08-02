@@ -132,7 +132,23 @@
                         <tbody class="divide-y divide-slate-100">
                             <template x-for="entry in entries" :key="entry.public_id">
                                 <tr class="hover:bg-brand-50/30">
-                                    <td class="px-4 py-4 text-lg font-black text-slate-950" x-text="entry.ticket"></td>
+                                    <td class="relative py-4 pl-6 pr-4 text-lg font-black text-slate-950">
+                                        <span
+                                            class="absolute inset-y-0 left-0 w-2"
+                                            :class="{
+                                                'bg-red-600': entry.risk_color === 'red',
+                                                'bg-orange-500': entry.risk_color === 'orange',
+                                                'bg-yellow-400': entry.risk_color === 'yellow',
+                                                'bg-green-600': entry.risk_color === 'green',
+                                                'bg-blue-600': entry.risk_color === 'blue',
+                                                'bg-slate-300': !entry.risk_color
+                                            }"
+                                            :title="entry.risk ? `Prioridade ${entry.risk}` : 'Prioridade ainda não classificada'"
+                                            :aria-label="entry.risk ? `Prioridade ${entry.risk}` : 'Prioridade ainda não classificada'"
+                                            role="img"
+                                        ></span>
+                                        <span x-text="entry.ticket"></span>
+                                    </td>
                                     <td class="px-4 py-4">
                                         <strong class="block text-slate-900" x-text="entry.patient"></strong>
                                         <span class="text-xs text-slate-500" x-text="`${entry.medical_record_number} · ${entry.arrival_method}`"></span>

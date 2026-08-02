@@ -126,6 +126,7 @@ final class QueueController extends Controller
             'arrival_method' => $entry->encounter->arrivalMethod->name,
             'administrative_priority' => $entry->encounter->administrativePriorityEnum()->label(),
             'risk' => $entry->encounter->riskLevel?->name,
+            'risk_color' => $entry->encounter->riskLevel?->color_key,
             'entered_at' => $entry->enteredAt()->format('d/m/Y H:i'),
             'waiting_minutes' => max(0, (int) $entry->enteredAt()->diffInMinutes(now())),
             'call_count' => (int) $entry->call_count,

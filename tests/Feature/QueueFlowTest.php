@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
 use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
+use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
@@ -32,13 +33,17 @@ final class QueueFlowTest extends TestCase
     {
         [$unit, $user, $entry, $point] = $this->context();
         $session = ['active_health_unit_id' => $unit->getKey()];
+        $risk = RiskLevel::query()->where('code', 'YELLOW')->sole();
+        $entry->encounter->update(['risk_level_id' => $risk->getKey()]);
 
         $this->actingAs($user)->withSession($session)->get(route('queues.index'))
             ->assertOk()
             ->assertSee('Filas e chamadas');
         $this->actingAs($user)->withSession($session)->getJson(route('queues.entries', $entry->queue))
             ->assertOk()
-            ->assertJsonPath('data.0.ticket', 'T001');
+            ->assertJsonPath('data.0.ticket', 'T001')
+            ->assertJsonPath('data.0.risk', 'Amarelo')
+            ->assertJsonPath('data.0.risk_color', 'yellow');
 
         $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
             'version' => 1,
@@ -114,7 +119,7 @@ final class QueueFlowTest extends TestCase
         $this->assertDatabaseHas('queue_entry_history', ['queue_entry_id' => $destination->getKey(), 'action' => 'entered_by_transfer']);
     }
 
-    public function test_public_panel_payload_is_incremental_and_contains_no_sensitive_or_clinical_data(): void
+    public function test_public_panel_calls_by_name_without_exposing_clinical_or_document_data(): void
     {
         [$unit, $user, $entry, $point, $patient] = $this->context();
         $session = ['active_health_unit_id' => $unit->getKey()];
@@ -136,12 +141,12 @@ final class QueueFlowTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.ticket', 'T001')
-            ->assertJsonPath('data.0.person_label', null)
+            ->assertJsonPath('data.0.person_label', $patient->full_name)
             ->assertJsonMissingPath('data.0.patient')
             ->assertJsonMissingPath('data.0.medical_record_number')
             ->assertJsonMissingPath('data.0.cpf')
             ->assertJsonMissingPath('data.0.risk');
-        $state->assertDontSee($patient->full_name)
+        $state->assertSee($patient->full_name)
             ->assertDontSee($patient->medical_record_number)
             ->assertDontSee('52998224725');
         $cursor = $state->json('data.0.event');
@@ -216,7 +221,7 @@ final class QueueFlowTest extends TestCase
         $this->assertDatabaseHas('panels', [
             'id' => $panel->getKey(),
             'name' => 'Painel da recepção',
-            'identification_mode' => 'first_name_initial',
+            'identification_mode' => 'full_name',
             'previous_calls_count' => 7,
         ]);
         $this->assertDatabaseCount('panel_queue', 1);
@@ -263,6 +268,7 @@ final class QueueFlowTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
         $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         $user->assignRole('triage_professional');
+        $this->registerTriageProfessional($user, $unit);
 
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,
