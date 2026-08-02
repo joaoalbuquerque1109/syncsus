@@ -990,7 +990,7 @@ Definir a fila inicial e os dados operacionais de destino após identificação.
 |---|---|---:|---|
 | Destino inicial | select | Sim | Normalmente classificação de risco. |
 | Especialidade | select pesquisável | Condicional | Apenas especialidades ativas na unidade. |
-| Profissional | select pesquisável | Não | Filtrado por vínculo, plantão e especialidade. |
+| Profissional | select pesquisável | Não | Filtrado por vínculo e especialidade. |
 | Setor | select | Sim | Filtrado pela unidade. |
 | Sala/ponto de atendimento | select | Não | Usado quando houver direcionamento definido. |
 | Fila | select | Sim | Filas compatíveis com o destino. |
@@ -1004,7 +1004,7 @@ O backend deve retornar apenas profissionais:
 - vinculados à unidade;
 - vinculados à especialidade selecionada;
 - autorizados para o setor;
-- com plantão ou disponibilidade configurada;
+- com cadastro profissional ativo;
 - com ocupação compatível.
 
 ### 15.4 Revisão final
@@ -1375,6 +1375,8 @@ Regras:
 - CID pesquisável por código e descrição;
 - não aceitar código inexistente no catálogo ativo;
 - permitir diagnóstico descritivo provisório quando a política autorizar.
+- carregar o catálogo sob demanda, sem enviar todos os códigos na abertura da tela;
+- utilizar como base inicial as 1.835 categorias CID-10 de três caracteres da fonte institucional fornecida.
 
 ### 19.8 Conduta
 
@@ -1633,6 +1635,8 @@ Campos:
 - texto complementar;
 - observações internas;
 - médico emissor.
+
+O CID deve ser selecionado no catálogo ativo. O servidor persiste a identificação, o código e a descrição canônicos do registro selecionado e ignora texto livre apresentado como CID.
 
 ### 25.3 Versionamento
 

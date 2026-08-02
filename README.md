@@ -39,6 +39,7 @@ Filas e painel incluem:
 
 - ordenação no backend, filtros e atualização automática da fila;
 - chamada, rechamada, início, ausência, retorno e transferência transacionais;
+- reentrada no atendimento em andamento pelo botão Editar, limitada ao profissional que o iniciou ou ao administrador global;
 - versão otimista e bloqueio de linha para impedir início concorrente;
 - histórico imutável de chamadas, transições e transferências;
 - configuração de filas, pontos permitidos e quantidade mínima de chamadas;
@@ -58,9 +59,9 @@ Triagem inclui:
 
 Atendimento médico inclui:
 
-- início concorrente pela fila médica e vínculo exclusivo com o médico responsável;
+- início concorrente pela fila médica e edição pelo médico responsável ou pelo administrador global;
 - anamnese geral, exame físico, conduta e controle otimista de versão;
-- diagnósticos principais e secundários com catálogo CID local ou hipótese descritiva;
+- diagnósticos principais e secundários com busca no catálogo local de 1.835 categorias CID-10 ou hipótese descritiva;
 - prescrição hospitalar e receita domiciliar finalizadas de forma imutável;
 - solicitações de exames, mantendo resultados para a futura integração laboratorial;
 - evoluções clínicas cronológicas e encaminhamentos internos ou externos;
@@ -70,6 +71,8 @@ Atendimento médico inclui:
 Documentos e relatórios incluem:
 
 - nove tipos de documentos clínicos, com conteúdo estruturado e PDF gerado localmente;
+- aba e tabela próprias para atestados, com seleção de CID condicionada à autorização expressa do paciente;
+- PDFs de receitas, solicitações de exames e encaminhamentos gerados diretamente dos respectivos registros clínicos;
 - armazenamento privado, download autorizado, SHA-256 e código público de verificação;
 - novas versões append-only e anulação sem remoção do histórico;
 - dashboard do plantão com indicadores e atendimentos ativos atualizados por polling;
