@@ -22,13 +22,32 @@
         'corrections' => 'Correcoes',
         'evolution' => 'Evolução',
         'referrals' => 'Encaminhamentos',
+        'certificates' => 'Atestados',
         'documents' => 'Documentos',
         'destination' => 'Destinação',
+    ];
+    $prescriptionEditorRecords = $consultation->prescriptions
+        ->where('status', 'finalized')
+        ->mapWithKeys(fn ($prescription) => [$prescription->public_id => [
+            'prescription_type' => $prescription->prescription_type,
+            'general_instructions' => $prescription->general_instructions,
+            'items' => $prescription->items->map(fn ($item) => $item->only([
+                'medication_name', 'presentation', 'concentration', 'dose', 'dose_unit',
+                'route', 'frequency', 'instructions',
+            ]))->values()->all(),
+        ]])->all();
+    $prescriptionFormConfig = [
+        'initialItems' => old('form_context') === 'prescription' && is_array(old('items')) ? array_values(old('items')) : [[]],
+        'records' => $prescriptionEditorRecords,
+        'initialType' => old('form_context') === 'prescription' ? old('prescription_type', 'hospital') : 'hospital',
+        'initialInstructions' => old('form_context') === 'prescription' ? old('general_instructions', '') : '',
+        'editingId' => old('form_context') === 'prescription' ? old('replaces_prescription_id', '') : '',
+        'replacementReason' => old('form_context') === 'prescription' ? old('replacement_reason', '') : '',
     ];
 @endphp
 
 <x-layout.app :title="'Atendimento médico · '.$consultation->queueEntry->ticket_number">
-    <div x-data="{ tab: @js(request('tab', 'summary')), destination: @js(old('destination_type', 'discharge')) }">
+    <div x-data="{ tab: @js(request('tab', 'summary')), destination: @js(old('destination_type', 'discharge')), documentType: @js(old('document_type', 'attendance_declaration')) }">
         <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div class="flex flex-wrap items-center gap-2">
                 @if($risk)
@@ -199,7 +218,11 @@
                             @csrf
                             <input type="hidden" name="version" value="{{ $consultation->version() }}">
                             <div class="grid gap-4 lg:grid-cols-2">
-                                <div><label class="field-label" for="diagnosis_code_id">CID do catálogo local</label><select id="diagnosis_code_id" name="diagnosis_code_id" class="field-control"><option value="">Hipótese descritiva sem CID</option>@foreach($diagnosisCodes as $code)<option value="{{ $code->getKey() }}">{{ $code->code }} · {{ $code->description }}</option>@endforeach</select></div>
+                                <div>
+                                    <label class="field-label" for="diagnosis_code_search">CID do catálogo</label>
+                                    <x-medical.cid-search name="diagnosis_code_id" input-id="diagnosis_code_search" />
+                                    <p class="mt-1 text-xs text-slate-500">Opcional quando for registrada apenas uma hipótese descritiva.</p>
+                                </div>
                                 <div><label class="field-label" for="diagnosis_description">Descrição provisória</label><input id="diagnosis_description" name="description" class="field-control"></div>
                                 <div><label class="field-label" for="diagnosis_type">Tipo</label><select id="diagnosis_type" name="diagnosis_type" class="field-control" required><option value="hypothesis">Hipótese</option><option value="confirmed">Confirmado</option><option value="ruled_out">Descartado</option></select></div>
                                 <div><label class="field-label" for="diagnosis_notes">Observação</label><input id="diagnosis_notes" name="notes" class="field-control"></div>
@@ -217,29 +240,95 @@
                     </div>
                 </section>
 
-                <section x-show="tab === 'prescriptions'" x-cloak class="space-y-5 p-5 lg:p-7">
+                <section x-show="tab === 'prescriptions'" x-cloak x-data="prescriptionItems(@js($prescriptionFormConfig))" class="space-y-5 p-5 lg:p-7">
                     @if($editable)
-                        <form method="POST" action="{{ route('medical.prescriptions', $consultation) }}" class="rounded-xl border border-slate-200 p-4">
+                        <form id="prescription_form" method="POST" action="{{ route('medical.prescriptions', $consultation) }}" class="scroll-mt-24 rounded-xl border border-slate-200 p-4">
                             @csrf
+                            <input type="hidden" name="form_context" value="prescription">
+                            <input type="hidden" name="replaces_prescription_id" x-model="editingId">
                             <input type="hidden" name="version" value="{{ $consultation->version() }}">
-                            <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                                <div><label class="field-label" for="prescription_type">Tipo</label><select id="prescription_type" name="prescription_type" class="field-control"><option value="hospital">Hospitalar</option><option value="home">Receita domiciliar</option></select></div>
-                                <div><label class="field-label" for="medication_name">Medicamento/produto *</label><input id="medication_name" name="items[0][medication_name]" required class="field-control"></div>
-                                <div><label class="field-label" for="presentation">Apresentação *</label><input id="presentation" name="items[0][presentation]" required class="field-control"></div>
-                                <div><label class="field-label" for="concentration">Concentração</label><input id="concentration" name="items[0][concentration]" class="field-control"></div>
-                                <div><label class="field-label" for="dose">Dose *</label><input id="dose" name="items[0][dose]" type="number" step="0.001" required class="field-control"></div>
-                                <div><label class="field-label" for="dose_unit">Unidade *</label><input id="dose_unit" name="items[0][dose_unit]" placeholder="mg, mL, UI" required class="field-control"></div>
-                                <div><label class="field-label" for="route">Via *</label><input id="route" name="items[0][route]" placeholder="Oral, IV, IM" required class="field-control"></div>
-                                <div><label class="field-label" for="frequency">Frequência *</label><input id="frequency" name="items[0][frequency]" placeholder="A cada 8 horas" required class="field-control"></div>
-                                <div class="md:col-span-2 xl:col-span-4"><label class="field-label" for="item_instructions">Posologia e orientações</label><textarea id="item_instructions" name="items[0][instructions]" rows="2" class="field-control"></textarea></div>
+                            <div x-show="editingId" x-cloak class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-3"><p class="font-extrabold text-amber-900">Editando uma prescrição vigente</p><button type="button" @click="cancelEditing()" class="text-sm font-bold text-amber-800 underline">Cancelar edição</button></div>
+                                <p class="mt-1 text-xs text-amber-800">O registro original será preservado e marcado como substituído.</p>
+                                <label class="field-label mt-3" for="replacement_reason">Motivo da alteração *</label>
+                                <textarea id="replacement_reason" name="replacement_reason" x-model="replacementReason" :required="Boolean(editingId)" minlength="10" rows="2" class="field-control"></textarea>
                             </div>
-                            <div class="mt-4 flex flex-wrap gap-4 text-sm font-bold"><label><input type="checkbox" name="items[0][is_immediate]" value="1"> Administração imediata</label><label><input type="checkbox" name="items[0][is_as_needed]" value="1"> Se necessário</label></div>
-                            <div class="mt-4"><label class="field-label" for="general_instructions">Observações gerais</label><textarea id="general_instructions" name="general_instructions" rows="2" class="field-control"></textarea></div>
-                            <div class="mt-4 text-right"><button class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white">Finalizar prescrição</button></div>
+                            <div class="mb-4 max-w-sm"><label class="field-label" for="prescription_type">Tipo</label><select id="prescription_type" name="prescription_type" x-model="prescriptionType" class="field-control"><option value="hospital">Hospitalar</option><option value="home">Receita domiciliar</option></select></div>
+                            <div class="space-y-4">
+                                <template x-for="(item, index) in items" :key="item._key">
+                                    <fieldset class="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                                        <legend class="sr-only">Dados do medicamento</legend>
+                                        <div class="mb-4 flex items-center justify-between gap-3">
+                                            <p class="font-extrabold text-slate-800">Medicamento <span x-text="index + 1"></span></p>
+                                            <button x-show="items.length > 1" type="button" @click="removeItem(index)" class="grid size-9 place-items-center rounded-lg border border-red-200 bg-white text-red-700 hover:bg-red-50" aria-label="Remover medicamento" title="Remover medicamento"><x-icons.trash /></button>
+                                        </div>
+                                        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                            <div><label class="field-label" :for="`medication_name_${index}`">Medicamento/produto *</label><input :id="`medication_name_${index}`" :name="`items[${index}][medication_name]`" x-model="item.medication_name" required class="field-control"></div>
+                                            <div><label class="field-label" :for="`presentation_${index}`">Apresentação *</label><input :id="`presentation_${index}`" :name="`items[${index}][presentation]`" x-model="item.presentation" required class="field-control"></div>
+                                            <div><label class="field-label" :for="`concentration_${index}`">Concentração</label><input :id="`concentration_${index}`" :name="`items[${index}][concentration]`" x-model="item.concentration" class="field-control"></div>
+                                            <div><label class="field-label" :for="`dose_${index}`">Dose *</label><input :id="`dose_${index}`" :name="`items[${index}][dose]`" x-model="item.dose" type="number" min="0.001" step="0.001" required class="field-control"></div>
+                                            <div><label class="field-label" :for="`dose_unit_${index}`">Unidade *</label><input :id="`dose_unit_${index}`" :name="`items[${index}][dose_unit]`" x-model="item.dose_unit" placeholder="mg, mL, UI" required class="field-control"></div>
+                                            <div><label class="field-label" :for="`route_${index}`">Via *</label><input :id="`route_${index}`" :name="`items[${index}][route]`" x-model="item.route" placeholder="Oral, IV, IM" required class="field-control"></div>
+                                            <div><label class="field-label" :for="`frequency_${index}`">Frequência *</label><input :id="`frequency_${index}`" :name="`items[${index}][frequency]`" x-model="item.frequency" placeholder="A cada 8 horas" required class="field-control"></div>
+                                            <div class="md:col-span-2 xl:col-span-4"><label class="field-label" :for="`item_instructions_${index}`">Posologia e orientações</label><textarea :id="`item_instructions_${index}`" :name="`items[${index}][instructions]`" x-model="item.instructions" rows="2" class="field-control"></textarea></div>
+                                        </div>
+                                    </fieldset>
+                                </template>
+                            </div>
+                            <button type="button" @click="addItem()" :disabled="items.length >= 30" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-bold text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"><x-icons.plus /> Adicionar medicamento</button>
+                            <div class="mt-4"><label class="field-label" for="general_instructions">Observações gerais</label><textarea id="general_instructions" name="general_instructions" x-model="generalInstructions" rows="2" class="field-control"></textarea></div>
+                            <div class="mt-4 text-right"><button class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white"><span x-text="editingId ? 'Salvar nova versão' : 'Finalizar prescrição'"></span> (<span x-text="items.length"></span> medicamento<span x-show="items.length !== 1">s</span>)</button></div>
                         </form>
                     @endif
                     @forelse($consultation->prescriptions->sortByDesc('finalized_at') as $prescription)
-                        <article class="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4"><div class="flex justify-between"><strong>{{ $prescription->prescription_type === 'hospital' ? 'Prescrição hospitalar' : 'Receita domiciliar' }}</strong><span class="text-xs font-bold uppercase text-emerald-700">{{ $prescription->status }}</span></div>@foreach($prescription->items as $item)<p class="mt-2 text-sm"><strong>{{ $item->medication_name }}</strong> · {{ $item->dose }} {{ $item->dose_unit }} · {{ $item->route }} · {{ $item->frequency }}</p>@endforeach</article>
+                        @php
+                            $prescriptionStatus = match ($prescription->status) {
+                                'finalized' => ['Vigente', 'border-emerald-200 bg-emerald-50/40', 'bg-emerald-100 text-emerald-800'],
+                                'replaced' => ['Substituída', 'border-amber-200 bg-amber-50/40', 'bg-amber-100 text-amber-800'],
+                                'cancelled' => ['Cancelada', 'border-red-200 bg-red-50/40', 'bg-red-100 text-red-800'],
+                                default => [ucfirst($prescription->status), 'border-slate-200 bg-slate-50', 'bg-slate-200 text-slate-700'],
+                            };
+                            $canManagePrescription = auth()->user()?->canManageClinicalRecordOwnedBy($prescription->professional_id) ?? false;
+                        @endphp
+                        <article x-data="{ cancelling: false }" class="safe-wrap rounded-xl border p-4 {{ $prescriptionStatus[1] }}">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div class="flex flex-wrap items-center gap-2"><strong>{{ $prescription->prescription_type === 'hospital' ? 'Prescrição hospitalar' : 'Receita domiciliar' }}</strong><span class="rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase {{ $prescriptionStatus[2] }}">{{ $prescriptionStatus[0] }}</span></div>
+                                    <p class="mt-1 text-xs text-slate-500">Versão {{ $prescription->version }} · {{ $prescription->items->count() }} medicamento(s) · {{ $prescription->finalized_at?->format('d/m/Y H:i') }}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    @can('medical.issue_documents')
+                                        @if($prescription->document)
+                                            <a href="{{ route('documents.pdf', $prescription->document) }}" class="rounded-lg border border-brand-300 bg-white px-3 py-2 text-xs font-bold text-brand-700">Baixar PDF</a>
+                                        @elseif($prescription->status === 'finalized')
+                                            <form method="POST" action="{{ route('medical.prescriptions.document', [$consultation, $prescription]) }}">@csrf<button class="rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white">Gerar PDF</button></form>
+                                        @endif
+                                    @endcan
+                                    @if($canManagePrescription && $prescription->status === 'finalized')
+                                        @if($editable)
+                                            <button type="button" @click="startEditing('{{ $prescription->public_id }}')" class="grid size-9 place-items-center rounded-lg border border-amber-300 bg-white text-amber-700 hover:bg-amber-50" aria-label="Editar prescrição" title="Editar prescrição"><x-icons.pencil /></button>
+                                        @endif
+                                        <button type="button" @click="cancelling = !cancelling" class="grid size-9 place-items-center rounded-lg border border-red-300 bg-white text-red-700 hover:bg-red-50" aria-label="Cancelar prescrição" title="Cancelar prescrição"><x-icons.trash /></button>
+                                    @endif
+                                </div>
+                            </div>
+                            <div class="mt-4 grid gap-2 md:grid-cols-2">
+                                @foreach($prescription->items as $item)
+                                    <div class="rounded-lg border border-white/70 bg-white/80 p-3 text-sm"><strong>{{ $item->medication_name }}</strong><p class="mt-1 text-xs text-slate-600">{{ $item->presentation }}@if($item->concentration) · {{ $item->concentration }}@endif<br>{{ $item->dose }} {{ $item->dose_unit }} · {{ $item->route }} · {{ $item->frequency }}</p></div>
+                                @endforeach
+                            </div>
+                            @if($prescription->status === 'replaced' && $prescription->replacement_reason)<p class="mt-3 rounded-lg bg-amber-100/70 p-3 text-xs text-amber-900"><strong>Motivo da substituição:</strong> {{ $prescription->replacement_reason }}</p>@endif
+                            @if($prescription->status === 'cancelled' && $prescription->cancellation_reason)<p class="mt-3 rounded-lg bg-red-100/70 p-3 text-xs text-red-900"><strong>Motivo do cancelamento:</strong> {{ $prescription->cancellation_reason }}</p>@endif
+                            @if($canManagePrescription && $prescription->status === 'finalized')
+                                <form x-show="cancelling" x-cloak method="POST" action="{{ route('medical.prescriptions.cancel', [$consultation, $prescription]) }}" class="mt-4 rounded-lg border border-red-200 bg-white p-4">
+                                    @csrf
+                                    <input type="hidden" name="confirmation" value="1">
+                                    <label class="field-label" for="cancel_prescription_{{ $prescription->public_id }}">Motivo do cancelamento *</label>
+                                    <textarea id="cancel_prescription_{{ $prescription->public_id }}" name="reason" required minlength="10" rows="2" class="field-control"></textarea>
+                                    <div class="mt-3 flex justify-end gap-2"><button type="button" @click="cancelling = false" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">Voltar</button><button class="inline-flex items-center gap-2 rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white"><x-icons.trash /> Confirmar cancelamento</button></div>
+                                </form>
+                            @endif
+                        </article>
                     @empty
                         <p class="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">Nenhuma prescrição registrada.</p>
                     @endforelse
@@ -247,22 +336,46 @@
 
                 <section x-show="tab === 'exams'" x-cloak class="space-y-5 p-5 lg:p-7">
                     @if($editable)
-                        <form method="POST" action="{{ route('medical.exam-orders', $consultation) }}" class="rounded-xl border border-slate-200 p-4">
+                        <form method="POST" action="{{ route('medical.exam-orders', $consultation) }}" x-data="examOrderItems(@js(old('form_context') === 'exam_order' && is_array(old('items')) ? array_values(old('items')) : [[]]))" class="rounded-xl border border-slate-200 p-4">
                             @csrf
+                            <input type="hidden" name="form_context" value="exam_order">
                             <input type="hidden" name="version" value="{{ $consultation->version() }}">
-                            <div class="grid gap-4 lg:grid-cols-2">
-                                <div><label class="field-label" for="exam_name">Exame *</label><input id="exam_name" name="items[0][exam_name]" required class="field-control"></div>
-                                <div><label class="field-label" for="exam_group">Grupo *</label><select id="exam_group" name="items[0][group]" class="field-control"><option value="laboratory">Laboratório</option><option value="imaging">Imagem</option><option value="cardiology">Cardiologia</option><option value="other">Outro</option></select></div>
-                                <div><label class="field-label" for="exam_priority">Prioridade *</label><select id="exam_priority" name="priority" class="field-control"><option value="routine">Rotina</option><option value="urgent">Urgente</option><option value="emergency">Emergência</option></select></div>
-                                <div><label class="field-label" for="internal_code">Código interno</label><input id="internal_code" name="items[0][internal_code]" class="field-control"></div>
-                                <div class="lg:col-span-2"><label class="field-label" for="clinical_indication">Indicação clínica *</label><textarea id="clinical_indication" name="clinical_indication" required rows="3" class="field-control"></textarea></div>
+                            <div class="mb-4 grid gap-4 lg:grid-cols-2">
+                                <div><label class="field-label" for="exam_priority">Prioridade do pedido *</label><select id="exam_priority" name="priority" class="field-control"><option value="routine" @selected(old('form_context') !== 'exam_order' || old('priority') === 'routine')>Rotina</option><option value="urgent" @selected(old('form_context') === 'exam_order' && old('priority') === 'urgent')>Urgente</option><option value="emergency" @selected(old('form_context') === 'exam_order' && old('priority') === 'emergency')>Emergência</option></select></div>
+                                <div><label class="field-label" for="clinical_indication">Indicação clínica *</label><textarea id="clinical_indication" name="clinical_indication" required rows="3" class="field-control">{{ old('form_context') === 'exam_order' ? old('clinical_indication') : '' }}</textarea></div>
                             </div>
-                            <div class="mt-4 text-right"><button class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white">Solicitar exame</button></div>
+                            <div class="space-y-4">
+                                <template x-for="(item, index) in items" :key="item._key">
+                                    <fieldset class="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                                        <legend class="sr-only">Dados do exame</legend>
+                                        <div class="mb-4 flex items-center justify-between gap-3"><p class="font-extrabold text-slate-800">Exame <span x-text="index + 1"></span></p><button x-show="items.length > 1" type="button" @click="removeItem(index)" class="grid size-9 place-items-center rounded-lg border border-red-200 bg-white text-red-700 hover:bg-red-50" aria-label="Remover exame" title="Remover exame"><x-icons.trash /></button></div>
+                                        <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+                                            <div><label class="field-label" :for="`exam_name_${index}`">Exame *</label><input :id="`exam_name_${index}`" :name="`items[${index}][exam_name]`" x-model="item.exam_name" required class="field-control"></div>
+                                            <div><label class="field-label" :for="`exam_group_${index}`">Grupo *</label><select :id="`exam_group_${index}`" :name="`items[${index}][group]`" x-model="item.group" class="field-control"><option value="laboratory">Laboratório</option><option value="imaging">Imagem</option><option value="cardiology">Cardiologia</option><option value="other">Outro</option></select></div>
+                                            <div><label class="field-label" :for="`internal_code_${index}`">Código interno</label><input :id="`internal_code_${index}`" :name="`items[${index}][internal_code]`" x-model="item.internal_code" class="field-control"></div>
+                                            <div><label class="field-label" :for="`laterality_${index}`">Lateralidade</label><select :id="`laterality_${index}`" :name="`items[${index}][laterality]`" x-model="item.laterality" class="field-control"><option value="not_applicable">Não se aplica</option><option value="right">Direita</option><option value="left">Esquerda</option><option value="bilateral">Bilateral</option></select></div>
+                                            <div><label class="field-label" :for="`preparation_${index}`">Preparo</label><textarea :id="`preparation_${index}`" :name="`items[${index}][preparation]`" x-model="item.preparation" rows="2" class="field-control"></textarea></div>
+                                            <div><label class="field-label" :for="`justification_${index}`">Justificativa específica</label><textarea :id="`justification_${index}`" :name="`items[${index}][justification]`" x-model="item.justification" rows="2" class="field-control"></textarea></div>
+                                        </div>
+                                    </fieldset>
+                                </template>
+                            </div>
+                            <button type="button" @click="addItem()" :disabled="items.length >= 30" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-brand-300 bg-white px-4 py-2.5 text-sm font-bold text-brand-700 disabled:cursor-not-allowed disabled:opacity-50"><x-icons.plus /> Adicionar exame</button>
+                            <div class="mt-4 text-right"><button class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white">Solicitar <span x-text="items.length"></span> exame<span x-show="items.length !== 1">s</span></button></div>
                         </form>
                     @endif
                     @forelse($consultation->examOrders->sortByDesc('requested_at') as $order)
-                        <article class="rounded-lg border border-slate-200 p-4">
-                            <p class="text-sm"><strong>Indicação:</strong> {{ $order->clinical_indication }}</p>
+                        <article class="safe-wrap rounded-lg border border-slate-200 p-4">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <p class="text-sm"><strong>Indicação:</strong> {{ $order->clinical_indication }}</p>
+                                @can('medical.issue_documents')
+                                    @if($order->document)
+                                        <a href="{{ route('documents.pdf', $order->document) }}" class="rounded-lg border border-brand-300 px-3 py-2 text-xs font-bold text-brand-700">Baixar PDF</a>
+                                    @else
+                                        <form method="POST" action="{{ route('medical.exam-orders.document', [$consultation, $order]) }}">@csrf<button class="rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white">Gerar PDF</button></form>
+                                    @endif
+                                @endcan
+                            </div>
                             @foreach($order->items as $item)
                                 <div class="mt-3 rounded-lg bg-slate-50 p-4">
                                     <div class="flex flex-wrap justify-between gap-2"><strong>{{ $item->exam_name }}</strong><span class="text-xs font-bold uppercase">{{ $item->status }}</span></div>
@@ -297,7 +410,52 @@
                 </section>
 
                 <section x-show="tab === 'corrections'" x-cloak class="space-y-5 p-5 lg:p-7">
-                    <x-alert type="warning">Anulacoes preservam o conteudo original e exigem justificativa. Use um adendo para acrescentar informacoes corretas.</x-alert>
+                    <x-alert type="warning">Anulações preservam o conteúdo original e exigem justificativa. A opção “apagar documento” invalida o PDF e sua verificação, mas mantém todas as versões para auditoria.</x-alert>
+                    @php($canCorrectDocuments = auth()->user()?->can('medical.issue_documents') && auth()->user()?->canManageClinicalRecordOwnedBy($consultation->professional_id))
+                    <div>
+                        <h2 class="text-lg font-extrabold text-slate-950">Documentos gerados</h2>
+                        <p class="mt-1 text-sm text-slate-500">A lista inclui documentos emitidos antes e depois desta atualização.</p>
+                        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+                            @forelse($consultation->documents->sortByDesc('created_at') as $document)
+                                <article x-data="{ deleting: false }" class="safe-wrap rounded-xl border p-4 {{ $document->status === 'active' ? 'border-slate-200 bg-white' : 'border-red-200 bg-red-50/60' }}">
+                                    <div class="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <p class="text-xs font-extrabold uppercase text-slate-500">{{ $document->typeEnum()->label() }}</p>
+                                            <h3 class="mt-1 font-extrabold text-slate-950">{{ $document->title }}</h3>
+                                            <p class="mt-1 text-xs text-slate-500">{{ $document->created_at->format('d/m/Y H:i') }} · v{{ $document->currentVersion?->version_number ?? '—' }} · {{ $document->public_id }}</p>
+                                        </div>
+                                        <span class="rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase {{ $document->status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800' }}">{{ $document->status === 'active' ? 'Válido' : 'Apagado' }}</span>
+                                    </div>
+                                    <div class="mt-4 flex flex-wrap items-center gap-2">
+                                        <a href="{{ route('documents.show', $document) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">Detalhes</a>
+                                        <a href="{{ route('documents.pdf', $document) }}" class="rounded-lg border border-brand-300 bg-white px-3 py-2 text-xs font-bold text-brand-700">Baixar PDF</a>
+                                        @if($document->status === 'active' && $canCorrectDocuments)
+                                            <button type="button" @click="deleting = !deleting" class="ml-auto inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50" aria-label="Apagar documento {{ $document->title }}"><x-icons.trash /> Apagar documento</button>
+                                        @endif
+                                    </div>
+                                    @if($document->status === 'voided')
+                                        <div class="mt-4 rounded-lg bg-red-100/70 p-3 text-xs text-red-900">
+                                            <strong>Apagado em {{ $document->voided_at?->format('d/m/Y H:i') }}:</strong> {{ $document->void_reason }}
+                                        </div>
+                                    @elseif($canCorrectDocuments)
+                                        <form x-show="deleting" x-cloak method="POST" action="{{ route('documents.void', $document) }}" class="mt-4 rounded-lg border border-red-200 bg-red-50 p-4" id="delete_document_{{ $document->public_id }}">
+                                            @csrf
+                                            <label class="field-label" for="delete_document_reason_{{ $document->public_id }}">Motivo para apagar *</label>
+                                            <textarea id="delete_document_reason_{{ $document->public_id }}" name="reason" required minlength="10" maxlength="1000" rows="2" class="field-control" placeholder="Explique por que este documento deve ser invalidado"></textarea>
+                                            <label class="mt-3 flex items-start gap-2 text-sm text-red-900"><input type="checkbox" name="confirmation" value="1" required class="mt-1"> Confirmo que o PDF será invalidado e que o histórico será preservado.</label>
+                                            <div class="mt-3 flex justify-end gap-2"><button type="button" @click="deleting = false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold">Voltar</button><button class="inline-flex items-center gap-2 rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white"><x-icons.trash /> Confirmar</button></div>
+                                        </form>
+                                    @endif
+                                </article>
+                            @empty
+                                <p class="rounded-lg bg-slate-50 p-5 text-sm text-slate-500 lg:col-span-2">Nenhum documento foi gerado neste atendimento.</p>
+                            @endforelse
+                        </div>
+                    </div>
+                    <div class="border-t border-slate-200 pt-5">
+                        <h2 class="text-lg font-extrabold text-slate-950">Registros clínicos</h2>
+                        <p class="mt-1 text-sm text-slate-500">Anule registros incorretos sem remover seu conteúdo original.</p>
+                    </div>
                     @foreach($consultation->diagnoses->where('status', '!=', 'voided') as $diagnosis)
                         <form method="POST" action="{{ route('medical.diagnoses.void', [$consultation, $diagnosis]) }}" class="rounded-lg border p-4">
                             @csrf
@@ -344,10 +502,63 @@
                         </form>
                     @endif
                     @forelse($consultation->referrals->sortByDesc('issued_at') as $referral)
-                        <article class="rounded-lg border border-slate-200 p-4"><div class="flex justify-between gap-2"><strong>{{ $referral->destination }}</strong><span class="text-xs font-bold uppercase">{{ $referral->status }}</span></div><p class="mt-2 text-sm">{{ $referral->reason }}</p><p class="mt-2 text-sm text-slate-600">{{ $referral->clinical_summary }}</p></article>
+                        <article class="safe-wrap rounded-lg border border-slate-200 p-4">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div><strong>{{ $referral->destination }}</strong><span class="ml-2 text-xs font-bold uppercase">{{ $referral->status }}</span></div>
+                                @can('medical.issue_documents')
+                                    @if($referral->document)
+                                        <a href="{{ route('documents.pdf', $referral->document) }}" class="rounded-lg border border-brand-300 px-3 py-2 text-xs font-bold text-brand-700">Baixar PDF</a>
+                                    @else
+                                        <form method="POST" action="{{ route('medical.referrals.document', [$consultation, $referral]) }}">@csrf<button class="rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white">Gerar PDF</button></form>
+                                    @endif
+                                @endcan
+                            </div>
+                            <p class="mt-2 text-sm">{{ $referral->reason }}</p><p class="mt-2 text-sm text-slate-600">{{ $referral->clinical_summary }}</p>
+                        </article>
                     @empty
                         <p class="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">Nenhum encaminhamento emitido.</p>
                     @endforelse
+                </section>
+
+                <section x-show="tab === 'certificates'" x-cloak class="space-y-5 p-5 lg:p-7">
+                    @can('medical.issue_documents')
+                        <form method="POST" action="{{ route('medical.medical-certificates.store', $consultation) }}" class="rounded-xl border border-slate-200 p-4">
+                            @csrf
+                            <div class="grid gap-4 lg:grid-cols-2">
+                                <div><label class="field-label" for="certificate_starts_at">Início do afastamento *</label><input id="certificate_starts_at" name="starts_at" type="datetime-local" value="{{ old('starts_at', now()->format('Y-m-d\TH:i')) }}" required class="field-control"></div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><label class="field-label" for="certificate_duration_value">Duração *</label><input id="certificate_duration_value" name="duration_value" type="number" min="1" max="365" value="{{ old('duration_value') }}" required class="field-control"></div>
+                                    <div><label class="field-label" for="certificate_duration_unit">Unidade *</label><select id="certificate_duration_unit" name="duration_unit" required class="field-control"><option value="days">Dias</option><option value="hours">Horas</option></select></div>
+                                </div>
+                                <div class="lg:col-span-2"><label class="field-label" for="certificate_statement">Declaração clínica *</label><textarea id="certificate_statement" name="statement" required minlength="10" rows="5" class="field-control">{{ old('statement') }}</textarea></div>
+                                <div class="lg:col-span-2"><label class="field-label" for="certificate_additional_information">Informações adicionais</label><textarea id="certificate_additional_information" name="additional_information" rows="3" class="field-control">{{ old('additional_information') }}</textarea></div>
+                            </div>
+                            <div x-data="{ includeCid: @js(old('include_cid', false)) }" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                <label class="flex items-center gap-2 text-sm font-bold"><input x-model="includeCid" type="checkbox" name="include_cid" value="1"> Incluir CID mediante autorização expressa</label>
+                                <div x-show="includeCid" x-cloak class="mt-3 grid gap-3 lg:grid-cols-2">
+                                    <div><label class="field-label" for="certificate_cid_search">CID *</label><x-medical.cid-search name="cid_code_id" input-id="certificate_cid_search" /></div>
+                                    <label class="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" name="cid_authorization" value="1"> Confirmo a autorização para inclusão do CID</label>
+                                </div>
+                            </div>
+                            <div class="mt-4 text-right"><button class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white">Emitir atestado e gerar PDF</button></div>
+                        </form>
+                    @endcan
+                    <div class="space-y-3">
+                        @forelse($consultation->medicalCertificates->sortByDesc('issued_at') as $certificate)
+                            <article class="rounded-lg border border-slate-200 p-4">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div><strong>Atestado médico</strong><p class="mt-1 text-xs text-slate-500">{{ $certificate->issued_at->format('d/m/Y H:i') }} · {{ $certificate->duration_value }} {{ $certificate->duration_unit === 'hours' ? 'hora(s)' : 'dia(s)' }}</p></div>
+                                    @if($certificate->document)
+                                        <div class="flex gap-2"><a href="{{ route('documents.show', $certificate->document) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold">Detalhes</a><a href="{{ route('documents.pdf', $certificate->document) }}" class="rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white">Baixar PDF</a></div>
+                                    @endif
+                                </div>
+                                <p class="mt-3 whitespace-pre-line text-sm">{{ $certificate->statement }}</p>
+                                @if($certificate->include_cid && $certificate->diagnosisCode)<p class="mt-2 text-xs font-bold text-amber-800">CID autorizado: {{ $certificate->diagnosisCode->code }} · {{ $certificate->diagnosisCode->description }}</p>@endif
+                            </article>
+                        @empty
+                            <p class="rounded-lg bg-slate-50 p-5 text-sm text-slate-500">Nenhum atestado emitido neste atendimento.</p>
+                        @endforelse
+                    </div>
                 </section>
 
                 <section x-show="tab === 'documents'" x-cloak class="space-y-5 p-5 lg:p-7">
@@ -355,24 +566,29 @@
                         <form method="POST" action="{{ route('medical.documents', $consultation) }}" class="rounded-xl border border-slate-200 p-4">
                             @csrf
                             <div class="grid gap-4 lg:grid-cols-2">
-                                <div><label class="field-label" for="document_type">Tipo de documento *</label><select id="document_type" name="document_type" required class="field-control"><option value="medical_certificate">Atestado médico</option><option value="attendance_declaration">Declaração de comparecimento</option><option value="companion_declaration">Declaração de acompanhante</option><option value="prescription">Receita</option><option value="exam_request">Solicitação de exames</option><option value="referral">Encaminhamento</option><option value="medical_report">Relatório médico</option><option value="discharge_guidance">Orientações de alta</option><option value="encounter_summary">Resumo do atendimento</option></select></div>
-                                <div><label class="field-label" for="document_title">Título personalizado</label><input id="document_title" name="title" class="field-control"></div>
-                                <div class="lg:col-span-2"><label class="field-label" for="document_body">Conteúdo *</label><textarea id="document_body" name="body" required rows="8" class="field-control"></textarea></div>
-                                <div><label class="field-label" for="recipient_name">Destinatário/acompanhante</label><input id="recipient_name" name="recipient_name" class="field-control"></div>
-                                <div><label class="field-label" for="starts_at">Data e hora inicial</label><input id="starts_at" name="starts_at" type="datetime-local" class="field-control"></div>
-                                <div><label class="field-label" for="duration_value">Duração</label><input id="duration_value" name="duration_value" type="number" min="1" max="365" class="field-control"></div>
-                                <div><label class="field-label" for="duration_unit">Unidade da duração</label><select id="duration_unit" name="duration_unit" class="field-control"><option value="">Selecione</option><option value="hours">Horas</option><option value="days">Dias</option></select></div>
-                                <div class="lg:col-span-2"><label class="field-label" for="additional_information">Informações adicionais</label><textarea id="additional_information" name="additional_information" rows="3" class="field-control"></textarea></div>
+                                <div class="lg:col-span-2"><label class="field-label" for="document_type">Tipo de documento *</label><select id="document_type" name="document_type" x-model="documentType" required class="field-control"><option value="attendance_declaration">Declaração de comparecimento</option><option value="companion_declaration">Declaração de acompanhante</option><option value="medical_report">Relatório médico</option><option value="discharge_guidance">Orientações de alta</option><option value="encounter_summary">Resumo do atendimento</option></select></div>
+                                <div x-show="['companion_declaration','medical_report'].includes(documentType)"><label class="field-label" for="recipient_name" x-text="documentType === 'companion_declaration' ? 'Nome do acompanhante *' : 'Destinatário'"></label><input id="recipient_name" name="recipient_name" class="field-control"></div>
+                                <div x-show="['attendance_declaration','companion_declaration'].includes(documentType)"><label class="field-label" for="starts_at">Data e hora inicial *</label><input id="starts_at" name="starts_at" type="datetime-local" class="field-control"></div>
+                                <div x-show="['attendance_declaration','companion_declaration'].includes(documentType)"><label class="field-label" for="duration_value">Duração *</label><input id="duration_value" name="duration_value" type="number" min="1" max="365" class="field-control"></div>
+                                <div x-show="['attendance_declaration','companion_declaration'].includes(documentType)"><label class="field-label" for="duration_unit">Unidade da duração *</label><select id="duration_unit" name="duration_unit" class="field-control"><option value="hours">Horas</option><option value="days">Dias</option></select></div>
+                                <div class="lg:col-span-2"><label class="field-label" for="document_body" x-text="({ attendance_declaration: 'Finalidade ou observações *', companion_declaration: 'Finalidade ou observações *', medical_report: 'Relatório clínico *', discharge_guidance: 'Orientações de alta *', encounter_summary: 'Resumo do atendimento *' })[documentType]"></label><textarea id="document_body" name="body" required rows="8" class="field-control">{{ old('body') }}</textarea></div>
+                                <div class="lg:col-span-2"><label class="field-label" for="additional_information">Informações adicionais</label><textarea id="additional_information" name="additional_information" rows="3" class="field-control">{{ old('additional_information') }}</textarea></div>
                             </div>
-                            <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                                <label class="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="include_cid" value="1"> Incluir CID mediante autorização expressa</label>
-                                <div class="mt-3 grid gap-3 lg:grid-cols-2"><input name="cid_text" class="field-control" placeholder="CID e descrição"><label class="flex items-center gap-2 text-sm"><input type="checkbox" name="cid_authorization" value="1"> Confirmo a autorização para inclusão do CID</label></div>
+                            <div x-show="documentType === 'medical_report'" x-data="{ includeCid: @js(old('include_cid', false)) }" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                                <label class="flex items-center gap-2 text-sm font-bold"><input x-model="includeCid" type="checkbox" name="include_cid" value="1"> Incluir CID mediante autorização expressa</label>
+                                <div x-show="includeCid" x-cloak class="mt-3 grid gap-3 lg:grid-cols-2">
+                                    <div>
+                                        <label class="field-label" for="report_cid_search">CID *</label>
+                                        <x-medical.cid-search name="cid_code_id" input-id="report_cid_search" />
+                                    </div>
+                                    <label class="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" name="cid_authorization" value="1"> Confirmo a autorização para inclusão do CID</label>
+                                </div>
                             </div>
                             <div class="mt-4 text-right"><button class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white">Emitir documento e PDF</button></div>
                         </form>
                     @endcan
                     <div class="grid gap-3 lg:grid-cols-2">
-                        @forelse($consultation->documents->sortByDesc('created_at') as $document)
+                        @forelse($consultation->documents->reject(fn ($item) => $item->typeEnum()->isSourceManaged())->sortByDesc('created_at') as $document)
                             <a href="{{ route('documents.show', $document) }}" class="rounded-lg border border-slate-200 p-4 transition hover:border-brand-300 hover:bg-brand-50/30">
                                 <div class="flex justify-between gap-2"><strong>{{ $document->title }}</strong><span class="text-xs font-bold uppercase {{ $document->status === 'active' ? 'text-emerald-700' : 'text-red-700' }}">{{ $document->status }}</span></div>
                                 <p class="mt-2 text-xs text-slate-500">v{{ $document->currentVersion->version_number }} · {{ $document->created_at->format('d/m/Y H:i') }}</p>

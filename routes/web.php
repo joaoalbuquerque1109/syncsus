@@ -8,9 +8,12 @@ use App\Modules\Administration\Presentation\Http\Controllers\CatalogManagementCo
 use App\Modules\Administration\Presentation\Http\Controllers\UserManagementController;
 use App\Modules\Audit\Presentation\Http\Controllers\AuditTrailController;
 use App\Modules\Documents\Presentation\Http\Controllers\ClinicalDocumentController;
+use App\Modules\Documents\Presentation\Http\Controllers\MedicalCertificateController;
+use App\Modules\Documents\Presentation\Http\Controllers\SourceClinicalDocumentController;
 use App\Modules\Identity\Presentation\Http\Controllers\ActiveHealthUnitController;
 use App\Modules\Identity\Presentation\Http\Controllers\AuthenticatedSessionController;
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
+use App\Modules\Medical\Presentation\Http\Controllers\DiagnosisCodeSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\MedicalConsultationController;
 use App\Modules\Operations\Presentation\Http\Controllers\OperationsController;
 use App\Modules\Patients\Presentation\Http\Controllers\PatientClinicalHistoryController;
@@ -145,6 +148,7 @@ Route::middleware(['auth', 'active'])->group(function (): void {
 
         Route::prefix('medical')->name('medical.')->group(function (): void {
             Route::get('/queue', [MedicalConsultationController::class, 'queue'])->middleware('permission:medical.view')->name('queue');
+            Route::get('/cid-codes/search', DiagnosisCodeSearchController::class)->middleware('permission:medical.view')->name('cid-codes.search');
             Route::post('/queue-entries/{entry}/start', [MedicalConsultationController::class, 'start'])->middleware('permission:medical.start')->name('start');
             Route::get('/consultations/{consultation}', [MedicalConsultationController::class, 'show'])->middleware('permission:medical.view')->name('show');
             Route::put('/consultations/{consultation}/draft', [MedicalConsultationController::class, 'draft'])->name('draft');
@@ -154,6 +158,10 @@ Route::middleware(['auth', 'active'])->group(function (): void {
             Route::post('/consultations/{consultation}/clinical-notes', [MedicalConsultationController::class, 'clinicalNote'])->name('clinical-notes');
             Route::post('/consultations/{consultation}/referrals', [MedicalConsultationController::class, 'referral'])->name('referrals');
             Route::post('/consultations/{consultation}/documents', [ClinicalDocumentController::class, 'store'])->name('documents');
+            Route::post('/consultations/{consultation}/medical-certificates', [MedicalCertificateController::class, 'store'])->name('medical-certificates.store');
+            Route::post('/consultations/{consultation}/prescriptions/{prescription}/document', [SourceClinicalDocumentController::class, 'prescription'])->middleware('permission:medical.issue_documents')->name('prescriptions.document');
+            Route::post('/consultations/{consultation}/exam-orders/{order}/document', [SourceClinicalDocumentController::class, 'examOrder'])->middleware('permission:medical.issue_documents')->name('exam-orders.document');
+            Route::post('/consultations/{consultation}/referrals/{referral}/document', [SourceClinicalDocumentController::class, 'referral'])->middleware('permission:medical.issue_documents')->name('referrals.document');
             Route::post('/consultations/{consultation}/complete', [MedicalConsultationController::class, 'complete'])->name('complete');
             Route::post('/consultations/{consultation}/addendum', [MedicalConsultationController::class, 'addendum'])->name('addendum');
             Route::post('/consultations/{consultation}/diagnoses/{diagnosis}/void', [MedicalConsultationController::class, 'voidDiagnosis'])->name('diagnoses.void');

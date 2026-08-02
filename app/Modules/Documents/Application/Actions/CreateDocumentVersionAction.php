@@ -6,6 +6,7 @@ namespace App\Modules\Documents\Application\Actions;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
+use App\Modules\Documents\Application\Services\ClinicalDocumentCidService;
 use App\Modules\Documents\Application\Services\ClinicalDocumentVersionService;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Documents\Infrastructure\Eloquent\DocumentVersion;
@@ -18,6 +19,7 @@ final readonly class CreateDocumentVersionAction
 {
     public function __construct(
         private ClinicalDocumentVersionService $versions,
+        private ClinicalDocumentCidService $cid,
         private RecordAuditEventAction $audit,
     ) {}
 
@@ -39,11 +41,16 @@ final readonly class CreateDocumentVersionAction
             if ($locked->status !== 'active') {
                 throw ValidationException::withMessages(['status' => 'Documento anulado não pode receber nova versão.']);
             }
+            if ($locked->typeEnum()->isSourceManaged()) {
+                throw ValidationException::withMessages([
+                    'status' => 'Este documento deve ser atualizado no registro clínico que o originou.',
+                ]);
+            }
             $number = ((int) $locked->versions->max('version_number')) + 1;
-            $content = [
+            $content = $this->cid->normalize([
                 ...($locked->currentVersion->structured_content ?? []),
                 ...collect($data)->except(['reason'])->all(),
-            ];
+            ]);
             $version = $this->versions->create(
                 $locked,
                 $content,

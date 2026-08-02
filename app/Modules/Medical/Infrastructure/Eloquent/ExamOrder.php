@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Medical\Infrastructure\Eloquent;
 
+use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
@@ -39,6 +40,12 @@ final class ExamOrder extends Model
     public function items(): HasMany
     {
         return $this->hasMany(ExamOrderItem::class);
+    }
+
+    /** @return BelongsTo<ClinicalDocument, $this> */
+    public function document(): BelongsTo
+    {
+        return $this->belongsTo(ClinicalDocument::class);
     }
 
     protected function casts(): array

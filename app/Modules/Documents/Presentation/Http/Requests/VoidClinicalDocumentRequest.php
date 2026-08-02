@@ -16,6 +16,9 @@ final class VoidClinicalDocumentRequest extends FormRequest
     /** @return array<string, mixed> */
     public function rules(): array
     {
-        return ['reason' => ['required', 'string', 'min:10', 'max:1000']];
+        return [
+            'reason' => ['required', 'string', 'min:10', 'max:1000'],
+            'confirmation' => ['required', 'accepted'],
+        ];
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Medical\Infrastructure\Eloquent;
 
+use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
@@ -41,11 +42,30 @@ final class Prescription extends Model
         return $this->hasMany(PrescriptionItem::class)->orderBy('display_order');
     }
 
+    /** @return BelongsTo<ClinicalDocument, $this> */
+    public function document(): BelongsTo
+    {
+        return $this->belongsTo(ClinicalDocument::class);
+    }
+
+    /** @return BelongsTo<Prescription, $this> */
+    public function parentPrescription(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_prescription_id');
+    }
+
+    /** @return HasMany<Prescription, $this> */
+    public function replacements(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_prescription_id');
+    }
+
     protected function casts(): array
     {
         return [
             'finalized_at' => 'immutable_datetime',
             'cancelled_at' => 'immutable_datetime',
+            'replaced_at' => 'immutable_datetime',
         ];
     }
 }

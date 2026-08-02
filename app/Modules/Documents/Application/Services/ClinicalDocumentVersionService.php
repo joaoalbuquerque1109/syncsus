@@ -25,7 +25,7 @@ final readonly class ClinicalDocumentVersionService
     ): DocumentVersion {
         $document->loadMissing([
             'healthUnit.organization',
-            'patient',
+            'patient.identifiers',
             'encounter',
             'consultation.professional.professionalProfile.registrations',
             'consultation.professional.professionalProfile.specialties',

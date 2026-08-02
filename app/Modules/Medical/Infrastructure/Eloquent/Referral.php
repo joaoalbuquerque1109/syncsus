@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Medical\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
+use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Models\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
@@ -26,6 +27,12 @@ final class Referral extends Model
     public function specialty(): BelongsTo
     {
         return $this->belongsTo(Specialty::class);
+    }
+
+    /** @return BelongsTo<ClinicalDocument, $this> */
+    public function document(): BelongsTo
+    {
+        return $this->belongsTo(ClinicalDocument::class);
     }
 
     protected function casts(): array

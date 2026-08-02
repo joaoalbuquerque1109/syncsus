@@ -7,6 +7,7 @@ namespace App\Modules\Medical\Infrastructure\Eloquent;
 use App\Modules\Administration\Infrastructure\Eloquent\Room;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
+use App\Modules\Documents\Infrastructure\Eloquent\MedicalCertificate;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Domain\Enums\MedicalConsultationStatus;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
@@ -105,6 +106,12 @@ final class MedicalConsultation extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(ClinicalDocument::class, 'medical_consultation_id');
+    }
+
+    /** @return HasMany<MedicalCertificate, $this> */
+    public function medicalCertificates(): HasMany
+    {
+        return $this->hasMany(MedicalCertificate::class, 'medical_consultation_id');
     }
 
     public function statusEnum(): MedicalConsultationStatus

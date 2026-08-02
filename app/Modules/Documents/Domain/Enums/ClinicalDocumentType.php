@@ -30,4 +30,26 @@ enum ClinicalDocumentType: string
             self::EncounterSummary => 'Resumo do atendimento',
         };
     }
+
+    public function isSourceManaged(): bool
+    {
+        return in_array($this, [
+            self::MedicalCertificate,
+            self::Prescription,
+            self::ExamRequest,
+            self::Referral,
+        ], true);
+    }
+
+    /** @return list<self> */
+    public static function manuallyIssued(): array
+    {
+        return [
+            self::AttendanceDeclaration,
+            self::CompanionDeclaration,
+            self::MedicalReport,
+            self::DischargeGuidance,
+            self::EncounterSummary,
+        ];
+    }
 }

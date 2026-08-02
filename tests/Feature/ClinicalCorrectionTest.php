@@ -33,7 +33,7 @@ final class ClinicalCorrectionTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class, MedicalCatalogSeeder::class]);
         $doctor = $this->createUserWithUnit($unit);
         $doctor->assignRole('doctor');
-        $this->checkInDoctor($doctor, $unit);
+        $this->registerDoctor($doctor, $unit);
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,
             'medical_record_number' => 'P-CORRECTION-1',

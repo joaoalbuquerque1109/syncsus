@@ -31,6 +31,9 @@ final class ClinicalDocumentController extends Controller
     ): RedirectResponse {
         [$user, $unit] = $this->context($request);
         $this->ensureConsultationUnit($consultation, $unit);
+        if ($consultation->statusEnum()->value === 'draft') {
+            abort_unless($user->canManageClinicalRecordOwnedBy($consultation->professional_id), 403);
+        }
         $document = $action->execute($consultation, $request->validated(), $user, $unit, $request);
 
         return redirect()->route('documents.show', $document)->with('success', 'Documento emitido e PDF armazenado com segurança.');

@@ -20,20 +20,14 @@
     @endif
 
     <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section class="app-card p-6">
+        <section class="app-card safe-wrap p-6">
             <div class="flex flex-wrap justify-between gap-3 border-b border-slate-200 pb-4">
                 <div><p class="text-xs font-bold uppercase text-slate-500">Versão atual</p><p class="text-xl font-extrabold">{{ $document->currentVersion->version_number }}</p></div>
                 <div class="text-right"><p class="text-xs font-bold uppercase text-slate-500">SHA-256</p><p class="break-all font-mono text-xs">{{ $document->currentVersion->file_hash }}</p></div>
             </div>
-            <article class="prose mt-6 max-w-none">
+            <article class="prose safe-wrap mt-6 max-w-none">
                 <h2 class="text-center text-lg font-extrabold uppercase">{{ $document->title }}</h2>
-                <p class="mt-6 whitespace-pre-line leading-7">{{ $content['body'] }}</p>
-                @if(($content['include_cid'] ?? false) && filled($content['cid_text'] ?? null))
-                    <p class="mt-5"><strong>CID autorizado:</strong> {{ $content['cid_text'] }}</p>
-                @endif
-                @if(filled($content['additional_information'] ?? null))
-                    <p class="mt-5 rounded-lg bg-slate-50 p-4">{{ $content['additional_information'] }}</p>
-                @endif
+                @include('documents.content', ['document' => $document, 'content' => $content])
             </article>
         </section>
 
@@ -54,6 +48,7 @@
             </section>
 
             @if($document->status === 'active')
+                @unless($document->typeEnum()->isSourceManaged())
                 <section class="app-card p-5">
                     <h2 class="font-extrabold">Nova versão</h2>
                     <p class="mt-1 text-xs text-slate-500">A versão atual continuará preservada.</p>
@@ -64,11 +59,13 @@
                         <button class="w-full rounded-lg border border-brand-300 px-4 py-2.5 text-sm font-bold text-brand-700">Emitir nova versão</button>
                     </form>
                 </section>
+                @endunless
                 <section class="app-card border-red-200 p-5">
                     <h2 class="font-extrabold text-red-800">Anular documento</h2>
                     <form method="POST" action="{{ route('documents.void', $document) }}" class="mt-3 space-y-3">
                         @csrf
                         <textarea name="reason" required rows="3" class="field-control" placeholder="Motivo detalhado da anulação"></textarea>
+                        <label class="flex items-start gap-2 text-sm text-red-900"><input type="checkbox" name="confirmation" value="1" required class="mt-1"> Confirmo que desejo invalidar este documento e preservar seu histórico.</label>
                         <button class="w-full rounded-lg bg-red-700 px-4 py-2.5 text-sm font-bold text-white" onclick="return confirm('Confirmar anulação? O histórico será preservado.')">Anular</button>
                     </form>
                 </section>

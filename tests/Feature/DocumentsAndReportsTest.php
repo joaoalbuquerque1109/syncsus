@@ -9,11 +9,16 @@ use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
+use App\Modules\Documents\Infrastructure\Eloquent\MedicalCertificate;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Domain\Enums\DestinationType;
 use App\Modules\Medical\Domain\Enums\MedicalConsultationStatus;
+use App\Modules\Medical\Infrastructure\Eloquent\DiagnosisCode;
 use App\Modules\Medical\Infrastructure\Eloquent\EncounterDestination;
+use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
+use App\Modules\Medical\Infrastructure\Eloquent\Prescription;
+use App\Modules\Medical\Infrastructure\Eloquent\Referral;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
@@ -35,6 +40,58 @@ final class DocumentsAndReportsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_medical_certificate_uses_an_active_catalog_cid_and_ignores_free_text(): void
+    {
+        Storage::fake('local_private');
+        [$unit, $doctor, , , $consultation] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $cid = DiagnosisCode::query()->create([
+            'code' => 'A00',
+            'description' => 'Cólera',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.medical-certificates.store', $consultation), [
+                'starts_at' => now()->format('Y-m-d H:i:s'),
+                'statement' => 'Paciente necessita afastamento temporário de suas atividades habituais.',
+                'duration_value' => 2,
+                'duration_unit' => 'days',
+                'include_cid' => '1',
+                'cid_code_id' => $cid->getKey(),
+                'cid_authorization' => '1',
+                'cid_text' => 'CONTEÚDO LIVRE NÃO CONFIÁVEL',
+            ])
+            ->assertRedirect();
+
+        $certificate = MedicalCertificate::query()->sole();
+        $document = ClinicalDocument::query()->with('currentVersion')->sole();
+        $this->assertSame($document->getKey(), $certificate->document_id);
+        $this->assertSame('Atestado médico', $document->title);
+        $content = $document->currentVersion?->structured_content ?? [];
+        $this->assertSame($cid->getKey(), $content['cid_code_id'] ?? null);
+        $this->assertSame('A00', $content['cid_code'] ?? null);
+        $this->assertSame('Cólera', $content['cid_description'] ?? null);
+        $this->assertSame('A00 · Cólera', $content['cid_text'] ?? null);
+        $this->assertTrue($content['cid_authorization'] ?? false);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('medical.show', ['consultation' => $consultation, 'tab' => 'corrections']))
+            ->assertOk()
+            ->assertSee('delete_document_'.$document->public_id, false);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.medical-certificates.store', $consultation), [
+                'starts_at' => now()->format('Y-m-d H:i:s'),
+                'statement' => 'Paciente necessita afastamento temporário de suas atividades habituais.',
+                'duration_value' => 1,
+                'duration_unit' => 'days',
+                'include_cid' => '1',
+                'cid_code_id' => $cid->getKey(),
+            ])
+            ->assertSessionHasErrors('cid_authorization');
+    }
+
     public function test_document_pdf_is_private_versioned_verifiable_and_voidable(): void
     {
         Storage::fake('local_private');
@@ -52,6 +109,11 @@ final class DocumentsAndReportsTest extends TestCase
             ->assertRedirect();
 
         $document = ClinicalDocument::query()->with('currentVersion')->sole();
+        $this->assertSame('Relatório médico', $document->title);
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('medical.show', ['consultation' => $consultation, 'tab' => 'corrections']))
+            ->assertOk()
+            ->assertSee('delete_document_'.$document->public_id, false);
         $firstVersion = $document->currentVersion;
         $this->assertNotNull($firstVersion);
         Storage::disk('local_private')->assertExists($firstVersion->rendered_html_path);
@@ -63,7 +125,7 @@ final class DocumentsAndReportsTest extends TestCase
 
         $this->get(route('documents.verify', $document->verification_code))
             ->assertOk()
-            ->assertSee('Relatório clínico de alta')
+            ->assertSee('Relatório médico')
             ->assertDontSee('Ana Beatriz dos Santos');
 
         $download = $this->actingAs($doctor)->withSession($session)
@@ -98,6 +160,7 @@ final class DocumentsAndReportsTest extends TestCase
         $this->actingAs($doctor)->withSession($session)
             ->post(route('documents.void', $document), [
                 'reason' => 'Documento substituído por registro institucional externo.',
+                'confirmation' => '1',
             ])
             ->assertRedirect();
 
@@ -117,8 +180,189 @@ final class DocumentsAndReportsTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'document.voided']);
     }
 
+    public function test_structured_records_generate_one_pdf_from_their_own_tabs(): void
+    {
+        Storage::fake('local_private');
+        [$unit, $doctor, , , $consultation] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $unbrokenClinicalText = str_repeat('TEXTOCLINICOSEMESPACO', 30);
+        $prescription = Prescription::query()->create([
+            'encounter_id' => $consultation->encounter_id,
+            'medical_consultation_id' => $consultation->getKey(),
+            'professional_id' => $doctor->getKey(),
+            'prescription_type' => 'home',
+            'status' => 'finalized',
+            'general_instructions' => 'Usar após alimentação.',
+            'version' => 1,
+            'finalized_at' => now(),
+        ]);
+        $prescription->items()->create([
+            'medication_name' => 'Paracetamol',
+            'presentation' => 'Comprimido',
+            'dose' => 500,
+            'dose_unit' => 'mg',
+            'route' => 'Oral',
+            'frequency' => 'A cada 8 horas',
+            'display_order' => 1,
+        ]);
+        $prescription->items()->create([
+            'medication_name' => 'Dipirona',
+            'presentation' => 'Comprimido',
+            'dose' => 500,
+            'dose_unit' => 'mg',
+            'route' => 'Oral',
+            'frequency' => 'A cada 6 horas',
+            'display_order' => 2,
+        ]);
+        $order = ExamOrder::query()->create([
+            'encounter_id' => $consultation->encounter_id,
+            'medical_consultation_id' => $consultation->getKey(),
+            'requested_by' => $doctor->getKey(),
+            'priority' => 'routine',
+            'clinical_indication' => 'Investigação de anemia persistente.',
+            'requested_at' => now(),
+        ]);
+        $order->items()->create([
+            'exam_name' => 'Hemograma completo',
+            'group' => 'laboratory',
+            'priority' => 'routine',
+            'status' => 'requested',
+        ]);
+        $order->items()->create([
+            'exam_name' => 'Ferritina',
+            'group' => 'laboratory',
+            'priority' => 'routine',
+            'status' => 'requested',
+        ]);
+        $referral = Referral::query()->create([
+            'encounter_id' => $consultation->encounter_id,
+            'medical_consultation_id' => $consultation->getKey(),
+            'requested_by' => $doctor->getKey(),
+            'referral_type' => 'external',
+            'destination' => 'Ambulatório de cardiologia',
+            'reason' => $unbrokenClinicalText,
+            'clinical_summary' => $unbrokenClinicalText,
+            'priority' => 'routine',
+            'status' => 'issued',
+            'issued_at' => now(),
+        ]);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.prescriptions.document', [$consultation, $prescription]))
+            ->assertRedirect();
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.prescriptions.document', [$consultation, $prescription]))
+            ->assertRedirect();
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.exam-orders.document', [$consultation, $order]))
+            ->assertRedirect();
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.referrals.document', [$consultation, $referral]))
+            ->assertRedirect();
+
+        $this->assertDatabaseCount('documents', 3);
+        $this->assertNotNull($prescription->fresh()?->document_id);
+        $this->assertNotNull($order->fresh()?->document_id);
+        $this->assertNotNull($referral->fresh()?->document_id);
+        $prescriptionDocument = ClinicalDocument::query()
+            ->with('currentVersion')
+            ->findOrFail($prescription->fresh()?->document_id);
+        $this->assertSame(
+            ['Paracetamol', 'Dipirona'],
+            collect($prescriptionDocument->currentVersion?->structured_content['items'] ?? [])->pluck('medication_name')->all(),
+        );
+        $examDocument = ClinicalDocument::query()
+            ->with('currentVersion')
+            ->findOrFail($order->fresh()?->document_id);
+        $this->assertSame(
+            ['Hemograma completo', 'Ferritina'],
+            collect($examDocument->currentVersion?->structured_content['items'] ?? [])->pluck('exam_name')->all(),
+        );
+        $referralDocument = ClinicalDocument::query()
+            ->with('currentVersion')
+            ->findOrFail($referral->fresh()?->document_id);
+        $referralDocument->forceFill(['created_at' => now()->subYears(2)])->save();
+        $referralHtml = Storage::disk('local_private')->get(
+            $referralDocument->currentVersion?->rendered_html_path ?? '',
+        );
+        $this->assertStringContainsString($unbrokenClinicalText, $referralHtml);
+        $this->assertStringContainsString('class="document-content safe-wrap"', $referralHtml);
+        $this->assertStringContainsString('word-break: break-all', $referralHtml);
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('documents.show', $referralDocument))
+            ->assertOk()
+            ->assertSee('safe-wrap', false)
+            ->assertSee($unbrokenClinicalText);
+        $corrections = $this->actingAs($doctor)->withSession($session)
+            ->get(route('medical.show', ['consultation' => $consultation, 'tab' => 'corrections']))
+            ->assertOk();
+        foreach ([$prescriptionDocument, $examDocument, $referralDocument] as $generatedDocument) {
+            $corrections->assertSee('delete_document_'.$generatedDocument->public_id, false);
+        }
+
+        $otherDoctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $otherDoctor->assignRole('doctor');
+        $this->registerDoctor($otherDoctor, $unit);
+        $voidPayload = [
+            'reason' => 'Documento emitido com informações clínicas incorretas.',
+            'confirmation' => '1',
+        ];
+        $this->actingAs($otherDoctor)->withSession($session)
+            ->post(route('documents.void', $referralDocument), $voidPayload)
+            ->assertForbidden();
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('documents.void', $referralDocument), $voidPayload)
+            ->assertRedirect();
+        $this->assertDatabaseHas('documents', [
+            'id' => $referralDocument->getKey(),
+            'status' => 'voided',
+            'voided_by' => $doctor->getKey(),
+        ]);
+        $this->assertDatabaseHas('referrals', [
+            'id' => $referral->getKey(),
+            'status' => 'issued',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'document.voided',
+            'health_unit_id' => $unit->getKey(),
+        ]);
+        $this->get(route('documents.verify', $referralDocument->verification_code))
+            ->assertOk()
+            ->assertSee('Documento anulado');
+        Storage::disk('local_private')->assertExists($referralDocument->currentVersion?->pdf_path ?? '');
+
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $this->actingAs($administrator)->withSession($session)
+            ->get(route('medical.show', ['consultation' => $consultation, 'tab' => 'corrections']))
+            ->assertOk()
+            ->assertSee('delete_document_'.$examDocument->public_id, false);
+        $this->actingAs($administrator)->withSession($session)
+            ->post(route('documents.void', $examDocument), [
+                'reason' => 'Documento invalidado pelo administrador global.',
+                'confirmation' => '1',
+            ])
+            ->assertRedirect();
+        $this->assertDatabaseHas('documents', [
+            'id' => $examDocument->getKey(),
+            'status' => 'voided',
+            'voided_by' => $administrator->getKey(),
+        ]);
+        ClinicalDocument::query()->with('currentVersion')->each(function (ClinicalDocument $document): void {
+            Storage::disk('local_private')->assertExists($document->currentVersion?->pdf_path ?? '');
+        });
+
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.documents', $consultation), [
+                'document_type' => 'prescription',
+                'body' => 'Tentativa de duplicar receita pelo formulário genérico.',
+            ])
+            ->assertSessionHasErrors('document_type');
+    }
+
     public function test_dashboard_and_reports_filter_mask_export_audit_and_isolate_units(): void
     {
+        $this->travelTo(today()->addHours(12));
         [$unit, , $manager, $receptionist, , $encounter] = $this->context();
         $session = ['active_health_unit_id' => $unit->getKey()];
         $this->createActiveEncounter($unit, $manager);
@@ -226,7 +470,7 @@ final class DocumentsAndReportsTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
         $doctor = $this->createUserWithUnit($unit, ['name' => 'Dra. Marina Lopes', 'must_change_password' => false]);
         $doctor->assignRole('doctor');
-        $this->checkInDoctor($doctor, $unit);
+        $this->registerDoctor($doctor, $unit);
         $manager = $this->createUserWithUnit($unit, ['name' => 'Gestor da Unidade', 'must_change_password' => false]);
         $manager->assignRole('manager');
         $receptionist = $this->createUserWithUnit($unit, ['must_change_password' => false]);
