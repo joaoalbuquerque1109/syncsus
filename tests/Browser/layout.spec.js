@@ -41,6 +41,33 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     expect(failedAssets).toEqual([]);
     expect(pageErrors).toEqual([]);
 
+    const longTextLayout = await page.locator("main").evaluate((main) => {
+        const card = document.createElement("article");
+        card.className = "app-card safe-wrap";
+        card.style.width = "240px";
+        card.style.padding = "16px";
+        card.style.position = "absolute";
+        card.style.left = "-10000px";
+
+        const paragraph = document.createElement("p");
+        paragraph.textContent = "TEXTOCLINICOSEMESPACO".repeat(40);
+        card.append(paragraph);
+        main.append(card);
+
+        const result = {
+            cardClientWidth: card.clientWidth,
+            cardScrollWidth: card.scrollWidth,
+            paragraphOverflowWrap: getComputedStyle(paragraph).overflowWrap,
+        };
+        card.remove();
+
+        return result;
+    });
+    expect(longTextLayout.paragraphOverflowWrap).toBe("anywhere");
+    expect(longTextLayout.cardScrollWidth).toBeLessThanOrEqual(
+        longTextLayout.cardClientWidth,
+    );
+
     await page.goto("/queues");
     const queueBoard = page.locator('[x-data^="queueBoard"]').first();
     await expect(queueBoard).toBeVisible();

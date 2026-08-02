@@ -21,6 +21,71 @@
         box-sizing: border-box;
     }
 
+    /*
+     * Clinical and administrative data can contain identifiers, hashes, URLs
+     * and user-entered text without spaces. Keep those values inside their
+     * visual container instead of allowing them to enlarge the whole page.
+     */
+    :where(
+        main,
+        section,
+        article,
+        aside,
+        header,
+        footer,
+        nav,
+        div,
+        dl,
+        ol,
+        ul,
+        li
+    ) {
+        min-width: 0;
+    }
+
+    :where(
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6,
+        p,
+        dd,
+        dt,
+        li,
+        td,
+        th,
+        a,
+        span,
+        strong,
+        small,
+        label,
+        button
+    ) {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
+    :where(pre, code, .font-mono) {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-all;
+    }
+
+    pre {
+        overflow-x: auto;
+        white-space: pre-wrap;
+    }
+
+    table {
+        max-width: 100%;
+    }
+
+    :where(.grid, .flex) > :where(div, section, article, aside, dl, ol, ul) {
+        min-width: 0;
+    }
+
     body {
         @apply bg-slate-50 text-slate-800 antialiased;
     }
@@ -48,6 +113,33 @@
     }
 
     .app-card {
-        @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+        @apply min-w-0 rounded-xl border border-slate-200 bg-white shadow-sm;
+    }
+
+    .safe-wrap,
+    .safe-wrap
+        :where(
+            h1,
+            h2,
+            h3,
+            h4,
+            h5,
+            h6,
+            p,
+            dd,
+            dt,
+            li,
+            td,
+            th,
+            a,
+            span,
+            strong,
+            small,
+            code
+        ) {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
 }
