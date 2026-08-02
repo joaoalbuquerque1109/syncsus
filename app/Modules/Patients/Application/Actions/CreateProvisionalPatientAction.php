@@ -22,7 +22,11 @@ final readonly class CreateProvisionalPatientAction
     {
         return DB::transaction(function () use ($data, $user, $healthUnitId): Patient {
             $organizationId = (int) HealthUnit::query()->whereKey($healthUnitId)->value('organization_id');
-            abort_unless($organizationId > 0 && (int) $user->organization_id === $organizationId, 403);
+            abort_unless(
+                $organizationId > 0
+                    && ($user->isPlatformAdministrator() || (int) $user->organization_id === $organizationId),
+                403,
+            );
             $number = $this->sequences->next('patient_mrn');
             $name = trim((string) ($data['full_name'] ?? 'Paciente não identificado'));
 

@@ -62,6 +62,9 @@ final class TriageController extends Controller
     {
         [$user, $unit] = $this->context($request);
         abort_unless($triage->encounter()->where('health_unit_id', $unit->getKey())->exists(), 404);
+        if ($triage->statusEnum()->value === 'draft') {
+            abort_unless($user->canManageClinicalRecordOwnedBy($triage->professional_id), 403);
+        }
         $triage->load([
             'encounter.patient.identifiers', 'encounter.patient.allergies', 'encounter.arrivalMethod',
             'queueEntry.queue', 'professional', 'servicePoint.room', 'protocol', 'flowchart',

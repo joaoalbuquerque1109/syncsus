@@ -22,7 +22,11 @@ final readonly class SavePatientAction
     {
         return DB::transaction(function () use ($data, $user, $healthUnitId, $patient): Patient {
             $organizationId = (int) HealthUnit::query()->whereKey($healthUnitId)->value('organization_id');
-            abort_unless($organizationId > 0 && (int) $user->organization_id === $organizationId, 403);
+            abort_unless(
+                $organizationId > 0
+                    && ($user->isPlatformAdministrator() || (int) $user->organization_id === $organizationId),
+                403,
+            );
             abort_if($patient !== null && (int) $patient->organization_id !== $organizationId, 404);
 
             $patient ??= new Patient([

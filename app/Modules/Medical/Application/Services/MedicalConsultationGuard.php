@@ -29,9 +29,9 @@ final class MedicalConsultationGuard
                 'status' => 'O atendimento foi finalizado e não pode ser alterado. Registre um adendo.',
             ]);
         }
-        if ($locked->professional_id !== $user->getKey()) {
+        if (! $user->canManageClinicalRecordOwnedBy($locked->professional_id)) {
             throw ValidationException::withMessages([
-                'professional' => 'Somente o médico responsável pode alterar este atendimento.',
+                'professional' => 'Somente o médico responsável ou o administrador pode alterar este atendimento.',
             ]);
         }
         if ($locked->version() !== $expectedVersion) {

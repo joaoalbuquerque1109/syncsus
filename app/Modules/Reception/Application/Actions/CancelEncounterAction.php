@@ -131,6 +131,10 @@ final readonly class CancelEncounterAction
 
     private function authorizeCancellation(Encounter $encounter, EncounterStatus $status, User $user): void
     {
+        if ($user->isPlatformAdministrator()) {
+            return;
+        }
+
         $administrativeStatuses = [
             EncounterStatus::Opened,
             EncounterStatus::WaitingTriage,

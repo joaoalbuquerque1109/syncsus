@@ -82,6 +82,12 @@ final class User extends Authenticatable
         return (int) $this->platform_admin_slot === 1;
     }
 
+    public function canManageClinicalRecordOwnedBy(int|string|null $professionalId): bool
+    {
+        return $this->isPlatformAdministrator()
+            || ($professionalId !== null && (string) $this->getKey() === (string) $professionalId);
+    }
+
     /** @return BelongsToMany<HealthUnit, $this> */
     public function healthUnits(): BelongsToMany
     {

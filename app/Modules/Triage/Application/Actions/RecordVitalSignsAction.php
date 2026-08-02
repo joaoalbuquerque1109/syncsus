@@ -30,8 +30,8 @@ final readonly class RecordVitalSignsAction
             if ($locked->statusEnum() !== TriageAssessmentStatus::Draft) {
                 throw ValidationException::withMessages(['status' => 'Não é possível incluir sinais vitais em uma triagem finalizada.']);
             }
-            if ($locked->professional_id !== $user->getKey()) {
-                throw ValidationException::withMessages(['professional' => 'Somente o profissional responsável pode registrar esta aferição.']);
+            if (! $user->canManageClinicalRecordOwnedBy($locked->professional_id)) {
+                throw ValidationException::withMessages(['professional' => 'Somente o profissional responsável ou o administrador pode registrar esta aferição.']);
             }
             if ($locked->version() !== (int) $data['version']) {
                 throw ValidationException::withMessages(['version' => 'A triagem foi atualizada. Recarregue antes de registrar a aferição.']);
