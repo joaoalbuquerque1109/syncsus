@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Professionals\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Support\Models\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -50,6 +52,20 @@ final class HealthProfessional extends Model
     public function healthUnits(): BelongsToMany
     {
         return $this->belongsToMany(HealthUnit::class, 'health_professional_health_unit')
+            ->withTimestamps();
+    }
+
+    /** @return BelongsToMany<Queue, $this> */
+    public function queues(): BelongsToMany
+    {
+        return $this->belongsToMany(Queue::class, 'health_professional_queue')
+            ->withTimestamps();
+    }
+
+    /** @return BelongsToMany<ServicePoint, $this> */
+    public function servicePoints(): BelongsToMany
+    {
+        return $this->belongsToMany(ServicePoint::class, 'health_professional_service_point')
             ->withTimestamps();
     }
 

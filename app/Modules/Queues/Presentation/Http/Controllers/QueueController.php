@@ -25,19 +25,26 @@ final class QueueController extends Controller
         $user = $request->user();
         abort_unless($unit instanceof HealthUnit && $user instanceof User, 403);
         $queues = $visibility->apply(Queue::query(), $user)
-            ->with(['department', 'servicePoints.room'])
+            ->with('department')
             ->where('health_unit_id', $unit->getKey())
             ->where('is_active', true)
             ->orderBy('display_order')
             ->get();
+        $queues->each(function (Queue $queue) use ($user, $visibility): void {
+            $queue->setRelation('servicePoints', $visibility->servicePointsFor($queue, $user));
+        });
         $selected = $request->filled('queue')
             ? $queues->firstWhere('public_id', $request->query('queue'))
             : $queues->first();
+        if ($request->filled('queue') && $selected === null) {
+            abort(404);
+        }
 
         return view('queues.index', [
             'queues' => $queues,
             'selectedQueue' => $selected,
             'panels' => Panel::query()->where('health_unit_id', $unit->getKey())->where('is_active', true)->get(),
+            'restrictedOperationalView' => ! $visibility->hasBroadAccess($user),
         ]);
     }
 
@@ -47,16 +54,20 @@ final class QueueController extends Controller
         $user = $request->user();
         abort_unless($unit instanceof HealthUnit && $user instanceof User && $queue->health_unit_id === $unit->getKey(), 404);
         $visibility->ensureCanAccess($queue, $user);
+        $queue->loadMissing('department');
         $validated = $request->validate([
             'q' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'string', 'in:waiting,called,in_service,absent'],
         ]);
 
-        $query = $queue->entries()
+        $query = QueueEntry::query()
+            ->where('queue_id', $queue->getKey())
             ->with([
                 'servicePoint', 'assignedUser',
                 'encounter.patient.identifiers', 'encounter.arrivalMethod', 'encounter.riskLevel',
+                'encounter.triageAssessment', 'encounter.medicalConsultation',
             ]);
+        $visibility->applyEntryScope($query, $queue, $user);
         if (filled($validated['status'] ?? null)) {
             $query->where('status', $validated['status']);
         } else {
@@ -90,7 +101,7 @@ final class QueueController extends Controller
             ->get();
         $data = [];
         foreach ($entries as $entry) {
-            $data[] = $this->serialize($entry);
+            $data[] = $this->serialize($entry, $user, (string) $queue->department->type);
         }
 
         return response()->json([
@@ -100,9 +111,10 @@ final class QueueController extends Controller
     }
 
     /** @return array<string, bool|int|string|null> */
-    private function serialize(QueueEntry $entry): array
+    private function serialize(QueueEntry $entry, User $user, string $departmentType): array
     {
         $patient = $entry->encounter->patient;
+        $editUrl = $this->activeRecordEditUrl($entry, $user, $departmentType);
 
         return [
             'public_id' => $entry->public_id,
@@ -127,6 +139,41 @@ final class QueueController extends Controller
             'can_absent' => $entry->statusEnum() === QueueEntryStatus::Called,
             'can_return' => $entry->statusEnum() === QueueEntryStatus::Absent,
             'can_transfer' => in_array($entry->statusEnum(), [QueueEntryStatus::Waiting, QueueEntryStatus::Called, QueueEntryStatus::Absent], true),
+            'can_edit' => $editUrl !== null,
+            'edit_url' => $editUrl,
         ];
+    }
+
+    private function activeRecordEditUrl(QueueEntry $entry, User $user, string $departmentType): ?string
+    {
+        if ($entry->statusEnum() !== QueueEntryStatus::InService) {
+            return null;
+        }
+
+        if ($departmentType === 'triage') {
+            $triage = $entry->encounter->triageAssessment;
+            if ($triage === null
+                || $triage->queue_entry_id !== $entry->getKey()
+                || $triage->statusEnum()->value !== 'draft'
+                || ! $user->canManageClinicalRecordOwnedBy($triage->professional_id)) {
+                return null;
+            }
+
+            return route('triage.show', $triage);
+        }
+
+        if ($departmentType === 'medical') {
+            $consultation = $entry->encounter->medicalConsultation;
+            if ($consultation === null
+                || $consultation->queue_entry_id !== $entry->getKey()
+                || $consultation->statusEnum()->value !== 'draft'
+                || ! $user->canManageClinicalRecordOwnedBy($consultation->professional_id)) {
+                return null;
+            }
+
+            return route('medical.show', $consultation);
+        }
+
+        return null;
     }
 }

@@ -106,6 +106,7 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
         $nurse = $this->createUserWithUnit($unit);
         $nurse->assignRole('triage_professional');
+        $this->registerTriageProfessional($nurse, $unit);
         $doctor = $this->createUserWithUnit($unit);
         $doctor->assignRole('doctor');
         $clinical = Specialty::query()->where('code', 'CLINICA')->sole();
@@ -123,13 +124,33 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $profile->specialties()->attach($clinical, ['is_primary' => true]);
 
         $triage = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-TRIAGE')->sole();
+        $triagePoint = $triage->servicePoints()->sole();
+        $triageTwo = $triage->replicate(['public_id']);
+        $triageTwo->fill(['code' => 'QUEUE-TRIAGE-2', 'name' => 'Fila de Triagem 2', 'display_order' => 2])->save();
+        $triagePointTwo = $triagePoint->replicate(['public_id']);
+        $triagePointTwo->fill(['code' => 'TRIAGE-POINT-2', 'name' => 'Ponto 02 · Triagem 02'])->save();
+        $triageTwo->servicePoints()->attach($triagePointTwo);
+        $nurseProfile = $nurse->professionalProfile()->sole();
+        $nurseProfile->queues()->sync([$triage->getKey()]);
+        $nurseProfile->servicePoints()->sync([$triagePoint->getKey()]);
         $clinic = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
         $pediatrics = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-PEDIATRICS')->sole();
+        $profile->queues()->attach($clinic);
+        $profile->servicePoints()->sync($clinic->servicePoints()->pluck('service_points.id'));
         $session = ['active_health_unit_id' => $unit->getKey()];
 
         $this->actingAs($nurse)->withSession($session)->get(route('queues.index'))
-            ->assertOk()->assertSee($triage->name)->assertDontSee($clinic->name);
+            ->assertOk()
+            ->assertSee($triage->name)
+            ->assertSee($triagePoint->name)
+            ->assertDontSee($triageTwo->name)
+            ->assertDontSee($triagePointTwo->name)
+            ->assertDontSee('href="'.route('triage.queue').'"', false)
+            ->assertDontSee('href="'.route('medical.queue').'"', false)
+            ->assertDontSee($clinic->name);
         $this->actingAs($nurse)->withSession($session)->get(route('queues.entries', $clinic))
+            ->assertNotFound();
+        $this->actingAs($nurse)->withSession($session)->get(route('queues.entries', $triageTwo))
             ->assertNotFound();
 
         $this->actingAs($doctor)->withSession($session)->get(route('queues.index'))

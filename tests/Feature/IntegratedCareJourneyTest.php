@@ -46,9 +46,10 @@ final class IntegratedCareJourneyTest extends TestCase
         $receptionist->assignRole('receptionist');
         $triageProfessional = $this->createUserWithUnit($unit, ['name' => 'Enfermeira Teste', 'must_change_password' => false]);
         $triageProfessional->assignRole('triage_professional');
+        $this->registerTriageProfessional($triageProfessional, $unit);
         $doctor = $this->createUserWithUnit($unit, ['name' => 'Médico Teste', 'must_change_password' => false]);
         $doctor->assignRole('doctor');
-        $this->checkInDoctor($doctor, $unit);
+        $this->registerDoctor($doctor, $unit);
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,
             'medical_record_number' => 'P00000888',

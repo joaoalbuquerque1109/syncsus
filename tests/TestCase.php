@@ -9,7 +9,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
-use App\Modules\Professionals\Infrastructure\Eloquent\MedicalShiftAttendance;
+use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Hash;
 
@@ -56,7 +56,7 @@ abstract class TestCase extends BaseTestCase
         return $user;
     }
 
-    protected function checkInDoctor(User $user, HealthUnit $unit): void
+    protected function registerDoctor(User $user, HealthUnit $unit): void
     {
         $specialty = Specialty::query()
             ->where('organization_id', $unit->organization_id)
@@ -75,17 +75,40 @@ abstract class TestCase extends BaseTestCase
         );
         $profile->healthUnits()->syncWithoutDetaching([$unit->getKey()]);
         $profile->specialties()->syncWithoutDetaching([$specialty->getKey()]);
-        MedicalShiftAttendance::query()->updateOrCreate(
+        $queues = Queue::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('specialty_id', $specialty->getKey())
+            ->where('is_active', true)
+            ->whereHas('department', fn ($query) => $query->where('type', 'medical'))
+            ->get();
+        $profile->queues()->syncWithoutDetaching($queues->modelKeys());
+        $profile->servicePoints()->syncWithoutDetaching(
+            $queues->flatMap(fn (Queue $queue) => $queue->servicePoints()->pluck('service_points.id'))->unique()->all(),
+        );
+    }
+
+    protected function registerTriageProfessional(User $user, HealthUnit $unit): void
+    {
+        $profile = HealthProfessional::query()->firstOrCreate(
+            ['organization_id' => $unit->organization_id, 'user_id' => $user->getKey()],
             [
-                'health_unit_id' => $unit->getKey(),
-                'user_id' => $user->getKey(),
-                'duty_date' => now()->toDateString(),
+                'institutional_code' => 'ENF-'.$user->getKey(),
+                'profession_type' => 'nurse',
+                'full_name' => $user->name,
+                'is_active' => true,
+                'created_by' => $user->getKey(),
+                'updated_by' => $user->getKey(),
             ],
-            [
-                'organization_id' => $unit->organization_id,
-                'checked_in_at' => now(),
-                'checked_out_at' => null,
-            ],
+        );
+        $profile->healthUnits()->syncWithoutDetaching([$unit->getKey()]);
+        $queues = Queue::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('is_active', true)
+            ->whereHas('department', fn ($query) => $query->where('type', 'triage'))
+            ->get();
+        $profile->queues()->syncWithoutDetaching($queues->modelKeys());
+        $profile->servicePoints()->syncWithoutDetaching(
+            $queues->flatMap(fn (Queue $queue) => $queue->servicePoints()->pluck('service_points.id'))->unique()->all(),
         );
     }
 

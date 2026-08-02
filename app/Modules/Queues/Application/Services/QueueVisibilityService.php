@@ -4,56 +4,82 @@ declare(strict_types=1);
 
 namespace App\Modules\Queues\Application\Services;
 
+use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
+use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 final class QueueVisibilityService
 {
+    public function hasBroadAccess(User $user): bool
+    {
+        return $user->isPlatformAdministrator() || $user->hasAnyRole(['manager', 'receptionist']);
+    }
+
     /** @param Builder<Queue> $query
      * @return Builder<Queue>
      */
     public function apply(Builder $query, User $user): Builder
     {
-        if ($user->hasAnyRole(['administrator', 'manager', 'receptionist'])) {
+        if ($this->hasBroadAccess($user)) {
             return $query;
         }
 
-        $canTriage = $user->hasRole('triage_professional');
-        $canMedical = $user->hasRole('doctor');
-        if (! $canTriage && ! $canMedical) {
+        $profile = $this->activeProfile($user);
+        if ($profile === null) {
             return $query->whereRaw('1 = 0');
         }
 
-        $specialtyIds = [];
-        $professionalUnitIds = [];
-        if ($canMedical) {
-            $profile = $user->professionalProfile;
-            if ($profile !== null && $profile->is_active && $profile->profession_type === 'doctor') {
-                $specialtyIds = $profile->specialties()->pluck('specialties.id')->map(
-                    static fn (mixed $id): int => (int) $id,
-                )->all();
-                $professionalUnitIds = $profile->healthUnits()->pluck('health_units.id')->map(
-                    static fn (mixed $id): int => (int) $id,
-                )->all();
-            }
+        return $query->whereHas(
+            'professionals',
+            fn (Builder $professional): Builder => $professional->whereKey($profile->getKey()),
+        );
+    }
+
+    /**
+     * @return Collection<int, ServicePoint>
+     */
+    public function servicePointsFor(Queue $queue, User $user): Collection
+    {
+        $query = $queue->servicePoints()
+            ->where('service_points.is_active', true)
+            ->with('room')
+            ->orderBy('service_points.name');
+
+        if ($this->hasBroadAccess($user)) {
+            return $query->get();
         }
 
-        return $query->where(function (Builder $visibility) use (
-            $canTriage,
-            $canMedical,
-            $specialtyIds,
-            $professionalUnitIds,
-        ): void {
-            if ($canTriage) {
-                $visibility->orWhereHas('department', fn (Builder $department) => $department->where('type', 'triage'));
-            }
-            if ($canMedical && $specialtyIds !== [] && $professionalUnitIds !== []) {
-                $visibility->orWhere(function (Builder $medical) use ($specialtyIds, $professionalUnitIds): void {
-                    $medical->whereHas('department', fn (Builder $department) => $department->where('type', 'medical'));
-                    $medical->whereIn('specialty_id', $specialtyIds)
-                        ->whereIn('health_unit_id', $professionalUnitIds);
-                });
+        $profile = $this->activeProfile($user);
+        if ($profile === null) {
+            return new Collection();
+        }
+
+        return $query->whereHas(
+            'professionals',
+            fn (Builder $professional): Builder => $professional->whereKey($profile->getKey()),
+        )->get();
+    }
+
+    /** @param Builder<QueueEntry> $query
+     * @return Builder<QueueEntry>
+     */
+    public function applyEntryScope(Builder $query, Queue $queue, User $user): Builder
+    {
+        if ($this->hasBroadAccess($user)) {
+            return $query;
+        }
+
+        $pointIds = $this->servicePointsFor($queue, $user)->modelKeys();
+
+        return $query->where(function (Builder $entries) use ($pointIds, $user): void {
+            $entries->whereNull('service_point_id')
+                ->orWhere('assigned_user_id', $user->getKey());
+            if ($pointIds !== []) {
+                $entries->orWhereIn('service_point_id', $pointIds);
             }
         });
     }
@@ -61,5 +87,35 @@ final class QueueVisibilityService
     public function ensureCanAccess(Queue $queue, User $user): void
     {
         abort_unless($this->apply(Queue::query()->whereKey($queue->getKey()), $user)->exists(), 404);
+    }
+
+    public function ensureCanAccessEntry(QueueEntry $entry, User $user): void
+    {
+        $this->ensureCanAccess($entry->queue, $user);
+        if ($this->hasBroadAccess($user) || $entry->service_point_id === null || $entry->assigned_user_id === $user->getKey()) {
+            return;
+        }
+
+        abort_unless(
+            $this->servicePointsFor($entry->queue, $user)->contains('id', $entry->service_point_id),
+            404,
+        );
+    }
+
+    public function ensureCanUseServicePoint(Queue $queue, ServicePoint $point, User $user): void
+    {
+        $this->ensureCanAccess($queue, $user);
+        if ($this->hasBroadAccess($user)) {
+            return;
+        }
+
+        abort_unless($this->servicePointsFor($queue, $user)->contains('id', $point->getKey()), 404);
+    }
+
+    private function activeProfile(User $user): ?HealthProfessional
+    {
+        $profile = $user->professionalProfile;
+
+        return $profile instanceof HealthProfessional && $profile->is_active ? $profile : null;
     }
 }

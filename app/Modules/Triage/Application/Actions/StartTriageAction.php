@@ -42,6 +42,7 @@ final readonly class StartTriageAction
                 throw ValidationException::withMessages(['entry' => 'A entrada selecionada não pertence a uma fila de triagem.']);
             }
             $this->visibility->ensureCanAccess($locked->queue, $user);
+            $this->visibility->ensureCanAccessEntry($locked, $user);
             if ($locked->version() !== $expectedVersion) {
                 throw ValidationException::withMessages(['version' => 'A fila foi atualizada. Atualize a tela antes de iniciar a triagem.']);
             }

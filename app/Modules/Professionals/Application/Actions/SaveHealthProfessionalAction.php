@@ -44,8 +44,10 @@ final class SaveHealthProfessionalAction
             $professional->healthUnits()->sync($data['health_unit_ids']);
             $this->syncSpecialties($professional, $data);
             $this->syncRegistrations($professional, $data);
+            $professional->queues()->sync($data['queue_ids'] ?? []);
+            $professional->servicePoints()->sync($data['service_point_ids'] ?? []);
 
-            return $professional->fresh(['user', 'healthUnits', 'specialties', 'registrations'])
+            return $professional->fresh(['user', 'healthUnits', 'specialties', 'registrations', 'queues', 'servicePoints'])
                 ?? $professional;
         });
     }

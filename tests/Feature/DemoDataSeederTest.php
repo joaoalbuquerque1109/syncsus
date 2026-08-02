@@ -20,6 +20,7 @@ final class DemoDataSeederTest extends TestCase
 
     public function test_demo_seed_creates_a_complete_idempotent_synthetic_journey(): void
     {
+        $this->travelTo(today()->addHours(12));
         config()->set('sync_sus.seed_demo_data', true);
         config()->set('sync_sus.admin', ['name' => null, 'email' => null, 'password' => null]);
         Storage::fake('local_private');

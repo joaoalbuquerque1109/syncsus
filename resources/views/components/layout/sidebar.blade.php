@@ -24,25 +24,11 @@
                 'hover:bg-white/8 hover:text-white' => !request()->routeIs('reception.*'),
             ])><span aria-hidden="true">▣</span> Recepção</a>
         @endcan
-        @can('triage.view')
-            <a href="{{ route('triage.queue') }}" @class([
-                'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
-                'bg-brand-600 text-white' => request()->routeIs('triage.*'),
-                'hover:bg-white/8 hover:text-white' => !request()->routeIs('triage.*'),
-            ])><span aria-hidden="true">◉</span> Triagem</a>
-        @endcan
-        @can('medical.view')
-            <a href="{{ route('medical.queue') }}" @class([
-                'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
-                'bg-brand-600 text-white' => request()->routeIs('medical.*'),
-                'hover:bg-white/8 hover:text-white' => !request()->routeIs('medical.*'),
-            ])><span aria-hidden="true">✚</span> Atendimento</a>
-        @endcan
         @can('queues.view')
             <a href="{{ route('queues.index') }}" @class([
                 'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
-                'bg-brand-600 text-white' => request()->routeIs('queues.*', 'queue-entries.*'),
-                'hover:bg-white/8 hover:text-white' => !request()->routeIs('queues.*', 'queue-entries.*'),
+                'bg-brand-600 text-white' => request()->routeIs('queues.*', 'queue-entries.*', 'triage.*', 'medical.*'),
+                'hover:bg-white/8 hover:text-white' => !request()->routeIs('queues.*', 'queue-entries.*', 'triage.*', 'medical.*'),
             ])><span aria-hidden="true">⌘</span> Filas e chamadas</a>
         @endcan
         @can('patients.view')

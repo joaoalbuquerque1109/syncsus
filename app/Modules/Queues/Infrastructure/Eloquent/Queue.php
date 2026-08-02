@@ -8,6 +8,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\Department;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Support\Models\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -48,6 +49,13 @@ final class Queue extends Model
     public function servicePoints(): BelongsToMany
     {
         return $this->belongsToMany(ServicePoint::class)->withTimestamps();
+    }
+
+    /** @return BelongsToMany<HealthProfessional, $this> */
+    public function professionals(): BelongsToMany
+    {
+        return $this->belongsToMany(HealthProfessional::class, 'health_professional_queue')
+            ->withTimestamps();
     }
 
     /** @return HasMany<QueueCall, $this> */

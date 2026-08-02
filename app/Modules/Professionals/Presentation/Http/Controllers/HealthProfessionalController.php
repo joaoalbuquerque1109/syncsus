@@ -6,12 +6,14 @@ namespace App\Modules\Professionals\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Professionals\Application\Actions\SaveHealthProfessionalAction;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Professionals\Presentation\Http\Requests\SaveHealthProfessionalRequest;
+use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -24,7 +26,7 @@ final class HealthProfessionalController extends Controller
         $term = trim((string) $request->query('q'));
         $professionals = HealthProfessional::query()
             ->where('organization_id', $unit->organization_id)
-            ->with(['registrations', 'specialties', 'healthUnits'])
+            ->with(['registrations', 'specialties', 'healthUnits', 'queues', 'servicePoints'])
             ->when($term !== '', fn ($query) => $query->where(
                 fn ($query) => $query->where('full_name', 'like', "%{$term}%")
                     ->orWhere('institutional_code', 'like', "%{$term}%")
@@ -64,7 +66,7 @@ final class HealthProfessionalController extends Controller
     {
         $unit = $this->unit($request);
         abort_unless((int) $professional->organization_id === (int) $unit->organization_id, 404);
-        $professional->load(['registrations', 'specialties', 'healthUnits']);
+        $professional->load(['registrations', 'specialties', 'healthUnits', 'queues', 'servicePoints']);
 
         return view('administration.professionals.form', $this->formData($request, $professional));
     }
@@ -104,6 +106,21 @@ final class HealthProfessionalController extends Controller
             })
             ->orderBy('name')
             ->get();
+        $queues = Queue::query()
+            ->whereHas('healthUnit', fn ($query) => $query->where('organization_id', $unit->organization_id))
+            ->where('is_active', true)
+            ->with(['healthUnit', 'department', 'specialty'])
+            ->orderBy('health_unit_id')
+            ->orderBy('display_order')
+            ->orderBy('name')
+            ->get();
+        $servicePoints = ServicePoint::query()
+            ->whereHas('room.department.healthUnit', fn ($query) => $query->where('organization_id', $unit->organization_id))
+            ->where('is_active', true)
+            ->whereHas('queues', fn ($query) => $query->whereIn('queues.id', $queues->modelKeys()))
+            ->with(['room.department.healthUnit', 'queues' => fn ($query) => $query->whereIn('queues.id', $queues->modelKeys())])
+            ->orderBy('name')
+            ->get();
 
         return [
             'professional' => $professional,
@@ -114,6 +131,8 @@ final class HealthProfessionalController extends Controller
             'specialties' => Specialty::query()
                 ->where('organization_id', $unit->organization_id)
                 ->where('is_active', true)->orderBy('name')->get(),
+            'queues' => $queues,
+            'servicePoints' => $servicePoints,
         ];
     }
 

@@ -222,6 +222,25 @@ final class DemoDataSeeder extends Seeder
                     ]);
                 }
             }
+
+            $queues = Queue::query()
+                ->where('health_unit_id', $unit->getKey())
+                ->where('is_active', true)
+                ->whereHas('department', fn ($query) => $query->where(
+                    'type',
+                    $role === 'doctor' ? 'medical' : 'triage',
+                ));
+            if ($role === 'doctor') {
+                $queues->whereIn('specialty_id', $professional->specialties()->pluck('specialties.id'));
+            }
+            $assignedQueues = $queues->get();
+            $professional->queues()->sync($assignedQueues->modelKeys());
+            $professional->servicePoints()->sync(
+                $assignedQueues
+                    ->flatMap(fn (Queue $queue) => $queue->servicePoints()->pluck('service_points.id'))
+                    ->unique()
+                    ->all(),
+            );
         }
     }
 

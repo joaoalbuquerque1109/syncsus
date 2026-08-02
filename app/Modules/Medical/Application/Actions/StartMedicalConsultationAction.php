@@ -42,6 +42,7 @@ final readonly class StartMedicalConsultationAction
                 throw ValidationException::withMessages(['entry' => 'A entrada selecionada não pertence a uma fila médica.']);
             }
             $this->visibility->ensureCanAccess($locked->queue, $user);
+            $this->visibility->ensureCanAccessEntry($locked, $user);
             if ($locked->version() !== $expectedVersion) {
                 throw ValidationException::withMessages(['version' => 'A fila foi atualizada. Recarregue antes de iniciar o atendimento.']);
             }
