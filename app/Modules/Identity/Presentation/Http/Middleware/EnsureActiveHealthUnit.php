@@ -6,7 +6,6 @@ namespace App\Modules\Identity\Presentation\Http\Middleware;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
-use App\Modules\Professionals\Application\Services\MedicalDutyService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -15,8 +14,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class EnsureActiveHealthUnit
 {
-    public function __construct(private readonly MedicalDutyService $medicalDuty) {}
-
     /** @param  Closure(Request): Response  $next */
     public function handle(Request $request, Closure $next): Response
     {
@@ -63,9 +60,6 @@ final class EnsureActiveHealthUnit
             'activeHealthUnit' => $activeUnit,
             'availableHealthUnits' => $units,
             'organizationHasManager' => $this->organizationHasManager($activeUnit),
-            'medicalDutyAttendance' => $user->hasRole('doctor')
-                ? $this->medicalDuty->current($user, $activeUnit)
-                : null,
         ]);
 
         return $next($request);

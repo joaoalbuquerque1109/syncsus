@@ -20,29 +20,6 @@
     </div>
 
     <div class="flex items-center gap-3">
-        @role('doctor')
-            @if($medicalDutyAttendance?->checked_out_at === null && $medicalDutyAttendance !== null)
-                <details class="relative">
-                    <summary class="cursor-pointer list-none rounded-full bg-emerald-100 px-3 py-2 text-xs font-extrabold text-emerald-800">
-                        Plantão ativo
-                    </summary>
-                    <form method="POST" action="{{ route('medical-duty.check-out') }}" class="absolute right-0 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-4 shadow-xl">
-                        @csrf
-                        <label class="field-label" for="checkout_reason">Motivo do encerramento</label>
-                        <input id="checkout_reason" name="reason" class="field-control" required minlength="5" maxlength="255" value="Fim do plantão">
-                        <button class="mt-3 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm font-bold text-white" type="submit">Encerrar plantão</button>
-                    </form>
-                </details>
-            @else
-                <form method="POST" action="{{ route('medical-duty.check-in') }}">
-                    @csrf
-                    <button class="rounded-full bg-amber-100 px-3 py-2 text-xs font-extrabold text-amber-900 hover:bg-amber-200" type="submit">
-                        Fazer check-in
-                    </button>
-                </form>
-            @endif
-        @endrole
-
         @if($availableHealthUnits->count() > 1)
             <form method="POST" action="{{ route('active-health-unit.update') }}">
                 @csrf

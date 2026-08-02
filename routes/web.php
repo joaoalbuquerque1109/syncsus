@@ -17,7 +17,6 @@ use App\Modules\Patients\Presentation\Http\Controllers\PatientClinicalHistoryCon
 use App\Modules\Patients\Presentation\Http\Controllers\PatientController;
 use App\Modules\Patients\Presentation\Http\Controllers\ProvisionalPatientController;
 use App\Modules\Professionals\Presentation\Http\Controllers\HealthProfessionalController;
-use App\Modules\Professionals\Presentation\Http\Controllers\MedicalDutyController;
 use App\Modules\Queues\Presentation\Http\Controllers\FlowConfigurationController;
 use App\Modules\Queues\Presentation\Http\Controllers\PublicPanelController;
 use App\Modules\Queues\Presentation\Http\Controllers\QueueController;
@@ -57,11 +56,6 @@ Route::middleware(['auth', 'active'])->group(function (): void {
         Route::get('/dashboard/active-encounters', [DashboardController::class, 'activeEncounters'])->name('dashboard.active-encounters');
         Route::put('/active-health-unit', [ActiveHealthUnitController::class, 'update'])
             ->name('active-health-unit.update');
-        Route::prefix('medical-duty')->name('medical-duty.')->group(function (): void {
-            Route::post('/check-in', [MedicalDutyController::class, 'checkIn'])->name('check-in');
-            Route::post('/check-out', [MedicalDutyController::class, 'checkOut'])->name('check-out');
-        });
-
         Route::prefix('patients')->name('patients.')->group(function (): void {
             Route::get('/', [PatientController::class, 'index'])->middleware('permission:patients.view')->name('index');
             Route::get('/search', [PatientController::class, 'search'])->middleware('permission:patients.view')->name('search');

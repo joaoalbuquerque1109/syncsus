@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
-use App\Modules\Professionals\Application\Services\MedicalDutyService;
+use App\Modules\Professionals\Application\Queries\AvailableDoctorQuery;
 use App\Modules\Reports\Application\Queries\OperationalDashboardQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,14 +16,14 @@ final class DashboardController extends Controller
     public function __invoke(
         Request $request,
         OperationalDashboardQuery $dashboard,
-        MedicalDutyService $medicalDuty,
+        AvailableDoctorQuery $availableDoctors,
     ): View {
         $unit = $this->unit($request);
 
         return view('dashboard.index', [
             'metrics' => $dashboard->metrics($unit),
             'activeEncounters' => $dashboard->activeEncounters($unit, $request->user()?->can('patients.view') ?? false),
-            'availableDoctors' => $medicalDuty->availableDoctors($unit),
+            'availableDoctors' => $availableDoctors->forUnit($unit),
         ]);
     }
 

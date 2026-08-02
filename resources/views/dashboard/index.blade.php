@@ -41,11 +41,11 @@
         <section class="app-card mt-5 p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 class="font-extrabold">Médicos presentes hoje</h2>
-                    <p class="text-xs text-slate-500">Somente profissionais com check-in ativo podem operar filas médicas nesta unidade.</p>
+                    <h2 class="font-extrabold">Médicos habilitados na unidade</h2>
+                    <p class="text-xs text-slate-500">Profissionais ativos, vinculados à unidade e com especialidade cadastrada.</p>
                 </div>
                 <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-extrabold text-emerald-800">
-                    {{ $availableDoctors->count() }} presentes
+                    {{ $availableDoctors->count() }} disponíveis
                 </span>
             </div>
             <div class="mt-4 flex flex-wrap gap-2">
@@ -55,7 +55,7 @@
                         <small class="ml-1 text-slate-500">{{ $doctor->professionalProfile?->specialties?->pluck('name')->join(', ') }}</small>
                     </span>
                 @empty
-                    <p class="text-sm text-amber-800">Nenhum médico realizou check-in nesta unidade hoje.</p>
+                    <p class="text-sm text-amber-800">Nenhum médico habilitado nesta unidade.</p>
                 @endforelse
             </div>
         </section>
