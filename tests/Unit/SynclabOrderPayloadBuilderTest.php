@@ -34,6 +34,7 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
             ->build($order, $integration, '0000000000123')
             ->toArray();
 
+        $this->assertSame('987654', data_get($payload, 'pedido_lab.paciente.codigo'));
         $this->assertSame('12345678901', data_get($payload, 'pedido_lab.paciente.cpf'));
         $this->assertSame(127, data_get($payload, 'pedido_lab.exames.0.codigo'));
         $this->assertSame(1234567, data_get($payload, 'pedido_lab.pedido.cnesUnidadeExecutante'));
@@ -61,6 +62,7 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
     {
         $integration = new LaboratoryIntegration(['id' => 10, 'settings' => ['agreement' => 'SUS']]);
         $patient = new Patient([
+            'id' => 987654,
             'medical_record_number' => 'P00000001',
             'full_name' => 'Paciente Teste',
             'birth_date' => '1985-01-23',

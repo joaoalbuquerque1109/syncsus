@@ -42,6 +42,10 @@ final class SynclabOrderPayloadBuilder
         if ($cpf === null && $cns === null) {
             throw new InvalidLaboratoryOrder('O paciente precisa possuir CPF ou Cartao Nacional de Saude.');
         }
+        $patientId = (string) $patient->getKey();
+        if ($patientId === '' || ! ctype_digit($patientId)) {
+            throw new InvalidLaboratoryOrder('O paciente precisa possuir um ID numerico para o Synclab.');
+        }
 
         $items = $order->items
             ->where('laboratory_integration_id', $integration->getKey())
@@ -86,7 +90,7 @@ final class SynclabOrderPayloadBuilder
         $birthDate = $patient->getAttribute('birth_date');
         $requestedAt = $order->getAttribute('requested_at');
         $patientData = array_filter([
-            'codigo' => (string) $patient->medical_record_number,
+            'codigo' => $patientId,
             'nome' => (string) $patient->full_name,
             'sexo' => $this->synclabSex($patient),
             'dt_nascimento' => $birthDate instanceof DateTimeInterface ? $birthDate->format('Y-m-d') : null,

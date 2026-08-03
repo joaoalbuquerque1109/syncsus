@@ -25,7 +25,7 @@ O campo `sus_procedure_code` possui até 10 caracteres. Códigos SIGTAP só são
 - Identificador da requisição e ordem de serviço.
 - Unidade e CNES.
 - Solicitante e registro profissional, quando cadastrados.
-- Nome do paciente e pelo menos CPF ou CNS.
+- ID numérico do paciente no campo `paciente.codigo`, nome e pelo menos CPF ou CNS.
 - Exames selecionados, usando o código externo do Synclab.
 - Prioridade, data, origem e observações da requisição.
 

@@ -61,6 +61,7 @@ final class SynclabOrderSubmissionTest extends TestCase
                 && $request->hasHeader('Authorization')
                 && data_get($payload, 'pedido_lab.ordem_servico') === (string) $order->getKey()
                 && data_get($payload, 'pedido_lab.pedido.cnesUnidadeExecutante') === 6612547
+                && data_get($payload, 'pedido_lab.paciente.codigo') === (string) $order->encounter->patient_id
                 && data_get($payload, 'pedido_lab.paciente.cpf') === '52998224725'
                 && data_get($payload, 'pedido_lab.exames.0.codigo') === 127
                 && ($exam['amostras'] ?? null) === []
