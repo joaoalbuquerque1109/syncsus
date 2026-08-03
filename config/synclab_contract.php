@@ -12,6 +12,8 @@ return [
         'patient_identification' => 'name_and_cpf_or_cns',
         // Samples and barcodes are assigned later inside Synclab.
         'sample_identification' => 'synclab_after_request',
+        // The local laboratory_exams table is the only orderable exam source.
+        'catalog_source' => 'sync_sus_laboratory_exams',
     ],
 
     // Keep every unresolved external decision explicit. Transmission remains held
@@ -22,7 +24,6 @@ return [
         'external_order_number_format' => null,
         'result_partial_final_indicator' => null,
         'stable_result_identifiers' => null,
-        'catalog_source' => null,
         'success_response_identifiers' => null,
     ],
 ];

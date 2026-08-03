@@ -355,7 +355,7 @@
                                                 <input type="hidden" :name="`items[${index}][laboratory_exam_id]`" :value="item.laboratory_exam_id">
                                                 <input :id="`exam_name_${index}`" :name="`items[${index}][exam_name]`" x-model="item.exam_name" @input.debounce.250ms="searchCatalog(index)" @focus="item.catalogOpen = item.catalogResults.length > 0" @keydown.escape="item.catalogOpen = false" autocomplete="off" required class="field-control">
                                                 <p x-show="item.group === 'laboratory' && item.catalogSearching" class="mt-1 text-xs text-slate-500">Buscando no catálogo do laboratório...</p>
-                                                <p x-show="item.group === 'laboratory' && item.laboratory_exam_id" class="mt-1 text-xs font-bold text-emerald-700">Exame vinculado ao catálogo Synclab.</p>
+                                                <p x-show="item.group === 'laboratory' && item.laboratory_exam_id" class="mt-1 text-xs font-bold text-emerald-700">Exame vinculado à tabela de exames da unidade.</p>
                                                 <div x-show="item.catalogOpen" @click.outside="item.catalogOpen = false" class="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
                                                     <template x-for="exam in item.catalogResults" :key="exam.id">
                                                         <button type="button" @click="selectCatalogExam(item, exam)" class="block w-full border-b border-slate-100 px-3 py-3 text-left last:border-0 hover:bg-brand-50">

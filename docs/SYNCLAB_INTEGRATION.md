@@ -11,6 +11,7 @@ A base da integração é multitenant e permanece segura por padrão. Selecionar
 | Confirmação do envio | Somente HTTP 200 confirma o aceite |
 | Identificação do paciente | Nome e pelo menos um entre CPF ou CNS |
 | Amostra e código de barras | A requisição é enviada sem amostra; a identificação acontece posteriormente no Synclab |
+| Catálogo de exames | A tabela local `laboratory_exams` é a fonte única usada pelo SYNC SUS |
 
 ## Decisões externas pendentes
 
@@ -19,8 +20,7 @@ A base da integração é multitenant e permanece segura por padrão. Selecionar
 3. Formato, tamanho e escopo de unicidade da `ordem_servico`.
 4. Campo que diferencia resultado parcial de resultado final.
 5. Identificadores estáveis de ordem, exame, componente e amostra nos resultados.
-6. Origem oficial do catálogo: endpoint, arquivo versionado ou carga manual.
-7. Estrutura do corpo HTTP 200 e identificadores devolvidos pelo Synclab.
+6. Estrutura do corpo HTTP 200 e identificadores devolvidos pelo Synclab.
 
 ## Regra para liberação
 

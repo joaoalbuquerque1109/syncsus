@@ -14,6 +14,7 @@ final class SynclabContractReadinessTest extends TestCase
         $this->assertSame([200], config('synclab_contract.confirmed.accepted_http_statuses'));
         $this->assertSame('name_and_cpf_or_cns', config('synclab_contract.confirmed.patient_identification'));
         $this->assertSame('synclab_after_request', config('synclab_contract.confirmed.sample_identification'));
+        $this->assertSame('sync_sus_laboratory_exams', config('synclab_contract.confirmed.catalog_source'));
     }
 
     public function test_unresolved_decisions_keep_real_transmission_blocked(): void
@@ -26,7 +27,6 @@ final class SynclabContractReadinessTest extends TestCase
         $this->assertContains('external_order_number_format', $readiness->blockingDecisions());
         $this->assertContains('result_partial_final_indicator', $readiness->blockingDecisions());
         $this->assertContains('stable_result_identifiers', $readiness->blockingDecisions());
-        $this->assertContains('catalog_source', $readiness->blockingDecisions());
         $this->assertContains('success_response_identifiers', $readiness->blockingDecisions());
     }
 }
