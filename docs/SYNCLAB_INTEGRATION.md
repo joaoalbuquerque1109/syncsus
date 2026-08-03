@@ -16,6 +16,8 @@ Somente uma resposta HTTP 200 confirma a transmissão. Respostas 429 e 5xx entra
 
 O arquivo versionado `database/data/synclab_exams.csv` é importado para `laboratory_exams`. O seeder aceita exclusivamente linhas com `itemexame = 0`; itens/componentes não podem ser selecionados diretamente. O catálogo atual possui 123 exames-pai.
 
+Cada exame é transmitido com as coleções obrigatórias `amostras` e `itens` vazias. Isso atende ao parser do Synclab sem antecipar coleta, código de barras, componentes ou resultados; essas informações continuam fora do escopo e serão identificadas posteriormente no laboratório.
+
 O campo `sus_procedure_code` possui até 10 caracteres. Códigos SIGTAP só são preenchidos quando o pareamento com `DadosPadraoTabelaProcedimentoSUS.php` é inequívoco. Exames sem pareamento continuam utilizáveis porque o contrato de envio usa `external_code`, o código próprio do Synclab.
 
 ## Dados enviados

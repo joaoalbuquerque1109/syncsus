@@ -56,13 +56,15 @@ final class SynclabOrderPayloadBuilder
                 throw new InvalidLaboratoryOrder('Todo exame laboratorial precisa de um codigo externo.');
             }
 
-            // Current scope is outbound orders only. Samples, barcodes, components
-            // and results are deliberately absent until a later reviewed release.
-            return array_filter([
+            // Synclab requires both collections in each exam even when sample
+            // identification and components are deferred. They intentionally
+            // remain empty in the current outbound-only integration scope.
+            return [
                 'codigo' => ctype_digit($code) ? (int) $code : $code,
-                'sigla' => $item->laboratoryExam?->acronym,
+                'amostras' => [],
                 'descricao' => (string) $item->exam_name,
-            ], static fn (mixed $value): bool => $value !== null && $value !== '');
+                'itens' => [],
+            ];
         })->all();
 
         $unit = $order->encounter->healthUnit;

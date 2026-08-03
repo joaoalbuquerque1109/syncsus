@@ -63,9 +63,10 @@ final class SynclabOrderSubmissionTest extends TestCase
                 && data_get($payload, 'pedido_lab.pedido.cnesUnidadeExecutante') === 6612547
                 && data_get($payload, 'pedido_lab.paciente.cpf') === '52998224725'
                 && data_get($payload, 'pedido_lab.exames.0.codigo') === 127
-                && ! array_key_exists('amostras', $exam)
+                && ($exam['amostras'] ?? null) === []
                 && ! array_key_exists('cbarra', $exam)
-                && ! array_key_exists('itens', $exam)
+                && ($exam['itens'] ?? null) === []
+                && ! array_key_exists('sigla', $exam)
                 && ! array_key_exists('resultado', $exam);
         });
     }

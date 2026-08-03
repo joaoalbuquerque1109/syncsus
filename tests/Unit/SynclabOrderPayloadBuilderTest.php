@@ -37,9 +37,10 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
         $this->assertSame('12345678901', data_get($payload, 'pedido_lab.paciente.cpf'));
         $this->assertSame(127, data_get($payload, 'pedido_lab.exames.0.codigo'));
         $this->assertSame(1234567, data_get($payload, 'pedido_lab.pedido.cnesUnidadeExecutante'));
-        $this->assertArrayNotHasKey('amostras', $payload['pedido_lab']['exames'][0]);
+        $this->assertSame([], $payload['pedido_lab']['exames'][0]['amostras']);
         $this->assertArrayNotHasKey('cbarra', $payload['pedido_lab']['exames'][0]);
-        $this->assertArrayNotHasKey('itens', $payload['pedido_lab']['exames'][0]);
+        $this->assertSame([], $payload['pedido_lab']['exames'][0]['itens']);
+        $this->assertArrayNotHasKey('sigla', $payload['pedido_lab']['exames'][0]);
     }
 
     public function test_request_requires_cpf_or_cns(): void
