@@ -43,9 +43,10 @@ final readonly class SynclabClient implements LaboratoryProviderClient
         $decoded = $response->json();
         $body = is_array($decoded) ? $decoded : null;
 
-        // Contrato atualmente confirmado: somente HTTP 200 representa aceite.
+        $acceptedStatuses = config('synclab_contract.confirmed.accepted_http_statuses', [200]);
+
         return new LaboratorySubmissionResult(
-            accepted: $response->status() === 200,
+            accepted: is_array($acceptedStatuses) && in_array($response->status(), $acceptedStatuses, true),
             httpStatus: $response->status(),
             response: $body,
             responseHash: hash('sha256', $response->body()),
