@@ -56,7 +56,7 @@ curl.cainfo="C:\caminho\seguro\cacert.pem"
 openssl.cafile="C:\caminho\seguro\cacert.pem"
 ```
 
-Use uma fila assíncrona (`QUEUE_CONNECTION=database` ou `redis`) e inicie todo o ambiente com `composer run dev`. Esse comando sobe servidor, worker das filas `integrations,default`, agendador, logs e Vite. Assim uma indisponibilidade do Synclab não bloqueia a tela clínica.
+Use uma fila assíncrona (`QUEUE_CONNECTION=database` ou `redis`) e inicie todo o ambiente com `composer run dev`. Esse comando sobe servidor, worker das filas `integrations,default`, agendador e Vite. Assim uma indisponibilidade do Synclab não bloqueia a tela clínica. O Laravel Pail não faz parte desse comando porque depende de `pcntl`, extensão indisponível no PHP para Windows; quando necessário, acompanhe `storage/logs/laravel.log` em outro terminal.
 
 Pedidos criados enquanto a integração estava desativada permanecem em `awaiting_configuration`. Eles não são enviados em lote ao habilitar a unidade; um gestor deve revisar e usar **Tentar novamente** em cada pedido.
 
