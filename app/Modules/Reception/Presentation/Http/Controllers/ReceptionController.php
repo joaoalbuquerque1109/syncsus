@@ -17,6 +17,7 @@ use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Reception\Application\Actions\CancelEncounterAction;
 use App\Modules\Reception\Application\Actions\OpenEncounterAction;
+use App\Modules\Reception\Application\Services\ReceptionDraftService;
 use App\Modules\Reception\Domain\Enums\AdministrativePriority;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Modules\Reception\Presentation\Http\Requests\CancelEncounterRequest;
@@ -84,6 +85,33 @@ final class ReceptionController extends Controller
 
         return redirect()->route('reception.receipt', $encounter)
             ->with('success', 'Atendimento aberto e senha emitida com sucesso.');
+    }
+
+    public function draftForPatient(Request $request, ReceptionDraftService $drafts): RedirectResponse
+    {
+        $unit = $request->attributes->get('active_health_unit');
+        abort_unless($unit instanceof HealthUnit, 403);
+        $drafts->store($request, (int) $unit->getKey());
+
+        return redirect()->route('patients.create', ['return_to_reception' => 1]);
+    }
+
+    public function draftForProvisionalPatient(Request $request, ReceptionDraftService $drafts): RedirectResponse
+    {
+        $unit = $request->attributes->get('active_health_unit');
+        abort_unless($unit instanceof HealthUnit, 403);
+        $drafts->store($request, (int) $unit->getKey());
+
+        return redirect()->route('patients.provisional.create');
+    }
+
+    public function resumeDraft(Request $request, ReceptionDraftService $drafts): RedirectResponse
+    {
+        $unit = $request->attributes->get('active_health_unit');
+        abort_unless($unit instanceof HealthUnit, 403);
+
+        return redirect()->route('reception.create')
+            ->withInput($drafts->pull($request, (int) $unit->getKey()));
     }
 
     public function receipt(Request $request, Encounter $encounter): View

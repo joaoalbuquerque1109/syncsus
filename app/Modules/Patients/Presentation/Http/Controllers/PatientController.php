@@ -13,6 +13,7 @@ use App\Modules\Patients\Application\Actions\SavePatientAction;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientIdentifier;
 use App\Modules\Patients\Presentation\Http\Requests\SavePatientRequest;
+use App\Modules\Reception\Application\Services\ReceptionDraftService;
 use App\Support\Text\NormalizesBrazilianData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -104,6 +105,7 @@ final class PatientController extends Controller
         SavePatientRequest $request,
         SavePatientAction $action,
         RecordAuditEventAction $audit,
+        ReceptionDraftService $drafts,
     ): RedirectResponse {
         $user = $request->user();
         $unit = $request->attributes->get('active_health_unit');
@@ -113,6 +115,7 @@ final class PatientController extends Controller
 
         if ($request->boolean('return_to_reception')) {
             return redirect()->route('reception.create', ['patient' => $patient->public_id])
+                ->withInput($drafts->pull($request, (int) $unit->getKey()))
                 ->with('success', 'Paciente cadastrado e selecionado para a recepção.');
         }
 

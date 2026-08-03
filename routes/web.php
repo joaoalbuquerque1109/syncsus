@@ -83,6 +83,9 @@ Route::middleware(['auth', 'active'])->group(function (): void {
         Route::prefix('reception')->name('reception.')->middleware('permission:encounters.open')->group(function (): void {
             Route::get('/open', [ReceptionController::class, 'create'])->name('create');
             Route::post('/open', [ReceptionController::class, 'store'])->name('store');
+            Route::post('/draft/patient', [ReceptionController::class, 'draftForPatient'])->name('draft.patient');
+            Route::post('/draft/provisional', [ReceptionController::class, 'draftForProvisionalPatient'])->name('draft.provisional');
+            Route::post('/draft/resume', [ReceptionController::class, 'resumeDraft'])->name('draft.resume');
             Route::get('/receipt/{encounter}', [ReceptionController::class, 'receipt'])->name('receipt');
         });
         Route::post('/reception/encounters/{encounter}/cancel', [ReceptionController::class, 'cancel'])

@@ -7,7 +7,8 @@
         'is_provisional' => $patient->is_provisional,
         'identifiers' => $patient->identifiers->map(fn ($identifier) => ['type' => $identifier->type->value, 'value' => $identifier->maskedValue()])->values(),
     ] : null;
-    $errorStep = $errors->hasAny(['patient_public_id']) ? 2 : ($errors->any() ? 3 : 1);
+    $restoredStep = max(1, min(3, (int) old('_reception_step', $patient ? 2 : 1)));
+    $errorStep = $errors->hasAny(['patient_public_id']) ? 2 : ($errors->any() ? 3 : $restoredStep);
 @endphp
 
 <x-layout.app title="Abrir atendimento">
@@ -19,6 +20,7 @@
             queues: @js($queues),
             arrivalMethods: @js($arrivalMethods),
             departmentId: @js(old('department_id', '')),
+            queueId: @js(old('queue_id', '')),
             arrivalMethodId: @js(old('arrival_method_id', '')),
             step: {{ $errorStep }}
         })"
@@ -43,6 +45,7 @@
             @csrf
             <input type="hidden" name="idempotency_key" value="{{ old('idempotency_key', $idempotencyKey) }}">
             <input type="hidden" name="patient_public_id" :value="patient?.public_id || ''">
+            <input type="hidden" name="_reception_step" :value="step">
 
             <x-card class="p-5 lg:p-7" x-show="step === 1">
                 <h2 class="text-lg font-extrabold text-slate-900">Dados da chegada</h2>
@@ -84,8 +87,8 @@
                         </template>
                     </div>
                     <p class="mt-5 text-sm text-slate-600">Não encontrou?
-                        <a class="font-bold text-brand-700 underline" href="{{ route('patients.create', ['return_to_reception' => 1]) }}">Cadastrar paciente</a>
-                        ou <a class="font-bold text-amber-700 underline" href="{{ route('patients.provisional.create') }}">criar identificação provisória</a>.
+                        <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.patient') }}" class="font-bold text-brand-700 underline">Cadastrar paciente</button>
+                        ou <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.provisional') }}" class="font-bold text-amber-700 underline">criar identificação provisória</button>.
                     </p>
                 </div>
                 <div x-show="patient" class="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5">
@@ -105,7 +108,7 @@
                         <option value="">Selecione</option>
                         @foreach($departments->where('is_clinical', true) as $department)<option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>@endforeach
                     </x-form.select>
-                    <x-form.select name="queue_id" label="Fila inicial" required>
+                    <x-form.select name="queue_id" label="Fila inicial" required x-model="queueId">
                         <option value="">Selecione o setor primeiro</option>
                         <template x-for="queue in filteredQueues" :key="queue.id"><option :value="queue.id" x-text="queue.name"></option></template>
                     </x-form.select>

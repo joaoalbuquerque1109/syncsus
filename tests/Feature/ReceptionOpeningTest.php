@@ -223,6 +223,67 @@ final class ReceptionOpeningTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.order_cancelled']);
     }
 
+    public function test_reception_draft_is_restored_after_creating_a_provisional_patient(): void
+    {
+        [$unit, $receptionist] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $department = Department::query()->where('code', 'TRIAGE')->sole();
+        $queueId = Queue::query()->where('department_id', $department->getKey())->value('id');
+        $idempotencyKey = (string) Str::ulid();
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.draft.provisional'), [
+                'idempotency_key' => $idempotencyKey,
+                'entry_type_id' => EntryType::query()->where('code', 'EMERGENCY')->value('id'),
+                'arrival_method_id' => ArrivalMethod::query()->where('code', 'WALK_IN')->value('id'),
+                'arrival_at' => '2026-08-03T14:30',
+                'origin' => 'Unidade de origem informada',
+                'entry_reason' => 'Dor persistente informada na chegada',
+                'reception_notes' => 'Observacao que nao pode ser perdida.',
+                'administrative_priority' => 'elderly',
+                'department_id' => $department->getKey(),
+                'queue_id' => $queueId,
+                'companion_name' => 'Acompanhante preservado',
+                'companion_relationship' => 'Filha',
+                'request_exams' => '1',
+                'exam_priority' => 'urgent',
+                'exam_clinical_indication' => 'Indicacao clinica preservada no rascunho.',
+                'exam_ids' => [11, 12],
+                '_reception_step' => 2,
+            ])
+            ->assertRedirect(route('patients.provisional.create'));
+
+        $response = $this->actingAs($receptionist)->withSession($session)
+            ->post(route('patients.provisional.store'), [
+                'full_name' => 'Paciente temporario',
+                'sex' => 'unknown',
+                'estimated_age' => 70,
+                'estimated_age_range' => 'elderly',
+                'provisional_description' => 'Paciente sem documentos durante o acolhimento.',
+            ]);
+
+        $patient = Patient::query()->where('full_name', 'Paciente temporario')->sole();
+        $response->assertRedirect(route('reception.create', ['patient' => $patient->public_id]));
+        $response->assertSessionHas('_old_input.idempotency_key', $idempotencyKey);
+        $response->assertSessionHas('_old_input.entry_reason', 'Dor persistente informada na chegada');
+        $response->assertSessionHas('_old_input.reception_notes', 'Observacao que nao pode ser perdida.');
+        $response->assertSessionHas('_old_input.department_id', $department->getKey());
+        $response->assertSessionHas('_old_input.queue_id', $queueId);
+        $response->assertSessionHas('_old_input.companion_name', 'Acompanhante preservado');
+        $response->assertSessionHas('_old_input.request_exams', true);
+        $response->assertSessionHas('_old_input.exam_ids', [11, 12]);
+        $response->assertSessionHas('_old_input._reception_step', 2);
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create', ['patient' => $patient->public_id]))
+            ->assertOk()
+            ->assertSee('Paciente temporario')
+            ->assertSee('Dor persistente informada na chegada')
+            ->assertSee('Observacao que nao pode ser perdida.')
+            ->assertSee('Acompanhante preservado')
+            ->assertSee('step: 2', false);
+    }
+
     /** @return array{0: mixed, 1: mixed, 2: Patient} */
     private function context(): array
     {
