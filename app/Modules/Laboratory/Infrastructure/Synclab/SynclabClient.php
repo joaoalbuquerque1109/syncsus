@@ -20,15 +20,18 @@ final readonly class SynclabClient implements LaboratoryProviderClient
         LaboratoryOrderPayload $payload,
     ): LaboratorySubmissionResult {
         $baseUrl = rtrim((string) $integration->base_url, '/');
-        $tenant = trim((string) $integration->external_tenant_code);
         $username = (string) $integration->username;
         $password = (string) $integration->password;
+        $cnes = preg_replace('/\D/', '', (string) data_get(
+            $payload->toArray(),
+            'pedido_lab.pedido.cnesUnidadeExecutante',
+        ));
 
         if (! filter_var($baseUrl, FILTER_VALIDATE_URL) || ! str_starts_with($baseUrl, 'https://')) {
             throw new InvalidLaboratoryOrder('A URL HTTPS do Synclab nao foi configurada corretamente.');
         }
-        if ($tenant === '' || $username === '' || $password === '') {
-            throw new InvalidLaboratoryOrder('A identificacao externa e as credenciais do Synclab sao obrigatorias.');
+        if (strlen($cnes) !== 7 || $username === '' || $password === '') {
+            throw new InvalidLaboratoryOrder('O CNES e as credenciais do Synclab sao obrigatorios.');
         }
 
         $response = $this->http
@@ -38,7 +41,7 @@ final readonly class SynclabClient implements LaboratoryProviderClient
             ->withBasicAuth($username, $password)
             ->connectTimeout((int) config('sync_sus.synclab.connect_timeout_seconds'))
             ->timeout((int) config('sync_sus.synclab.timeout_seconds'))
-            ->post('/app/addrequisicao/'.rawurlencode($tenant), $payload->toArray());
+            ->post('/app/addrequisicao/'.$cnes, $payload->toArray());
 
         $decoded = $response->json();
         $body = is_array($decoded) ? $decoded : null;

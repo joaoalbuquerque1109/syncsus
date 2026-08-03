@@ -1,0 +1,181 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
+use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
+use App\Modules\Laboratory\Application\Actions\SubmitLaboratoryOrderTransmissionAction;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
+use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
+use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
+use App\Modules\Patients\Domain\Enums\PatientSex;
+use App\Modules\Patients\Domain\Enums\PatientStatus;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use Database\Seeders\OperationalCatalogSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+use Tests\TestCase;
+
+final class SynclabOrderSubmissionTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_http_200_accepts_order_using_database_id_as_service_order(): void
+    {
+        [$order, $transmission] = $this->outboundOrder();
+        Http::fake(['*' => Http::response(['message' => 'ok'], 200)]);
+
+        app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $transmission->getKey());
+
+        $transmission->refresh();
+        $this->assertSame('accepted', $transmission->statusEnum()->value);
+        $this->assertSame((string) $order->getKey(), $transmission->external_order_number);
+        $this->assertSame(1, $transmission->attempt_count);
+        $this->assertSame(200, $transmission->last_http_status);
+        $this->assertNotNull($transmission->accepted_at);
+
+        Http::assertSent(function (Request $request) use ($order): bool {
+            $payload = $request->data();
+            $exam = data_get($payload, 'pedido_lab.exames.0', []);
+
+            return $request->url() === 'https://synclabweb.unisync.com.br/app/addrequisicao/6612547'
+                && $request->hasHeader('Authorization')
+                && data_get($payload, 'pedido_lab.ordem_servico') === (string) $order->getKey()
+                && data_get($payload, 'pedido_lab.pedido.cnesUnidadeExecutante') === 6612547
+                && data_get($payload, 'pedido_lab.paciente.cpf') === '52998224725'
+                && data_get($payload, 'pedido_lab.exames.0.codigo') === 127
+                && ! array_key_exists('amostras', $exam)
+                && ! array_key_exists('cbarra', $exam)
+                && ! array_key_exists('itens', $exam)
+                && ! array_key_exists('resultado', $exam);
+        });
+    }
+
+    public function test_only_http_200_is_success_and_server_failures_are_retried(): void
+    {
+        Http::fake(['*' => Http::sequence()->push([], 201)->push([], 503)]);
+        [, $rejected] = $this->outboundOrder('CNS-201');
+        app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $rejected->getKey());
+        $this->assertSame('rejected', $rejected->fresh()?->statusEnum()->value);
+
+        [, $retrying] = $this->outboundOrder('CNS-503');
+
+        try {
+            app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $retrying->getKey());
+            $this->fail('A resposta HTTP 503 deveria disparar uma nova tentativa.');
+        } catch (RuntimeException) {
+            $this->assertSame('retrying', $retrying->fresh()->statusEnum()->value);
+            $this->assertNotNull($retrying->fresh()->next_attempt_at);
+        }
+    }
+
+    /** @return array{ExamOrder, LaboratoryOrderTransmission} */
+    private function outboundOrder(string $encounterNumber = 'SYNC-TEST-001'): array
+    {
+        config()->set('sync_sus.synclab.enabled', true);
+        config()->set('sync_sus.synclab.connect_timeout_seconds', 2);
+        config()->set('sync_sus.synclab.timeout_seconds', 5);
+
+        $unitCode = match ($encounterNumber) {
+            'SYNC-TEST-001' => 'CENTRAL',
+            'CNS-201' => 'CENTRAL-201',
+            default => 'CENTRAL-503',
+        };
+        $unit = $this->createHealthUnit($unitCode);
+        $unit->update(['cnes_code' => '6612547']);
+        $this->seed(OperationalCatalogSeeder::class);
+        $user = $this->createUserWithUnit($unit, ['name' => 'Dra. Solicitante']);
+        $patient = Patient::query()->create([
+            'organization_id' => $unit->organization_id,
+            'medical_record_number' => 'P-'.$encounterNumber,
+            'full_name' => 'Paciente Teste Synclab',
+            'normalized_name' => 'PACIENTE TESTE SYNCLAB',
+            'birth_date' => '1985-01-23',
+            'sex' => PatientSex::Female,
+            'status' => PatientStatus::Active,
+            'created_by' => $user->getKey(),
+            'updated_by' => $user->getKey(),
+        ]);
+        $patient->identifiers()->create([
+            'type' => PatientIdentifierType::Cpf,
+            'normalized_value' => match ($encounterNumber) {
+                'SYNC-TEST-001' => '52998224725',
+                'CNS-201' => '11144477735',
+                default => '12345678909',
+            },
+            'display_value' => match ($encounterNumber) {
+                'SYNC-TEST-001' => '529.982.247-25',
+                'CNS-201' => '111.444.777-35',
+                default => '123.456.789-09',
+            },
+            'is_primary' => true,
+        ]);
+        $encounter = Encounter::query()->create([
+            'encounter_number' => $encounterNumber,
+            'patient_id' => $patient->getKey(),
+            'health_unit_id' => $unit->getKey(),
+            'entry_type_id' => EntryType::query()->where('organization_id', $unit->organization_id)->valueOrFail('id'),
+            'arrival_method_id' => ArrivalMethod::query()->where('organization_id', $unit->organization_id)->valueOrFail('id'),
+            'current_status' => 'waiting_medical',
+            'arrival_at' => now(),
+            'registration_at' => now(),
+            'created_by' => $user->getKey(),
+        ]);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'base_url' => 'https://synclabweb.unisync.com.br',
+            'username' => 'test-user',
+            'password' => 'test-password',
+            'settings' => ['agreement' => 'SUS'],
+            'is_active' => true,
+            'transmission_enabled' => true,
+            'result_sync_enabled' => false,
+        ]);
+        $exam = $integration->exams()->create([
+            'external_code' => '127',
+            'acronym' => 'HEM',
+            'name' => 'Hemograma completo',
+            'sus_procedure_code' => '0202020380',
+        ]);
+        $order = ExamOrder::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'encounter_id' => $encounter->getKey(),
+            'medical_consultation_id' => null,
+            'requested_by' => $user->getKey(),
+            'created_by' => $user->getKey(),
+            'origin' => 'reception',
+            'status' => 'pending',
+            'priority' => 'routine',
+            'clinical_indication' => 'Investigacao laboratorial.',
+            'requested_at' => now(),
+        ]);
+        $order->items()->create([
+            'laboratory_integration_id' => $integration->getKey(),
+            'laboratory_exam_id' => $exam->getKey(),
+            'external_exam_code' => '127',
+            'exam_name' => 'Hemograma completo',
+            'group' => 'laboratory',
+            'priority' => 'routine',
+            'status' => 'requested',
+        ]);
+        $transmission = LaboratoryOrderTransmission::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'laboratory_integration_id' => $integration->getKey(),
+            'exam_order_id' => $order->getKey(),
+            'idempotency_key' => 'synclab:'.$integration->getKey().':'.$order->public_id.':v1',
+            'status' => 'pending',
+        ]);
+
+        return [$order, $transmission];
+    }
+}

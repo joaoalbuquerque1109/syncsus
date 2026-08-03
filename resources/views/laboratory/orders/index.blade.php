@@ -1,6 +1,16 @@
 @php
     $statusLabels = ['pending' => 'Pendente', 'cancelled' => 'Cancelada'];
     $originLabels = ['reception' => 'Recepção', 'medical' => 'Atendimento médico'];
+    $transmissionLabels = [
+        'awaiting_configuration' => 'Aguardando configuração',
+        'pending' => 'Na fila de envio',
+        'sending' => 'Enviando',
+        'retrying' => 'Nova tentativa agendada',
+        'accepted' => 'Aceita pelo Synclab',
+        'rejected' => 'Rejeitada pelo Synclab',
+        'manual_review' => 'Requer revisão',
+        'cancelled' => 'Cancelada',
+    ];
 @endphp
 
 <x-layout.app title="Requisições de exames">
@@ -43,7 +53,7 @@
                             <td class="px-4 py-4 font-bold">{{ $order->items->count() }}</td>
                             <td class="px-4 py-4">
                                 <span @class(['rounded-md px-2 py-1 text-xs font-bold', 'bg-yellow-100 text-yellow-800' => $order->status === 'pending', 'bg-red-100 text-red-800' => $order->status === 'cancelled'])>{{ $statusLabels[$order->status] ?? $order->status }}</span>
-                                @if($transmissionStatus)<p class="mt-2 text-[0.68rem] text-slate-500">Integração: {{ str_replace('_', ' ', $transmissionStatus) }}</p>@endif
+                                @if($transmissionStatus)<p class="mt-2 text-[0.68rem] text-slate-500">Integração: {{ $transmissionLabels[$transmissionStatus] ?? $transmissionStatus }}</p>@endif
                             </td>
                             <td class="px-4 py-4 text-right" x-data="{ cancelling: false }">
                                 <div class="flex justify-end gap-1"><a href="{{ route('laboratory.orders.show', $order) }}" class="rounded-l-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white" title="Visualizar">Visualizar</a>@can('laboratory.orders.cancel')@if($order->status === 'pending')<button type="button" @click="cancelling = !cancelling" class="grid size-9 place-items-center rounded-r-lg bg-red-600 text-white" title="Cancelar requisição" aria-label="Cancelar requisição"><x-icons.trash /></button>@endif @endcan</div>

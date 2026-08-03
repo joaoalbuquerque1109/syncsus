@@ -11,6 +11,7 @@ use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use DateTimeInterface;
 
 final class SynclabOrderPayloadBuilder
@@ -21,8 +22,9 @@ final class SynclabOrderPayloadBuilder
         string $externalOrderNumber,
     ): LaboratoryOrderPayload {
         $order->loadMissing([
-            'requestedBy',
+            'requestedBy.professionalProfile.registrations',
             'encounter.healthUnit',
+            'encounter.currentDepartment',
             'encounter.patient.identifiers',
             'items.laboratoryExam',
         ]);
@@ -54,16 +56,33 @@ final class SynclabOrderPayloadBuilder
                 throw new InvalidLaboratoryOrder('Todo exame laboratorial precisa de um codigo externo.');
             }
 
-            // Confirmado com o Synclab: a requisicao nasce sem amostra. A amostra sera
-            // identificada posteriormente no fluxo laboratorial, portanto nao enviamos cbarra.
-            return [
-                'codigo' => $code,
+            // Current scope is outbound orders only. Samples, barcodes, components
+            // and results are deliberately absent until a later reviewed release.
+            return array_filter([
+                'codigo' => ctype_digit($code) ? (int) $code : $code,
+                'sigla' => $item->laboratoryExam?->acronym,
                 'descricao' => (string) $item->exam_name,
-            ];
+            ], static fn (mixed $value): bool => $value !== null && $value !== '');
         })->all();
 
         $unit = $order->encounter->healthUnit;
+        $cnes = preg_replace('/\D/', '', (string) $unit->cnes_code);
+        if (strlen($cnes) !== 7) {
+            throw new InvalidLaboratoryOrder('A unidade precisa possuir um codigo CNES valido com 7 digitos.');
+        }
+        $requestedBy = $order->requestedBy;
+        $profileValue = $requestedBy->getRelationValue('professionalProfile');
+        $institutionalCode = (string) $order->requested_by;
+        $professionalName = (string) $requestedBy->name;
+        $registration = null;
+        if ($profileValue instanceof HealthProfessional) {
+            $institutionalCode = (string) $profileValue->institutional_code;
+            $professionalName = $profileValue->displayName();
+            $registration = $profileValue->registrations->firstWhere('is_primary', true)
+                ?? $profileValue->registrations->first();
+        }
         $birthDate = $patient->getAttribute('birth_date');
+        $requestedAt = $order->getAttribute('requested_at');
         $patientData = array_filter([
             'codigo' => (string) $patient->medical_record_number,
             'nome' => (string) $patient->full_name,
@@ -76,14 +95,22 @@ final class SynclabOrderPayloadBuilder
         return new LaboratoryOrderPayload([
             'ordem_servico' => $externalOrderNumber,
             'codigo_pedido' => $externalOrderNumber,
-            'identificador' => 'SYNC-SUS',
-            'usuario_web_id' => (string) $order->requested_by,
+            'identificador' => 'SYNC SUS',
+            'usuario_web_id' => $institutionalCode,
             'pedido' => array_filter([
                 'codigo' => $externalOrderNumber,
                 'ordem_servico' => $externalOrderNumber,
-                'posto' => (string) $unit->code,
-                'cnesUnidadeExecutante' => $unit->cnes_code,
+                'origem' => (string) $unit->name,
+                'profissional' => $professionalName,
+                'ufconselho' => $registration?->state,
+                'orgaoemissor' => $registration?->council_type,
+                'numconselho' => $registration?->registration_number,
+                'posto' => (string) ($order->encounter->currentDepartment->name ?? $unit->name),
+                'urgente' => $order->priority === 'routine' ? 'N' : 'S',
+                'cnesUnidadeExecutante' => (int) $cnes,
                 'convenio' => (string) data_get($integration->settings, 'agreement', 'SUS'),
+                'observacao' => $order->notes,
+                'datahora' => $requestedAt instanceof DateTimeInterface ? $requestedAt->format('Y-m-d H:i') : null,
             ], static fn (mixed $value): bool => $value !== null && $value !== ''),
             'paciente' => $patientData,
             'exames' => $exams,

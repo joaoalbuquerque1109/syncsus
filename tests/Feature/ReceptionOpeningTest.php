@@ -142,7 +142,7 @@ final class ReceptionOpeningTest extends TestCase
         $this->assertSame(['Hemograma completo', 'Glicose'], $order->items->pluck('exam_name')->all());
         $this->assertDatabaseHas('laboratory_order_transmissions', [
             'exam_order_id' => $order->getKey(),
-            'status' => 'awaiting_contract',
+            'status' => 'awaiting_configuration',
         ]);
         $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.order_created_at_reception']);
 

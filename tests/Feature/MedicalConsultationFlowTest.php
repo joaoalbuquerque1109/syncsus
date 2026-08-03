@@ -374,7 +374,7 @@ final class MedicalConsultationFlowTest extends TestCase
         $this->assertSame('laboratory', $item->group);
         $this->assertSame('127', $item->external_exam_code);
         $this->assertSame('catalog-v1', $item->catalog_version);
-        $this->assertSame('awaiting_contract', $transmission->status->value);
+        $this->assertSame('awaiting_configuration', $transmission->status->value);
         $this->assertSame($unit->getKey(), $transmission->health_unit_id);
         $this->assertNull($transmission->external_order_number);
     }
