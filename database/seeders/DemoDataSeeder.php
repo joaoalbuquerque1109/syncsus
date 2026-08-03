@@ -513,7 +513,7 @@ final class DemoDataSeeder extends Seeder
                 'changed_fields' => ['current_status' => $scenario['status']],
                 'context' => ['source' => 'demo_seeder', 'synthetic' => true],
                 'ip_address' => '127.0.0.1',
-                'user_agent' => 'SYNC SUS Demo Seeder',
+                'user_agent' => 'SYNC HOSP Demo Seeder',
                 'occurred_at' => $arrivalAt,
             ]);
         }
@@ -802,7 +802,7 @@ final class DemoDataSeeder extends Seeder
 
         $request = Request::create('/demo/seed', 'POST', server: [
             'REMOTE_ADDR' => '127.0.0.1',
-            'HTTP_USER_AGENT' => 'SYNC SUS Demo Seeder',
+            'HTTP_USER_AGENT' => 'SYNC HOSP Demo Seeder',
         ]);
         app(IssueClinicalDocumentAction::class)->execute(
             $consultation,
@@ -810,7 +810,7 @@ final class DemoDataSeeder extends Seeder
                 'document_type' => 'discharge_guidance',
                 'title' => 'Orientações de alta — demonstração',
                 'body' => "Documento gerado para demonstrar a emissão, o versionamento e a verificação de documentos.\n\nOs dados são inteiramente fictícios e este conteúdo não possui validade clínica.",
-                'additional_information' => 'Ambiente local de demonstração do SYNC SUS.',
+                'additional_information' => 'Ambiente local de demonstração do SYNC HOSP.',
             ],
             $doctor,
             $unit,

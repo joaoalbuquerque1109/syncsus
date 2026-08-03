@@ -101,7 +101,7 @@ final class SynclabOrderPayloadBuilder
         return new LaboratoryOrderPayload([
             'ordem_servico' => $externalOrderNumber,
             'codigo_pedido' => $externalOrderNumber,
-            'identificador' => 'SYNC SUS',
+            'identificador' => 'SYNC HOSP',
             'usuario_web_id' => $institutionalCode,
             'pedido' => array_filter([
                 'codigo' => $externalOrderNumber,

@@ -1,4 +1,4 @@
-# SYNC SUS
+# SYNC HOSP
 
 Sistema web hospitalar para a porta de entrada de urgência e emergência, projetado para operação em
 servidor local e acesso pela rede interna.

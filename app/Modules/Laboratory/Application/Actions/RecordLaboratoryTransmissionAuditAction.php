@@ -34,7 +34,7 @@ final readonly class RecordLaboratoryTransmissionAuditAction
                 ...$context,
             ]),
             'ip_address' => null,
-            'user_agent' => 'SYNC SUS Synclab worker',
+            'user_agent' => 'SYNC HOSP Synclab worker',
             'occurred_at' => now(),
         ]);
     }

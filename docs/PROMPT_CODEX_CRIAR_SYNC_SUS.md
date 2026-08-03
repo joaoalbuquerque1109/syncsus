@@ -1,4 +1,4 @@
-# Prompt para o Codex — Criar o SYNC SUS
+# Prompt para o Codex — Criar o SYNC HOSP
 
 Copie todo o conteúdo abaixo e forneça ao Codex dentro da raiz do repositório que deverá receber o projeto.
 
@@ -6,7 +6,7 @@ Copie todo o conteúdo abaixo e forneça ao Codex dentro da raiz do repositório
 
 ## PROMPT
 
-Você é o engenheiro de software principal responsável por construir o **SYNC SUS**, um sistema web hospitalar para urgência e emergência, instalado em servidor local e acessado pela rede interna.
+Você é o engenheiro de software principal responsável por construir o **SYNC HOSP**, um sistema web hospitalar para urgência e emergência, instalado em servidor local e acessado pela rede interna.
 
 Sua tarefa não é apenas gerar um exemplo, protótipo descartável ou conjunto de telas estáticas. Você deve criar uma aplicação Laravel funcional, organizada, testada, executável por Docker Compose e aderente à especificação e às regras de Clean Code presentes neste repositório.
 
@@ -503,7 +503,7 @@ Em produção, o seeder deve recusar senha ausente ou insegura.
 Crie layout próprio baseado nas imagens:
 
 - sidebar azul-marinho;
-- logo SYNC SUS;
+- logo SYNC HOSP;
 - item ativo em azul;
 - topbar clara;
 - cards brancos;

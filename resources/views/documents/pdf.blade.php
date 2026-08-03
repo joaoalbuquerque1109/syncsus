@@ -28,7 +28,7 @@
 </head>
 <body>
     <header class="header">
-        <div class="brand">SYNC SUS</div>
+        <div class="brand">SYNC HOSP</div>
         <div class="unit">{{ $document->healthUnit->organization->trade_name }} · {{ $document->healthUnit->name }}</div>
         @if($document->healthUnit->cnes_code)<div class="unit">CNES {{ $document->healthUnit->cnes_code }}</div>@endif
         @if($document->healthUnit->street)<div class="unit">{{ $document->healthUnit->street }}, {{ $document->healthUnit->street_number ?: 's/n' }} · {{ $document->healthUnit->district }} · {{ $document->healthUnit->city }}/{{ $document->healthUnit->state }}</div>@endif

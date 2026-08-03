@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="robots" content="noindex,nofollow">
-    <title>{{ $panel->name }} · SYNC SUS</title>
+    <title>{{ $panel->name }} · SYNC HOSP</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-navy-950 text-white">
@@ -80,7 +80,7 @@
 
         <footer class="flex items-center justify-between gap-4 border-t border-white/15 pt-5 text-lg">
             <p>{{ $panel->institutional_message }}</p>
-            <p class="whitespace-nowrap text-sm text-slate-400">SYNC SUS · operação local</p>
+            <p class="whitespace-nowrap text-sm text-slate-400">SYNC HOSP · operação local</p>
         </footer>
     </main>
 </body>

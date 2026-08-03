@@ -34,6 +34,7 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
             ->build($order, $integration, '0000000000123')
             ->toArray();
 
+        $this->assertSame('SYNC HOSP', data_get($payload, 'pedido_lab.identificador'));
         $this->assertSame('987654', data_get($payload, 'pedido_lab.paciente.codigo'));
         $this->assertSame('12345678901', data_get($payload, 'pedido_lab.paciente.cpf'));
         $this->assertSame(127, data_get($payload, 'pedido_lab.exames.0.codigo'));

@@ -1,14 +1,14 @@
-# Integração SYNC SUS e Synclab
+# Integração SYNC HOSP e Synclab
 
 ## Escopo ativo
 
-O SYNC SUS envia requisições de exames criadas na recepção ou no consultório médico para o Synclab. O envio é assíncrono, isolado por unidade e direcionado ao endpoint:
+O SYNC HOSP envia requisições de exames criadas na recepção ou no consultório médico para o Synclab. O envio é assíncrono, isolado por unidade e direcionado ao endpoint:
 
 ```text
 POST https://synclabweb.unisync.com.br/app/addrequisicao/{cnes}
 ```
 
-Para São Caetano/PE, o CNES de teste é `6612547`. O campo `ordem_servico` enviado ao Synclab é o `id` numérico de `exam_orders`, que também aparece como ID no grid do SYNC SUS.
+Para São Caetano/PE, o CNES de teste é `6612547`. O campo `ordem_servico` enviado ao Synclab é o `id` numérico de `exam_orders`, que também aparece como ID no grid do SYNC HOSP.
 
 Somente uma resposta HTTP 200 confirma a transmissão. Respostas 429 e 5xx entram em nova tentativa; outros códigos HTTP ficam rejeitados para revisão operacional.
 

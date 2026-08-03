@@ -9,7 +9,7 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     page.on("pageerror", (error) => pageErrors.push(error.message));
 
     await page.goto("/login");
-    await expect(page).toHaveTitle(/SYNC SUS/);
+    await expect(page).toHaveTitle(/SYNC HOSP/);
     await expect(page.locator('link[rel="stylesheet"]')).toHaveCount(1);
     await expect(page.locator('script[type="module"]')).toHaveCount(1);
     await expect(
@@ -30,12 +30,12 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     await page
         .getByLabel("Senha")
         .fill(process.env.E2E_PASSWORD || "Demo#SyncSUS2026");
-    await page.getByRole("button", { name: /Entrar no SYNC SUS/ }).click();
+    await page.getByRole("button", { name: /Entrar no SYNC HOSP/ }).click();
 
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(page.locator("main")).toBeVisible();
     await expect(
-        page.getByText("SYNC SUS", { exact: true }).first(),
+        page.getByText("SYNC HOSP", { exact: true }).first(),
     ).toBeVisible();
     await expect(page.locator("[x-data]").first()).toBeVisible();
     expect(failedAssets).toEqual([]);

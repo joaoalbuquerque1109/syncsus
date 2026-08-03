@@ -395,7 +395,7 @@
                                 <div class="mt-3 rounded-lg bg-slate-50 p-4">
                                     <div class="flex flex-wrap justify-between gap-2"><strong>{{ $item->exam_name }}</strong><span class="text-xs font-bold uppercase">{{ $item->status }}</span></div>
                                     <p class="mt-2 text-xs text-slate-500">
-                                        Resultados não são registrados manualmente no SYNC SUS nesta versão.
+                                        Resultados não são registrados manualmente no SYNC HOSP nesta versão.
                                     </p>
                                 </div>
                             @endforeach

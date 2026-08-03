@@ -15,7 +15,7 @@
             <p class="text-xs font-medium tracking-wide text-slate-500">
                 {{ $activeHealthUnit->organization->code }} · {{ $activeHealthUnit->code }}
             </p>
-            <h1 class="text-lg font-extrabold text-slate-900">{{ $title ?? 'SYNC SUS' }}</h1>
+            <h1 class="text-lg font-extrabold text-slate-900">{{ $title ?? 'SYNC HOSP' }}</h1>
         </div>
     </div>
 

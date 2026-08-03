@@ -1,4 +1,4 @@
-# SYNC SUS
+# SYNC HOSP
 
 ## Especificação funcional, técnica e de implementação
 
@@ -13,7 +13,7 @@
 
 ## 1. Resumo executivo
 
-O **SYNC SUS** será um sistema web hospitalar destinado à porta de entrada de unidades de urgência e emergência. Ele controlará o fluxo operacional e clínico do paciente desde a chegada à recepção até a destinação definida pelo médico, com organização por filas, chamadas em painel de TV, classificação de risco, atendimento médico, documentos e auditoria.
+O **SYNC HOSP** será um sistema web hospitalar destinado à porta de entrada de unidades de urgência e emergência. Ele controlará o fluxo operacional e clínico do paciente desde a chegada à recepção até a destinação definida pelo médico, com organização por filas, chamadas em painel de TV, classificação de risco, atendimento médico, documentos e auditoria.
 
 O sistema será instalado em um servidor físico ou virtual dentro da instituição e funcionará sem depender da internet para as operações principais. Os computadores da recepção, triagem, consultórios e setores administrativos acessarão o sistema por navegador, dentro da rede local.
 
@@ -148,7 +148,7 @@ A arquitetura deverá permitir, sem exigir reescrita do núcleo:
 
 ## 4. Terminologia do domínio
 
-| Termo | Definição no SYNC SUS |
+| Termo | Definição no SYNC HOSP |
 |---|---|
 | Paciente | Pessoa atendida pela instituição. |
 | Prontuário | Identificador longitudinal do paciente dentro da instalação. |
@@ -588,7 +588,7 @@ awaiting_transfer
 
 ### 10.1 Identidade visual
 
-O SYNC SUS utilizará interface clara, com contraste alto e navegação lateral escura. A identidade visual será própria.
+O SYNC HOSP utilizará interface clara, com contraste alto e navegação lateral escura. A identidade visual será própria.
 
 - Cor primária: azul institucional.
 - Fundo principal: cinza muito claro ou branco.
@@ -601,7 +601,7 @@ O SYNC SUS utilizará interface clara, com contraste alto e navegação lateral 
 
 ```text
 ┌────────────────┬───────────────────────────────────────────────┐
-│ Logo SYNC SUS  │ Cabeçalho: unidade, notificações e usuário    │
+│ Logo SYNC HOSP │ Cabeçalho: unidade, notificações e usuário    │
 ├────────────────┼───────────────────────────────────────────────┤
 │ Início         │                                               │
 │ Recepção       │ Conteúdo da tela                              │
@@ -3316,7 +3316,7 @@ O DNS interno ou arquivo de hosts deve ser configurado pela infraestrutura.
 ### 38.2 Variáveis de ambiente
 
 ```text
-APP_NAME="SYNC SUS"
+APP_NAME="SYNC HOSP"
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://syncsus.local
@@ -3715,7 +3715,7 @@ A sobrescrita destrói rastreabilidade. Rascunhos podem mudar; registros finaliz
 
 ## 45. Arquivos de referência visual
 
-A pasta `design/` contém as nove telas de referência do SYNC SUS:
+A pasta `design/` contém as nove telas de referência do SYNC HOSP:
 
 ```text
 01_dashboard.png

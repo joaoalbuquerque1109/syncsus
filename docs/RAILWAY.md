@@ -10,7 +10,7 @@ Conecte o repositorio e adicione um MySQL e um Redis ao mesmo projeto. Gere o do
 publico antes de importar as variaveis. No editor RAW do servico web, configure:
 
 ```text
-APP_NAME="SYNC SUS"
+APP_NAME="SYNC HOSP"
 APP_ENV=production
 APP_DEBUG=false
 APP_KEY=base64:...

@@ -19,7 +19,7 @@
     </style>
 </head>
 <body>
-    <h1>SYNC SUS · Relatório de atendimentos</h1>
+    <h1>SYNC HOSP · Relatório de atendimentos</h1>
     <p class="subtitle">{{ $unit->organization->trade_name }} · {{ $unit->name }} · período {{ \Illuminate\Support\Carbon::parse($filters['date_from'])->format('d/m/Y') }} a {{ \Illuminate\Support\Carbon::parse($filters['date_to'])->format('d/m/Y') }}</p>
     <table class="metrics"><tr><td><strong>{{ $summary['total'] }}</strong>Total</td><td><strong>{{ $summary['average_triage_wait_minutes'] ?? '—' }}</strong>Espera triagem (min)</td><td><strong>{{ $summary['average_medical_wait_minutes'] ?? '—' }}</strong>Espera médica (min)</td><td><strong>{{ $summary['average_total_minutes'] ?? '—' }}</strong>Tempo total (min)</td></tr></table>
     <table class="data">

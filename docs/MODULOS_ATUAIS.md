@@ -1,4 +1,4 @@
-# Módulos atuais do SYNC SUS
+# Módulos atuais do SYNC HOSP
 
 **Versão do documento:** 1.0  
 **Data de referência:** 29/07/2026  
@@ -6,7 +6,7 @@
 
 ## 1. Visão geral
 
-O SYNC SUS é um sistema de apoio ao fluxo assistencial de unidades de saúde. Atualmente, ele cobre o percurso do paciente desde a identificação e abertura da recepção até a triagem, atendimento médico, emissão de documentos, relatórios e auditoria.
+O SYNC HOSP é um sistema de apoio ao fluxo assistencial de unidades de saúde. Atualmente, ele cobre o percurso do paciente desde a identificação e abertura da recepção até a triagem, atendimento médico, emissão de documentos, relatórios e auditoria.
 
 O fluxo principal implementado é:
 
@@ -512,7 +512,7 @@ O sistema está preparado para receber integrações, mas atualmente os fluxos f
 
 - API do SUS para dados e identificação dos pacientes;
 - API do Synclab para comunicação laboratorial;
-- recebimento de informações e resultados laboratoriais sem digitação manual no SYNC SUS.
+- recebimento de informações e resultados laboratoriais sem digitação manual no SYNC HOSP.
 
 ### Estado atual
 
