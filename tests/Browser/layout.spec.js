@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 test("login and authenticated layout load compiled CSS and JavaScript", async ({
     page,
 }) => {
+    test.setTimeout(60_000);
+
     const failedAssets = [];
     const pageErrors = [];
     page.on("requestfailed", (request) => failedAssets.push(request.url()));
@@ -40,6 +42,18 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     await expect(page.locator("[x-data]").first()).toBeVisible();
     expect(failedAssets).toEqual([]);
     expect(pageErrors).toEqual([]);
+
+    await page.goto("/reception/open");
+    await page.getByRole("button", { name: "Continuar" }).first().click();
+    await page.getByRole("button", { name: "Cadastrar paciente" }).click();
+    await expect(page).toHaveURL(/\/patients\/create\?return_to_reception=1/);
+
+    await page.goto("/reception/open");
+    await page.getByRole("button", { name: "Continuar" }).first().click();
+    await page
+        .getByRole("button", { name: /criar identifica.* provis.*ria/i })
+        .click();
+    await expect(page).toHaveURL(/\/patients\/provisional\/create/);
 
     const longTextLayout = await page.locator("main").evaluate((main) => {
         const card = document.createElement("article");

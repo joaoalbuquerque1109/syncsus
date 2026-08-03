@@ -87,8 +87,8 @@
                         </template>
                     </div>
                     <p class="mt-5 text-sm text-slate-600">Não encontrou?
-                        <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.patient') }}" class="font-bold text-brand-700 underline">Cadastrar paciente</button>
-                        ou <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.provisional') }}" class="font-bold text-amber-700 underline">criar identificação provisória</button>.
+                        <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.patient') }}" formnovalidate class="font-bold text-brand-700 underline">Cadastrar paciente</button>
+                        ou <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.provisional') }}" formnovalidate class="font-bold text-amber-700 underline">criar identificação provisória</button>.
                     </p>
                 </div>
                 <div x-show="patient" class="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5">
