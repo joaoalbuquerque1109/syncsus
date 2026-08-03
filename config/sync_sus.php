@@ -39,4 +39,9 @@ return [
         explode(',', (string) env('SYNC_SUS_TRUSTED_PROXIES', '')),
     ))),
     'max_concurrent_sessions' => max(1, (int) env('SYNC_SUS_MAX_CONCURRENT_SESSIONS', 1)),
+    'synclab' => [
+        'enabled' => (bool) env('SYNC_SUS_SYNCLAB_ENABLED', false),
+        'connect_timeout_seconds' => max(1, (int) env('SYNC_SUS_SYNCLAB_CONNECT_TIMEOUT', 5)),
+        'timeout_seconds' => max(5, (int) env('SYNC_SUS_SYNCLAB_TIMEOUT', 30)),
+    ],
 ];
