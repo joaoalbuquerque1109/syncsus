@@ -6,16 +6,16 @@ namespace App\Modules\Patients\Application\Actions;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Patients\Application\Services\PatientMedicalRecordNumberService;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
-use App\Modules\Reception\Application\Services\NumberSequenceService;
 use App\Support\Text\NormalizesBrazilianData;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 final readonly class SavePatientAction
 {
-    public function __construct(private NumberSequenceService $sequences) {}
+    public function __construct(private PatientMedicalRecordNumberService $medicalRecordNumbers) {}
 
     /** @param array<string, mixed> $data */
     public function execute(array $data, User $user, int $healthUnitId, ?Patient $patient = null): Patient
@@ -31,7 +31,7 @@ final readonly class SavePatientAction
 
             $patient ??= new Patient([
                 'organization_id' => $organizationId,
-                'medical_record_number' => sprintf('P%08d', $this->sequences->next('patient_mrn')),
+                'medical_record_number' => $this->medicalRecordNumbers->next(),
                 'created_by' => $user->getKey(),
                 'status' => PatientStatus::Active,
             ]);

@@ -6,16 +6,16 @@ namespace App\Modules\Patients\Application\Actions;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Patients\Application\Services\PatientMedicalRecordNumberService;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
-use App\Modules\Reception\Application\Services\NumberSequenceService;
 use App\Support\Text\NormalizesBrazilianData;
 use Illuminate\Support\Facades\DB;
 
 final readonly class CreateProvisionalPatientAction
 {
-    public function __construct(private NumberSequenceService $sequences) {}
+    public function __construct(private PatientMedicalRecordNumberService $medicalRecordNumbers) {}
 
     /** @param array<string, mixed> $data */
     public function execute(array $data, User $user, int $healthUnitId): Patient
@@ -27,12 +27,11 @@ final readonly class CreateProvisionalPatientAction
                     && ($user->isPlatformAdministrator() || (int) $user->organization_id === $organizationId),
                 403,
             );
-            $number = $this->sequences->next('patient_mrn');
             $name = trim((string) ($data['full_name'] ?? 'Paciente não identificado'));
 
             return Patient::query()->create([
                 'organization_id' => $organizationId,
-                'medical_record_number' => sprintf('P%08d', $number),
+                'medical_record_number' => $this->medicalRecordNumbers->next(),
                 'full_name' => $name,
                 'normalized_name' => NormalizesBrazilianData::name($name),
                 'estimated_age' => $data['estimated_age'] ?? null,

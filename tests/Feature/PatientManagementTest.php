@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class PatientManagementTest extends TestCase
@@ -105,6 +106,50 @@ final class PatientManagementTest extends TestCase
             'is_provisional' => true,
             'full_name' => 'Paciente não identificado',
             'medical_record_number' => 'P00000002',
+        ]);
+    }
+
+    public function test_patient_numbering_recovers_when_the_sequence_is_behind_existing_records(): void
+    {
+        $unit = $this->createHealthUnit();
+        $this->seed(RolePermissionSeeder::class);
+        $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $user->assignRole('receptionist');
+
+        Patient::query()->create([
+            'organization_id' => $unit->organization_id,
+            'medical_record_number' => 'P00000003',
+            'full_name' => 'Paciente importado',
+            'normalized_name' => 'PACIENTE IMPORTADO',
+            'sex' => 'unknown',
+            'reference_health_unit_id' => $unit->getKey(),
+            'status' => 'active',
+            'created_by' => $user->getKey(),
+            'updated_by' => $user->getKey(),
+        ]);
+        DB::table('number_sequences')->updateOrInsert(
+            ['scope' => 'patient_mrn', 'date_key' => ''],
+            ['current_value' => 2, 'created_at' => now(), 'updated_at' => now()],
+        );
+
+        $this->actingAs($user)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->post(route('patients.provisional.store'), [
+                'sex' => 'unknown',
+                'estimated_age' => 40,
+                'estimated_age_range' => 'adult',
+                'provisional_description' => 'Paciente sem identificacao no momento do acolhimento.',
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('patients', [
+            'medical_record_number' => 'P00000004',
+            'is_provisional' => true,
+        ]);
+        $this->assertDatabaseHas('number_sequences', [
+            'scope' => 'patient_mrn',
+            'date_key' => '',
+            'current_value' => 4,
         ]);
     }
 
