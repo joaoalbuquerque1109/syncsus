@@ -6,6 +6,7 @@ namespace App\Modules\Medical\Infrastructure\Eloquent;
 
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
@@ -46,6 +47,12 @@ final class ExamOrder extends Model
     public function document(): BelongsTo
     {
         return $this->belongsTo(ClinicalDocument::class);
+    }
+
+    /** @return HasMany<LaboratoryOrderTransmission, $this> */
+    public function laboratoryTransmissions(): HasMany
+    {
+        return $this->hasMany(LaboratoryOrderTransmission::class);
     }
 
     protected function casts(): array

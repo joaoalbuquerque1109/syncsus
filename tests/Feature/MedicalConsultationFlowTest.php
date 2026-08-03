@@ -10,6 +10,8 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Medical\Infrastructure\Eloquent\DiagnosisCode;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
@@ -331,6 +333,50 @@ final class MedicalConsultationFlowTest extends TestCase
         $this->assertDatabaseHas('clinical_notes', ['status' => 'finalized', 'note_type' => 'reassessment']);
         $this->assertDatabaseHas('referrals', ['destination' => 'Ambulatório de ortopedia', 'status' => 'issued']);
         $this->assertSame(7, $consultation->fresh()?->version());
+    }
+
+    public function test_catalog_exam_creates_a_tenant_scoped_transmission_outbox(): void
+    {
+        [$unit, $doctor, $entry] = $this->context();
+        $consultation = $this->start($unit, $doctor, $entry);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $exam = $integration->exams()->create([
+            'external_code' => '127',
+            'name' => 'Hemograma completo',
+            'collection_instructions' => 'Coletar sangue total.',
+            'source_version' => 'catalog-v1',
+        ]);
+
+        $this->actingAs($doctor)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->post(route('medical.exam-orders', $consultation), [
+                'version' => 1,
+                'priority' => 'routine',
+                'clinical_indication' => 'Investigacao de anemia sintomatica.',
+                'items' => [[
+                    'laboratory_exam_id' => $exam->getKey(),
+                    'exam_name' => 'Nome adulterado pelo navegador',
+                    'group' => 'other',
+                    'laterality' => 'not_applicable',
+                ]],
+            ])
+            ->assertRedirect();
+
+        $item = ExamOrder::query()->sole()->items()->sole();
+        $transmission = LaboratoryOrderTransmission::query()->sole();
+
+        $this->assertSame('Hemograma completo', $item->exam_name);
+        $this->assertSame('laboratory', $item->group);
+        $this->assertSame('127', $item->external_exam_code);
+        $this->assertSame('catalog-v1', $item->catalog_version);
+        $this->assertSame('awaiting_contract', $transmission->status->value);
+        $this->assertSame($unit->getKey(), $transmission->health_unit_id);
+        $this->assertNull($transmission->external_order_number);
     }
 
     /**

@@ -49,6 +49,12 @@ final class LaboratoryIntegration extends Model
         return $this->hasMany(LaboratoryExam::class);
     }
 
+    /** @return HasMany<LaboratoryOrderTransmission, $this> */
+    public function transmissions(): HasMany
+    {
+        return $this->hasMany(LaboratoryOrderTransmission::class);
+    }
+
     protected function casts(): array
     {
         return [

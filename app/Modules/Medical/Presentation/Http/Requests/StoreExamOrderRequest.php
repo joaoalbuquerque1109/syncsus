@@ -24,6 +24,7 @@ final class StoreExamOrderRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:4000'],
             'items' => ['required', 'array', 'min:1', 'max:30'],
             'items.*.internal_code' => ['nullable', 'string', 'max:32'],
+            'items.*.laboratory_exam_id' => ['nullable', 'integer', 'exists:laboratory_exams,id'],
             'items.*.exam_name' => ['required', 'string', 'max:255'],
             'items.*.group' => ['required', Rule::in(['laboratory', 'imaging', 'cardiology', 'other'])],
             'items.*.priority' => ['nullable', Rule::in(['routine', 'urgent', 'emergency'])],
