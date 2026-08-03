@@ -41,7 +41,18 @@ return [
     'max_concurrent_sessions' => max(1, (int) env('SYNC_SUS_MAX_CONCURRENT_SESSIONS', 1)),
     'synclab' => [
         'enabled' => (bool) env('SYNC_SUS_SYNCLAB_ENABLED', false),
+        'base_url' => env('SYNC_SUS_SYNCLAB_BASE_URL', 'https://synclabweb.unisync.com.br'),
+        'unit_code' => env('SYNC_SUS_SYNCLAB_UNIT_CODE'),
+        'cnes' => env('SYNC_SUS_SYNCLAB_CNES'),
+        'username' => env('SYNC_SUS_SYNCLAB_USERNAME'),
+        'password' => env('SYNC_SUS_SYNCLAB_PASSWORD'),
+        'queue' => env('SYNC_SUS_SYNCLAB_QUEUE', 'integrations'),
         'connect_timeout_seconds' => max(1, (int) env('SYNC_SUS_SYNCLAB_CONNECT_TIMEOUT', 5)),
         'timeout_seconds' => max(5, (int) env('SYNC_SUS_SYNCLAB_TIMEOUT', 30)),
+        // Future phases remain explicitly disabled. They are not part of the
+        // outbound request payload and must not be enabled without a new review.
+        'samples_enabled' => false,
+        'barcodes_enabled' => false,
+        'results_enabled' => false,
     ],
 ];

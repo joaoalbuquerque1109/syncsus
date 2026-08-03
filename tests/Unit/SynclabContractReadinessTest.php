@@ -15,18 +15,20 @@ final class SynclabContractReadinessTest extends TestCase
         $this->assertSame('name_and_cpf_or_cns', config('synclab_contract.confirmed.patient_identification'));
         $this->assertSame('synclab_after_request', config('synclab_contract.confirmed.sample_identification'));
         $this->assertSame('sync_sus_laboratory_exams', config('synclab_contract.confirmed.catalog_source'));
+        $this->assertSame('health_unit_cnes', config('synclab_contract.confirmed.endpoint_scope'));
+        $this->assertSame('exam_orders_id', config('synclab_contract.confirmed.external_order_number'));
+        $this->assertFalse(config('sync_sus.synclab.samples_enabled'));
+        $this->assertFalse(config('sync_sus.synclab.barcodes_enabled'));
+        $this->assertFalse(config('sync_sus.synclab.results_enabled'));
     }
 
-    public function test_unresolved_decisions_keep_real_transmission_blocked(): void
+    public function test_outbound_contract_is_ready_and_future_capabilities_are_parked(): void
     {
         $readiness = app(SynclabContractReadiness::class);
 
-        $this->assertFalse($readiness->allowsTransmission());
-        $this->assertContains('external_tenant_code_semantics', $readiness->blockingDecisions());
-        $this->assertContains('duplicate_order_behaviour', $readiness->blockingDecisions());
-        $this->assertContains('external_order_number_format', $readiness->blockingDecisions());
-        $this->assertContains('result_partial_final_indicator', $readiness->blockingDecisions());
-        $this->assertContains('stable_result_identifiers', $readiness->blockingDecisions());
-        $this->assertContains('success_response_identifiers', $readiness->blockingDecisions());
+        $this->assertTrue($readiness->allowsTransmission());
+        $this->assertSame([], $readiness->blockingDecisions());
+        $this->assertSame('not_implemented', config('synclab_contract.standby.barcode_generation'));
+        $this->assertSame('not_implemented', config('synclab_contract.standby.result_reception'));
     }
 }

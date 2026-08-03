@@ -55,9 +55,14 @@ final class LaboratoryExamSearchController extends Controller
             ->map(fn (LaboratoryExam $exam): array => [
                 'id' => $exam->getKey(),
                 'code' => $exam->external_code,
+                'procedure_code' => $exam->sus_procedure_code,
                 'acronym' => $exam->acronym,
                 'name' => $exam->name,
-                'label' => trim(($exam->acronym ? $exam->acronym.' · ' : '').$exam->name),
+                'label' => trim(
+                    ($exam->acronym ? $exam->acronym.' - ' : '')
+                    .$exam->name
+                    .($exam->sus_procedure_code ? ' - SUS '.$exam->sus_procedure_code : ''),
+                ),
                 'material' => $exam->material?->name,
                 'container' => $exam->material?->container,
                 'cap_color' => $exam->material?->cap_color,

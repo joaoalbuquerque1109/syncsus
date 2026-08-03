@@ -34,6 +34,7 @@ final class LaboratoryExamSearchTest extends TestCase
         ]);
         $integration->exams()->create([
             'external_code' => '127',
+            'sus_procedure_code' => '0202020380',
             'acronym' => 'HEM',
             'name' => 'Hemograma completo',
             'synonyms' => ['hemograma'],
@@ -50,6 +51,7 @@ final class LaboratoryExamSearchTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.code', '127')
+            ->assertJsonPath('data.0.procedure_code', '0202020380')
             ->assertJsonPath('data.0.name', 'Hemograma completo');
     }
 }

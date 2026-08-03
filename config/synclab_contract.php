@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 return [
-    'version' => 'draft-2026-08-02',
+    'version' => 'outbound-orders-2026-08-03',
 
     'confirmed' => [
         // Synclab currently exposes no separate acknowledgement mechanism.
@@ -14,16 +14,22 @@ return [
         'sample_identification' => 'synclab_after_request',
         // The local laboratory_exams table is the only orderable exam source.
         'catalog_source' => 'sync_sus_laboratory_exams',
+        // The Synclab route is scoped by the seven-digit CNES of the unit.
+        'endpoint_scope' => 'health_unit_cnes',
+        // The numeric exam_orders.id is stable and is the service order shown in grids.
+        'external_order_number' => 'exam_orders_id',
+        'success_response' => 'http_200_only',
     ],
 
-    // Keep every unresolved external decision explicit. Transmission remains held
-    // in awaiting_contract until this map is completed in a dedicated commit.
-    'pending' => [
-        'external_tenant_code_semantics' => null,
-        'duplicate_order_behaviour' => null,
-        'external_order_number_format' => null,
-        'result_partial_final_indicator' => null,
-        'stable_result_identifiers' => null,
-        'success_response_identifiers' => null,
+    // These capabilities are intentionally parked for later releases. Keeping
+    // them visible prevents accidental implementation inside today's send-only scope.
+    'standby' => [
+        'sample_identification' => 'not_implemented',
+        'barcode_generation' => 'not_implemented',
+        'result_reception' => 'not_implemented',
+        'result_partial_final_indicator' => 'not_applicable',
+        'stable_result_identifiers' => 'not_applicable',
     ],
+
+    'pending' => [],
 ];

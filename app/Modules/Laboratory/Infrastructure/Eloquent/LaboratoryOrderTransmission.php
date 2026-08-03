@@ -19,7 +19,7 @@ final class LaboratoryOrderTransmission extends Model
     protected $guarded = [];
 
     protected $attributes = [
-        'status' => LaboratoryTransmissionStatus::AwaitingContract->value,
+        'status' => LaboratoryTransmissionStatus::AwaitingConfiguration->value,
         'attempt_count' => 0,
     ];
 
@@ -45,6 +45,15 @@ final class LaboratoryOrderTransmission extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(ExamOrder::class, 'exam_order_id');
+    }
+
+    public function statusEnum(): LaboratoryTransmissionStatus
+    {
+        $status = $this->getAttribute('status');
+
+        return $status instanceof LaboratoryTransmissionStatus
+            ? $status
+            : LaboratoryTransmissionStatus::from((string) $status);
     }
 
     protected function casts(): array
