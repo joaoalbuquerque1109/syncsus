@@ -11,7 +11,9 @@ use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Reception\Application\Actions\CancelEncounterAction;
 use App\Modules\Reception\Application\Actions\OpenEncounterAction;
@@ -48,6 +50,28 @@ final class ReceptionController extends Controller
                 ->where('is_active', true)->orderBy('display_order')->get(),
             'queues' => Queue::query()->where('health_unit_id', $unit->getKey())->where('is_active', true)->orderBy('display_order')->get(),
             'priorities' => AdministrativePriority::cases(),
+            'examRequesters' => HealthProfessional::query()
+                ->with(['user:id,name,is_active', 'registrations'])
+                ->where('organization_id', $unit->organization_id)
+                ->where('profession_type', 'doctor')
+                ->where('is_active', true)
+                ->whereHas('healthUnits', fn ($query) => $query->whereKey($unit->getKey()))
+                ->whereHas('user', fn ($query) => $query->where('is_active', true))
+                ->orderBy('full_name')
+                ->get(),
+            'selectedExams' => LaboratoryExam::query()
+                ->whereIn('id', (array) $request->old('exam_ids', []))
+                ->whereHas('integration', fn ($query) => $query
+                    ->where('organization_id', $unit->organization_id)
+                    ->where('health_unit_id', $unit->getKey()))
+                ->get()
+                ->map(fn (LaboratoryExam $exam): array => [
+                    'id' => $exam->getKey(),
+                    'code' => $exam->external_code,
+                    'name' => $exam->name,
+                    'label' => trim(($exam->acronym ? $exam->acronym.' · ' : '').$exam->name),
+                ])
+                ->values(),
         ]);
     }
 

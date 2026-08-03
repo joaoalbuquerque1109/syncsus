@@ -8,6 +8,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Actions\CreateReceptionExamOrderAction;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Application\Services\QueueTicketService;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
@@ -28,6 +29,7 @@ final readonly class OpenEncounterAction
         private NumberSequenceService $sequences,
         private QueueTicketService $tickets,
         private RecordAuditEventAction $audit,
+        private CreateReceptionExamOrderAction $createExamOrder,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -183,6 +185,8 @@ final readonly class OpenEncounterAction
                 'reason' => 'Entrada inicial pela recepção',
                 'occurred_at' => $now,
             ]);
+
+            $this->createExamOrder->execute($encounter, $data, $user, $unit, $request);
 
             IdempotencyKey::query()->create([
                 'user_id' => $user->getKey(),

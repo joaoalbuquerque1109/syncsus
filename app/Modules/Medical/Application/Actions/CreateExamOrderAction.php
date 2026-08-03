@@ -35,9 +35,14 @@ final readonly class CreateExamOrderAction
         return DB::transaction(function () use ($consultation, $data, $user, $unit, $request): ExamOrder {
             $locked = $this->guard->lockDraft($consultation, $user, $unit, (int) $data['version']);
             $order = ExamOrder::query()->create([
+                'organization_id' => $unit->organization_id,
+                'health_unit_id' => $unit->getKey(),
                 'encounter_id' => $locked->encounter_id,
                 'medical_consultation_id' => $locked->getKey(),
                 'requested_by' => $user->getKey(),
+                'created_by' => $user->getKey(),
+                'origin' => 'medical',
+                'status' => 'pending',
                 'priority' => $data['priority'],
                 'clinical_indication' => $data['clinical_indication'],
                 'notes' => $data['notes'] ?? null,

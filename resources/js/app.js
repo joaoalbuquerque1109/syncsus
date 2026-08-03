@@ -7,6 +7,7 @@ import dashboard from "./dashboard";
 import cidSearch from "./cid-search";
 import prescriptionItems from "./prescription-items";
 import examOrderItems from "./exam-order-items";
+import laboratoryExamSelector from "./laboratory-exam-selector";
 
 window.Alpine = Alpine;
 
@@ -17,4 +18,5 @@ Alpine.data("dashboard", dashboard);
 Alpine.data("cidSearch", cidSearch);
 Alpine.data("prescriptionItems", prescriptionItems);
 Alpine.data("examOrderItems", examOrderItems);
+Alpine.data("laboratoryExamSelector", laboratoryExamSelector);
 Alpine.start();

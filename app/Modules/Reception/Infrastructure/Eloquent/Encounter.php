@@ -12,6 +12,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Administration\Infrastructure\Eloquent\Room;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Medical\Infrastructure\Eloquent\EncounterDestination;
+use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
@@ -120,6 +121,12 @@ final class Encounter extends Model
     public function destination(): HasOne
     {
         return $this->hasOne(EncounterDestination::class);
+    }
+
+    /** @return HasMany<ExamOrder, $this> */
+    public function examOrders(): HasMany
+    {
+        return $this->hasMany(ExamOrder::class);
     }
 
     public function administrativePriorityEnum(): AdministrativePriority

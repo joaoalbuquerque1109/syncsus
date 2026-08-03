@@ -19,6 +19,7 @@ final class RolePermissionTest extends TestCase
             'administration.manage', 'audit.view', 'encounters.cancel', 'encounters.open',
             'medical.complete', 'medical.issue_documents', 'medical.prescribe', 'medical.start',
             'medical.view', 'patients.clinical_history', 'patients.create',
+            'laboratory.orders.cancel', 'laboratory.orders.create', 'laboratory.orders.view',
             'patients.update', 'patients.view', 'queues.call', 'queues.transfer', 'queues.view',
             'reports.view', 'triage.addendum',
             'triage.complete', 'triage.start', 'triage.view', 'units.access_all',
@@ -26,6 +27,7 @@ final class RolePermissionTest extends TestCase
         'receptionist' => [
             'encounters.cancel', 'encounters.open', 'patients.create', 'patients.update',
             'patients.view', 'queues.view',
+            'laboratory.orders.cancel', 'laboratory.orders.create', 'laboratory.orders.view',
         ],
         'triage_professional' => [
             'encounters.cancel_clinical', 'patients.clinical_history', 'patients.view', 'queues.call', 'queues.transfer',
@@ -34,8 +36,9 @@ final class RolePermissionTest extends TestCase
         'doctor' => [
             'encounters.cancel_clinical', 'medical.complete', 'medical.issue_documents', 'medical.prescribe', 'medical.start',
             'medical.view', 'patients.clinical_history', 'patients.view', 'queues.call', 'queues.view',
+            'laboratory.orders.cancel', 'laboratory.orders.create', 'laboratory.orders.view',
         ],
-        'manager' => ['administration.manage', 'audit.view', 'queues.view', 'reports.view'],
+        'manager' => ['administration.manage', 'audit.view', 'laboratory.orders.view', 'queues.view', 'reports.view'],
         'auditor' => ['audit.view', 'reports.view'],
     ];
 

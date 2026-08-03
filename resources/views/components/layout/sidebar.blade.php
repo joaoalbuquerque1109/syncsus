@@ -38,6 +38,13 @@
                 'hover:bg-white/8 hover:text-white' => !request()->routeIs('patients.*'),
             ])><span aria-hidden="true">♙</span> Pacientes</a>
         @endcan
+        @can('laboratory.orders.view')
+            <a href="{{ route('laboratory.orders.index') }}" @class([
+                'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
+                'bg-brand-600 text-white' => request()->routeIs('laboratory.orders.*'),
+                'hover:bg-white/8 hover:text-white' => !request()->routeIs('laboratory.orders.*'),
+            ])><span aria-hidden="true">▥</span> Requisições de exames</a>
+        @endcan
         @can('reports.view')
             <a href="{{ route('reports.index') }}" @class([
                 'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',

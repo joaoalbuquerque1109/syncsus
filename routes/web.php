@@ -13,6 +13,7 @@ use App\Modules\Documents\Presentation\Http\Controllers\SourceClinicalDocumentCo
 use App\Modules\Identity\Presentation\Http\Controllers\ActiveHealthUnitController;
 use App\Modules\Identity\Presentation\Http\Controllers\AuthenticatedSessionController;
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
+use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
 use App\Modules\Medical\Presentation\Http\Controllers\DiagnosisCodeSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\LaboratoryExamSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\MedicalConsultationController;
@@ -87,6 +88,14 @@ Route::middleware(['auth', 'active'])->group(function (): void {
             ->name('reception.cancel');
 
         Route::get('/queues', [QueueController::class, 'index'])->middleware('permission:queues.view')->name('queues.index');
+        Route::get('/laboratory/exams/search', LaboratoryExamSearchController::class)
+            ->middleware('permission:laboratory.orders.create')
+            ->name('laboratory.exams.search');
+        Route::prefix('laboratory/orders')->name('laboratory.orders.')->group(function (): void {
+            Route::get('/', [LaboratoryOrderController::class, 'index'])->middleware('permission:laboratory.orders.view')->name('index');
+            Route::get('/{order}', [LaboratoryOrderController::class, 'show'])->middleware('permission:laboratory.orders.view')->name('show');
+            Route::post('/{order}/cancel', [LaboratoryOrderController::class, 'cancel'])->middleware('permission:laboratory.orders.cancel')->name('cancel');
+        });
         Route::get('/queues/{queue}/entries', [QueueController::class, 'entries'])->middleware('permission:queues.view')->name('queues.entries');
         Route::prefix('queue-entries/{entry}')->name('queue-entries.')->group(function (): void {
             Route::post('/call', [QueueEntryController::class, 'call'])->middleware('permission:queues.call')->name('call');

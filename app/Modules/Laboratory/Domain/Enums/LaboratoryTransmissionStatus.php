@@ -13,4 +13,5 @@ enum LaboratoryTransmissionStatus: string
     case Accepted = 'accepted';
     case Rejected = 'rejected';
     case ManualReview = 'manual_review';
+    case Cancelled = 'cancelled';
 }

@@ -20,11 +20,13 @@ final class RolePermissionSeeder extends Seeder
             'triage.view', 'triage.start', 'triage.complete', 'triage.addendum',
             'medical.view', 'medical.start', 'medical.complete', 'medical.prescribe',
             'medical.issue_documents', 'reports.view', 'audit.view',
+            'laboratory.orders.view', 'laboratory.orders.create', 'laboratory.orders.cancel',
             'administration.manage', 'units.access_all',
         ],
         'receptionist' => [
             'patients.view', 'patients.create', 'patients.update',
             'encounters.open', 'encounters.cancel', 'queues.view',
+            'laboratory.orders.view', 'laboratory.orders.create', 'laboratory.orders.cancel',
         ],
         'triage_professional' => [
             'patients.view', 'patients.clinical_history', 'queues.view', 'queues.call', 'queues.transfer',
@@ -35,8 +37,9 @@ final class RolePermissionSeeder extends Seeder
             'patients.view', 'patients.clinical_history', 'queues.view', 'queues.call', 'medical.view',
             'medical.start', 'medical.complete', 'medical.prescribe',
             'medical.issue_documents', 'encounters.cancel_clinical',
+            'laboratory.orders.view', 'laboratory.orders.create', 'laboratory.orders.cancel',
         ],
-        'manager' => ['queues.view', 'reports.view', 'audit.view', 'administration.manage'],
+        'manager' => ['queues.view', 'reports.view', 'audit.view', 'administration.manage', 'laboratory.orders.view'],
         'auditor' => ['audit.view', 'reports.view'],
     ];
 
