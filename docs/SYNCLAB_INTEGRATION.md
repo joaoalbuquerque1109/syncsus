@@ -58,6 +58,8 @@ openssl.cafile="C:\caminho\seguro\cacert.pem"
 
 Use uma fila assíncrona (`QUEUE_CONNECTION=database` ou `redis`) e inicie todo o ambiente com `composer run dev`. Esse comando sobe servidor, worker das filas `integrations,default`, agendador e Vite. Assim uma indisponibilidade do Synclab não bloqueia a tela clínica. O Laravel Pail não faz parte desse comando porque depende de `pcntl`, extensão indisponível no PHP para Windows; quando necessário, acompanhe `storage/logs/laravel.log` em outro terminal.
 
+Mantenha apenas uma execução de `composer run dev`. O Vite usa obrigatoriamente a porta `5173`, que é a origem local autorizada pela política de segurança do sistema. O comando remove automaticamente referências `public/hot` obsoletas antes de iniciar.
+
 Pedidos criados enquanto a integração estava desativada permanecem em `awaiting_configuration`. Eles não são enviados em lote ao habilitar a unidade; um gestor deve revisar e usar **Tentar novamente** em cada pedido.
 
 Credenciais e dados reais de pacientes nunca devem ser versionados. Antes do primeiro envio em produção, use uma requisição de paciente fictício autorizada pelo Synclab e confira o registro correspondente no grid do sistema de destino.

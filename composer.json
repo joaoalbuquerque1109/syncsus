@@ -44,6 +44,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
+            "@php -r \"is_file('public/hot') && unlink('public/hot');\"",
             "npx concurrently -c \"#93c5fd,#c4b5fd,#86efac,#fdba74\" \"php artisan serve\" \"php artisan queue:listen --queue=integrations,default --tries=4 --timeout=60\" \"php artisan schedule:work\" \"npm run dev\" --names=server,queue,scheduler,vite --kill-others"
         ],
         "test": [
