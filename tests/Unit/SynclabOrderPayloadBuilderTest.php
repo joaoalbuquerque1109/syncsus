@@ -15,6 +15,8 @@ use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientIdentifier;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
+use App\Modules\Professionals\Infrastructure\Eloquent\ProfessionalRegistration;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Illuminate\Support\Collection;
 use Tests\TestCase;
@@ -35,6 +37,11 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
             ->toArray();
 
         $this->assertSame('SYNC HOSP', data_get($payload, 'pedido_lab.identificador'));
+        $this->assertSame('27', data_get($payload, 'pedido_lab.usuario_web_id'));
+        $this->assertSame('Dra. Teste', data_get($payload, 'pedido_lab.pedido.profissional'));
+        $this->assertSame('PE', data_get($payload, 'pedido_lab.pedido.ufconselho'));
+        $this->assertSame('CRM', data_get($payload, 'pedido_lab.pedido.orgaoemissor'));
+        $this->assertSame('12345', data_get($payload, 'pedido_lab.pedido.numconselho'));
         $this->assertSame('987654', data_get($payload, 'pedido_lab.paciente.codigo'));
         $this->assertSame('12345678901', data_get($payload, 'pedido_lab.paciente.cpf'));
         $this->assertSame(127, data_get($payload, 'pedido_lab.exames.0.codigo'));
@@ -80,9 +87,28 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
             'exam_name' => 'Hemograma completo',
         ]);
         $item->setRelation('laboratoryExam', null);
-        $order = new ExamOrder(['requested_by' => 15, 'priority' => 'routine', 'requested_at' => now()]);
+        $order = new ExamOrder([
+            'requested_by' => 15,
+            'created_by' => 27,
+            'origin' => 'reception',
+            'priority' => 'routine',
+            'requested_at' => now(),
+        ]);
         $user = new User(['id' => 15, 'name' => 'Dra. Teste']);
-        $user->setRelation('professionalProfile', null);
+        $professional = new HealthProfessional([
+            'institutional_code' => 'MED-15',
+            'treatment_name' => 'Dra.',
+            'full_name' => 'Teste',
+        ]);
+        $professional->setRelation('registrations', new Collection([
+            new ProfessionalRegistration([
+                'council_type' => 'CRM',
+                'registration_number' => '12345',
+                'state' => 'PE',
+                'is_primary' => true,
+            ]),
+        ]));
+        $user->setRelation('professionalProfile', $professional);
         $order->setRelation('requestedBy', $user);
         $order->setRelation('encounter', $encounter);
         $order->setRelation('items', new Collection([$item]));

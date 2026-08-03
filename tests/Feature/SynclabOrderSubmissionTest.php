@@ -60,6 +60,8 @@ final class SynclabOrderSubmissionTest extends TestCase
             return $request->url() === 'https://synclabweb.unisync.com.br/app/addrequisicao/6612547'
                 && $request->hasHeader('Authorization')
                 && data_get($payload, 'pedido_lab.ordem_servico') === (string) $order->getKey()
+                && data_get($payload, 'pedido_lab.usuario_web_id') === (string) $order->created_by
+                && data_get($payload, 'pedido_lab.pedido.profissional') === 'Dra. Solicitante'
                 && data_get($payload, 'pedido_lab.pedido.cnesUnidadeExecutante') === 6612547
                 && data_get($payload, 'pedido_lab.paciente.codigo') === (string) $order->encounter->patient_id
                 && data_get($payload, 'pedido_lab.paciente.cpf') === '52998224725'
@@ -69,6 +71,23 @@ final class SynclabOrderSubmissionTest extends TestCase
                 && ($exam['itens'] ?? null) === []
                 && ! array_key_exists('sigla', $exam)
                 && ! array_key_exists('resultado', $exam);
+        });
+    }
+
+    public function test_reception_order_sends_receptionist_as_web_user_and_doctor_as_requester(): void
+    {
+        [$order, $transmission, $unit] = $this->outboundOrder();
+        $receptionist = $this->createUserWithUnit($unit, ['name' => 'Recepcionista Teste']);
+        $order->update(['created_by' => $receptionist->getKey()]);
+        Http::fake(['*' => Http::response(['message' => 'ok'], 200)]);
+
+        app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $transmission->getKey());
+
+        Http::assertSent(function (Request $request) use ($receptionist): bool {
+            $payload = $request->data();
+
+            return data_get($payload, 'pedido_lab.usuario_web_id') === (string) $receptionist->getKey()
+                && data_get($payload, 'pedido_lab.pedido.profissional') === 'Dra. Solicitante';
         });
     }
 

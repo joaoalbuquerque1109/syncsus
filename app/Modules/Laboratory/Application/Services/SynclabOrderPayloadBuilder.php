@@ -78,15 +78,14 @@ final class SynclabOrderPayloadBuilder
         }
         $requestedBy = $order->requestedBy;
         $profileValue = $requestedBy->getRelationValue('professionalProfile');
-        $institutionalCode = (string) $order->requested_by;
         $professionalName = (string) $requestedBy->name;
         $registration = null;
         if ($profileValue instanceof HealthProfessional) {
-            $institutionalCode = (string) $profileValue->institutional_code;
             $professionalName = $profileValue->displayName();
             $registration = $profileValue->registrations->firstWhere('is_primary', true)
                 ?? $profileValue->registrations->first();
         }
+        $creatorId = (string) ($order->created_by ?: $order->requested_by);
         $birthDate = $patient->getAttribute('birth_date');
         $requestedAt = $order->getAttribute('requested_at');
         $patientData = array_filter([
@@ -102,7 +101,10 @@ final class SynclabOrderPayloadBuilder
             'ordem_servico' => $externalOrderNumber,
             'codigo_pedido' => $externalOrderNumber,
             'identificador' => 'SYNC HOSP',
-            'usuario_web_id' => $institutionalCode,
+            // Synclab does not define a separate receptionist object. The
+            // documented web-user field identifies who entered the order,
+            // while pedido.profissional identifies the ordering doctor.
+            'usuario_web_id' => $creatorId,
             'pedido' => array_filter([
                 'codigo' => $externalOrderNumber,
                 'ordem_servico' => $externalOrderNumber,
