@@ -80,13 +80,23 @@ final class HealthUnitScopeTest extends TestCase
 
         $this->actingAs($administrator)
             ->get('/dashboard')
-            ->assertOk();
+            ->assertOk()
+            ->assertSee('Visualizar unidade')
+            ->assertSee("Hospital GLOBAL-FIRST · Unidade GLOBAL-FIRST · CNES {$firstUnit->cnes_code}")
+            ->assertSee("Hospital GLOBAL-SECOND · Unidade GLOBAL-SECOND · CNES {$secondUnit->cnes_code}");
         $this->actingAs($administrator)
             ->withSession(['active_health_unit_id' => $firstUnit->getKey()])
             ->put('/active-health-unit', ['health_unit' => $secondUnit->public_id])
+            ->assertRedirect(route('dashboard'))
             ->assertSessionHas('success');
 
         $this->assertSame($secondUnit->getKey(), session('active_health_unit_id'));
         $this->assertDatabaseCount('health_unit_user', 0);
+
+        $this->actingAs($administrator)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertSee('value="'.$secondUnit->public_id.'" selected', false)
+            ->assertSee('Unidade GLOBAL-SECOND');
     }
 }

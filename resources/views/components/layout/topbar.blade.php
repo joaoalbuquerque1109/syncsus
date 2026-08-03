@@ -1,6 +1,8 @@
 <header class="sticky top-0 z-30 flex min-h-18 items-center justify-between border-b border-slate-200 bg-white px-5 lg:px-8">
-    <div class="flex items-center gap-3">
-        @if(auth()->user()->isPlatformAdministrator())
+    @php($isPlatformAdministrator = auth()->user()->isPlatformAdministrator())
+
+    <div class="flex min-w-0 items-center gap-3">
+        @if($isPlatformAdministrator)
             <span class="hidden rounded-full bg-violet-100 px-3 py-2 text-xs font-extrabold text-violet-800 md:inline">
                 Administrador global
             </span>
@@ -11,23 +13,37 @@
             @click="sidebarOpen = !sidebarOpen"
             aria-label="Abrir menu"
         >☰</button>
-        <div>
-            <p class="text-xs font-medium tracking-wide text-slate-500">
+        <div class="min-w-0">
+            <p class="truncate text-xs font-medium tracking-wide text-slate-500">
                 {{ $activeHealthUnit->organization->code }} · {{ $activeHealthUnit->code }}
             </p>
-            <h1 class="text-lg font-extrabold text-slate-900">{{ $title ?? 'SYNC HOSP' }}</h1>
+            <h1 class="truncate text-lg font-extrabold text-slate-900">{{ $title ?? 'SYNC HOSP' }}</h1>
         </div>
     </div>
 
-    <div class="flex items-center gap-3">
-        @if($availableHealthUnits->count() > 1)
-            <form method="POST" action="{{ route('active-health-unit.update') }}">
+    <div class="flex min-w-0 items-center gap-3">
+        @if($isPlatformAdministrator || $availableHealthUnits->count() > 1)
+            <form method="POST" action="{{ route('active-health-unit.update') }}" class="flex min-w-0 items-center gap-2">
                 @csrf
                 @method('PUT')
-                <label class="sr-only" for="health-unit">Unidade ativa</label>
-                <select id="health-unit" name="health_unit" class="field-control py-2" onchange="this.form.submit()">
+                <label class="hidden whitespace-nowrap text-xs font-bold uppercase tracking-wide text-slate-500 xl:block" for="health-unit">
+                    {{ $isPlatformAdministrator ? 'Visualizar unidade' : 'Unidade ativa' }}
+                </label>
+                <select
+                    id="health-unit"
+                    name="health_unit"
+                    class="field-control min-w-0 max-w-64 truncate py-2 text-sm font-bold"
+                    aria-label="{{ $isPlatformAdministrator ? 'Visualizar unidade' : 'Unidade ativa' }}"
+                    onchange="this.form.submit()"
+                >
                     @foreach($availableHealthUnits as $unit)
-                        <option value="{{ $unit->public_id }}" @selected($unit->is($activeHealthUnit))>{{ auth()->user()->isPlatformAdministrator() ? $unit->organization->trade_name.' · ' : '' }}{{ $unit->name }}</option>
+                        <option value="{{ $unit->public_id }}" @selected($unit->is($activeHealthUnit))>
+                            @if($isPlatformAdministrator)
+                                {{ $unit->organization->trade_name }} · {{ $unit->name }} · CNES {{ $unit->cnes_code ?: $unit->organization->cnes_code }}
+                            @else
+                                {{ $unit->name }}
+                            @endif
+                        </option>
                     @endforeach
                 </select>
             </form>
