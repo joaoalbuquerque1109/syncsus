@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Laboratory\Application\Services;
 
+use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Laboratory\Application\Data\LaboratoryOrderPayload;
 use App\Modules\Laboratory\Application\Exceptions\InvalidLaboratoryOrder;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
@@ -23,7 +24,7 @@ final class SynclabOrderPayloadBuilder
     ): LaboratoryOrderPayload {
         $order->loadMissing([
             'requestedBy.professionalProfile.registrations',
-            'encounter.healthUnit',
+            'encounter.healthUnit.organization',
             'encounter.currentDepartment',
             'encounter.patient.identifiers',
             'items.laboratoryExam',
@@ -72,7 +73,9 @@ final class SynclabOrderPayloadBuilder
         })->all();
 
         $unit = $order->encounter->healthUnit;
-        $cnes = preg_replace('/\D/', '', (string) $unit->cnes_code);
+        $organization = $unit->getRelationValue('organization');
+        $cnes = ($organization instanceof Organization ? $organization->tenantIdentifier() : null)
+            ?? preg_replace('/\D/', '', (string) $unit->cnes_code);
         if (strlen($cnes) !== 7) {
             throw new InvalidLaboratoryOrder('A unidade precisa possuir um codigo CNES valido com 7 digitos.');
         }

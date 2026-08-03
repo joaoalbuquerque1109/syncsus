@@ -12,6 +12,16 @@ Para São Caetano/PE, o CNES de teste é `6612547`. O campo `ordem_servico` envi
 
 Somente uma resposta HTTP 200 confirma a transmissão. Respostas 429 e 5xx entram em nova tentativa; outros códigos HTTP ficam rejeitados para revisão operacional.
 
+O JSON da primeira tentativa fica armazenado de forma criptografada e imutável.
+As tentativas posteriores reutilizam exatamente esse snapshot, mesmo que o
+cadastro do paciente ou do profissional seja alterado depois da emissão.
+Respostas do provedor também ficam criptografadas no histórico de tentativas.
+
+Um envio em estado `sending` recebe uma concessão temporária (lease). Se o
+worker for interrompido e a concessão expirar, o pedido vai para
+`manual_review`; ele não é reenviado automaticamente, pois o Synclab pode ter
+recebido a chamada antes da queda. Confirme primeiro no sistema de destino.
+
 ## Catálogo
 
 O arquivo versionado `database/data/synclab_exams.csv` é importado para `laboratory_exams`. O seeder aceita exclusivamente linhas com `itemexame = 0`; itens/componentes não podem ser selecionados diretamente. O catálogo atual possui 123 exames-pai.
@@ -39,7 +49,6 @@ Amostras, códigos de barras, componentes analíticos e recebimento de resultado
 ```dotenv
 SYNC_SUS_SYNCLAB_ENABLED=true
 SYNC_SUS_SYNCLAB_BASE_URL=https://synclabweb.unisync.com.br
-SYNC_SUS_SYNCLAB_UNIT_CODE=URGENCIA-CENTRAL
 SYNC_SUS_SYNCLAB_CNES=6612547
 SYNC_SUS_SYNCLAB_USERNAME=<usuario-fornecido-pelo-synclab>
 SYNC_SUS_SYNCLAB_PASSWORD=<senha-fornecida-pelo-synclab>
@@ -49,6 +58,10 @@ SYNC_SUS_SYNCLAB_TIMEOUT=30
 ```
 
 Depois de configurar as variáveis, execute o deploy normalmente. A inicialização aplica migrations e seeders; o mesmo container do Railway executa a aplicação web, o worker da fila e o agendador. Não é necessário criar outro serviço neste momento.
+
+O CNES de sete dígitos é a identidade pública e única do tenant. Ele deve
+ser igual na organização, na unidade principal e na configuração Synclab; a
+tela administrativa sincroniza esses valores e rejeita duplicidades.
 
 ### Ambiente local no Windows
 

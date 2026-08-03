@@ -161,6 +161,18 @@ final class ReceptionOpeningTest extends TestCase
         $this->actingAs($doctor)->withSession($session)
             ->get(route('laboratory.orders.index'))
             ->assertForbidden();
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('laboratory.orders.show', $order))
+            ->assertOk()
+            ->assertSee('Voltar ao fluxo');
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('laboratory.orders.show', $order))
+            ->assertOk();
+        $otherDoctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $otherDoctor->assignRole('doctor');
+        $this->actingAs($otherDoctor)->withSession($session)
+            ->get(route('laboratory.orders.show', $order))
+            ->assertForbidden();
 
         $administrator = $this->createPlatformAdministrator();
         $administrator->assignRole('administrator');
@@ -223,7 +235,7 @@ final class ReceptionOpeningTest extends TestCase
                 'reason' => 'Solicitação cancelada antes da coleta por orientação do solicitante.',
                 'confirmation' => '1',
             ])
-            ->assertRedirect(route('laboratory.orders.index'));
+            ->assertRedirect(route('reception.receipt', $order->encounter_id));
 
         $this->assertSame('cancelled', $order->fresh()?->status);
         $this->assertDatabaseCount('exam_orders', 1);

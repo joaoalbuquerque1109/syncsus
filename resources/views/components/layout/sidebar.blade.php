@@ -61,6 +61,13 @@
         @endcan
         @can('administration.manage')
             <p class="px-4 pb-1 pt-3 text-[0.65rem] font-extrabold uppercase tracking-widest text-slate-500">Administração</p>
+            @if(auth()->user()->isPlatformAdministrator())
+                <a href="{{ route('administration.tenants.index') }}" @class([
+                    'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
+                    'bg-brand-600 text-white' => request()->routeIs('administration.tenants.*'),
+                    'hover:bg-white/8 hover:text-white' => !request()->routeIs('administration.tenants.*'),
+                ])><span aria-hidden="true">O</span> Unidades e tenants</a>
+            @endif
             <a href="{{ route('administration.users.index') }}" @class([
                 'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
                 'bg-brand-600 text-white' => request()->routeIs('administration.users.*'),

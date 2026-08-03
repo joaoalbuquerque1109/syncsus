@@ -23,8 +23,10 @@ abstract class TestCase extends BaseTestCase
 
     protected function createHealthUnit(string $code = 'CENTRAL'): HealthUnit
     {
+        $cnes = str_pad((string) (abs(crc32($code)) % 10000000), 7, '0', STR_PAD_LEFT);
         $organization = Organization::query()->create([
             'code' => $code,
+            'cnes_code' => $cnes,
             'legal_name' => "Organização {$code}",
             'trade_name' => "Hospital {$code}",
             'timezone' => 'America/Fortaleza',
@@ -35,6 +37,7 @@ abstract class TestCase extends BaseTestCase
         return HealthUnit::query()->create([
             'organization_id' => $organization->getKey(),
             'code' => $code,
+            'cnes_code' => $cnes,
             'name' => "Unidade {$code}",
             'is_active' => true,
         ]);

@@ -9,6 +9,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Actions\CancelLaboratoryOrderAction;
 use App\Modules\Laboratory\Application\Actions\RetryLaboratoryOrderTransmissionAction;
+use App\Modules\Laboratory\Application\Services\LaboratoryOrderAccessService;
 use App\Modules\Laboratory\Presentation\Http\Requests\CancelLaboratoryOrderRequest;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use Illuminate\Http\RedirectResponse;
@@ -52,10 +53,15 @@ final class LaboratoryOrderController extends Controller
         return view('laboratory.orders.index', compact('orders', 'filters'));
     }
 
-    public function show(Request $request, ExamOrder $order): View
-    {
+    public function show(
+        Request $request,
+        ExamOrder $order,
+        LaboratoryOrderAccessService $access,
+    ): View {
         $unit = $this->unit($request);
         $this->ensureUnit($order, $unit);
+        $user = $request->user();
+        abort_unless($user instanceof User && $access->canView($user, $order, $unit), 403);
 
         return view('laboratory.orders.show', [
             'order' => $order->load([
@@ -63,6 +69,8 @@ final class LaboratoryOrderController extends Controller
                 'createdBy', 'cancelledBy', 'items.laboratoryExam',
                 'laboratoryTransmissions.integration', 'laboratoryTransmissions.attempts',
             ]),
+            'backUrl' => $this->contextualReturnUrl($order, $user),
+            'canViewClinicalDetails' => $access->canViewClinicalDetails($user),
         ]);
     }
 
@@ -70,13 +78,17 @@ final class LaboratoryOrderController extends Controller
         CancelLaboratoryOrderRequest $request,
         ExamOrder $order,
         CancelLaboratoryOrderAction $action,
+        LaboratoryOrderAccessService $access,
     ): RedirectResponse {
         $unit = $this->unit($request);
         $user = $request->user();
         abort_unless($user instanceof User, 403);
+        $this->ensureUnit($order, $unit);
+        abort_unless($access->canCancel($user, $order, $unit), 403);
         $action->execute($order, (string) $request->input('reason'), $user, $unit, $request);
 
-        return redirect()->route('laboratory.orders.index')->with('success', 'Requisição cancelada sem apagar o histórico.');
+        return redirect()->to($this->contextualReturnUrl($order, $user))
+            ->with('success', 'Requisição cancelada sem apagar o histórico.');
     }
 
     public function retry(
@@ -117,5 +129,27 @@ final class LaboratoryOrderController extends Controller
             && (int) $order->health_unit_id === (int) $unit->getKey(),
             404,
         );
+    }
+
+    private function contextualReturnUrl(ExamOrder $order, User $user): string
+    {
+        if ($user->isPlatformAdministrator()) {
+            return route('laboratory.orders.index');
+        }
+
+        if ($order->medical_consultation_id !== null) {
+            return route('medical.show', [
+                'consultation' => $order->medical_consultation_id,
+                'tab' => 'exams',
+            ]);
+        }
+
+        if ($order->origin === 'reception') {
+            return route('reception.receipt', $order->encounter_id);
+        }
+
+        return $user->hasRole('manager')
+            ? route('administration.synclab.edit')
+            : route('dashboard');
     }
 }

@@ -50,7 +50,11 @@ export default function examOrderItems(initialItems = [], config = {}) {
             const term = item.exam_name.trim();
             this.clearCatalogSelection(item);
 
-            if (item.group !== "laboratory" || term.length < 2 || !config.searchUrl) {
+            if (
+                item.group !== "laboratory" ||
+                term.length < 2 ||
+                !config.searchUrl
+            ) {
                 item.catalogResults = [];
                 item.catalogOpen = false;
                 return;

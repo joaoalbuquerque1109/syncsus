@@ -24,7 +24,7 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     expect(bodyFont.toLowerCase()).not.toContain("times new roman");
 
     await page
-        .getByLabel("Código da unidade")
+        .getByLabel("CNES da unidade")
         .fill(process.env.E2E_UNIT_CODE || "ADMIN");
     await page
         .getByLabel("E-mail institucional")

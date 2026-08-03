@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HealthController;
 use App\Modules\Administration\Presentation\Http\Controllers\CatalogManagementController;
+use App\Modules\Administration\Presentation\Http\Controllers\TenantProvisioningController;
 use App\Modules\Administration\Presentation\Http\Controllers\UserManagementController;
 use App\Modules\Audit\Presentation\Http\Controllers\AuditTrailController;
 use App\Modules\Documents\Presentation\Http\Controllers\ClinicalDocumentController;
@@ -54,6 +55,13 @@ Route::middleware(['auth', 'active'])->group(function (): void {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
     Route::get('/password/change', [PasswordController::class, 'edit'])->name('password.edit');
     Route::put('/password/change', [PasswordController::class, 'update'])->name('password.update');
+
+    Route::middleware('password.changed')->prefix('administration/tenants')
+        ->name('administration.tenants.')
+        ->group(function (): void {
+            Route::get('/', [TenantProvisioningController::class, 'index'])->name('index');
+            Route::post('/', [TenantProvisioningController::class, 'store'])->name('store');
+        });
 
     Route::middleware(['password.changed', 'active.unit'])->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');

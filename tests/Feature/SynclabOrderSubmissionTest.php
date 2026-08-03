@@ -45,6 +45,11 @@ final class SynclabOrderSubmissionTest extends TestCase
         $this->assertSame(1, $transmission->attempt_count);
         $this->assertSame(200, $transmission->last_http_status);
         $this->assertNotNull($transmission->accepted_at);
+        $this->assertIsArray($transmission->request_payload);
+        $this->assertStringNotContainsString(
+            'Paciente Teste Synclab',
+            (string) $transmission->getRawOriginal('request_payload'),
+        );
         $this->assertDatabaseHas('laboratory_transmission_attempts', [
             'laboratory_order_transmission_id' => $transmission->getKey(),
             'attempt_number' => 1,
@@ -147,6 +152,58 @@ final class SynclabOrderSubmissionTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_retries_reuse_the_immutable_encrypted_payload_snapshot(): void
+    {
+        [$order, $transmission] = $this->outboundOrder('SNAPSHOT-503');
+        Http::fake(['*' => Http::sequence()->push([], 503)->push(['message' => 'ok'], 200)]);
+
+        try {
+            app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $transmission->getKey());
+        } catch (RuntimeException) {
+            // A falha temporaria e esperada para preparar a segunda tentativa.
+        }
+
+        $order->requestedBy()->update(['name' => 'Nome alterado depois da solicitacao']);
+        app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $transmission->getKey());
+
+        $requests = Http::recorded();
+        $this->assertCount(2, $requests);
+        $this->assertSame($requests[0][0]->data(), $requests[1][0]->data());
+        $this->assertSame('Dra. Solicitante', data_get($requests[1][0]->data(), 'pedido_lab.pedido.profissional'));
+        $this->assertSame('accepted', $transmission->fresh()?->statusEnum()->value);
+    }
+
+    public function test_expired_sending_lease_requires_manual_review_instead_of_duplicating_delivery(): void
+    {
+        Queue::fake();
+        [, $transmission] = $this->outboundOrder('STALE-SENDING');
+        $transmission->update([
+            'status' => 'sending',
+            'attempt_count' => 1,
+            'worker_token' => 'worker-interrompido',
+            'sending_started_at' => now()->subMinutes(3),
+            'lease_expires_at' => now()->subMinute(),
+        ]);
+        $transmission->attempts()->create([
+            'attempt_number' => 1,
+            'status' => 'sending',
+            'started_at' => now()->subMinutes(3),
+        ]);
+
+        $dispatched = app(DispatchPendingLaboratoryTransmissionsAction::class)->execute();
+
+        $this->assertSame(0, $dispatched);
+        $this->assertSame('manual_review', $transmission->fresh()?->statusEnum()->value);
+        $this->assertSame('sending_lease_expired', $transmission->fresh()?->error_code);
+        $this->assertDatabaseHas('laboratory_transmission_attempts', [
+            'laboratory_order_transmission_id' => $transmission->getKey(),
+            'status' => 'manual_review',
+            'error_code' => 'sending_lease_expired',
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.transmission_lease_expired']);
+        Queue::assertNothingPushed();
+    }
+
     /** @return array{ExamOrder, LaboratoryOrderTransmission, HealthUnit, User} */
     private function outboundOrder(string $encounterNumber = 'SYNC-TEST-001'): array
     {
@@ -159,8 +216,14 @@ final class SynclabOrderSubmissionTest extends TestCase
             'CNS-201' => 'CENTRAL-201',
             default => 'CENTRAL-503',
         };
+        $cnes = match ($encounterNumber) {
+            'SYNC-TEST-001' => '6612547',
+            'CNS-201' => '6612548',
+            default => '6612549',
+        };
         $unit = $this->createHealthUnit($unitCode);
-        $unit->update(['cnes_code' => '6612547']);
+        $unit->update(['cnes_code' => $cnes]);
+        $unit->organization()->update(['cnes_code' => $cnes]);
         $this->seed(OperationalCatalogSeeder::class);
         $user = $this->createUserWithUnit($unit, ['name' => 'Dra. Solicitante']);
         $patient = Patient::query()->create([

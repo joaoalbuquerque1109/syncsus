@@ -64,6 +64,9 @@ final readonly class RetryLaboratoryOrderTransmissionAction
             $transmission->update([
                 'status' => LaboratoryTransmissionStatus::Pending,
                 'next_attempt_at' => null,
+                'worker_token' => null,
+                'sending_started_at' => null,
+                'lease_expires_at' => null,
                 'error_code' => null,
                 'last_error' => null,
             ]);

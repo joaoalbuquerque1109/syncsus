@@ -63,6 +63,9 @@ final class SubmitLaboratoryOrderJob implements ShouldBeUnique, ShouldQueue
         $transmission->update([
             'status' => LaboratoryTransmissionStatus::ManualReview,
             'next_attempt_at' => null,
+            'worker_token' => null,
+            'sending_started_at' => null,
+            'lease_expires_at' => null,
             'error_code' => 'attempts_exhausted',
             'last_error' => $message,
         ]);

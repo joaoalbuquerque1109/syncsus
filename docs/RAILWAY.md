@@ -96,23 +96,19 @@ Crie o Redis pelo template oficial do Railway e mantenha-o na rede privada.
 No servico web, use a referencia `REDIS_URL=${{Redis.REDIS_URL}}`; nao copie a
 URL publica. A extensao nativa PhpRedis ja faz parte da imagem.
 
-Crie um segundo servico a partir do mesmo repositorio e sobrescreva o comando:
-
-```text
-php artisan queue:work --sleep=3 --tries=3 --timeout=120
-```
-
-Para o agendador, crie um servico cron com:
-
-```text
-php artisan schedule:run
-```
-
-e periodicidade de um minuto. Os tres servicos devem compartilhar as mesmas
-variaveis de aplicacao, banco e volume privado quando houver acesso a documentos.
+Na configuracao atual nao crie servicos separados para worker ou agendador. O
+container Railway inicia Nginx, PHP-FPM, o worker das filas `integrations,default`
+e o agendador sob o Supervisor. Essa decisao reduz o custo inicial; quando a carga
+justificar escala independente, os processos poderao ser separados sem alterar o
+contrato de filas.
 
 ## Antes de liberar acesso
 
-Confirme `/health/live` e `/health/ready`, entre com o administrador, troque a
-senha temporaria, cadastre a primeira unidade e valide recepcao, painel,
-triagem, atendimento, documento e cancelamento em um ambiente de homologacao.
+Confirme `/health/live` e `/health/ready` e entre com o administrador usando o
+codigo administrativo. Em uma instalacao nova, o sistema abre o provisionamento
+global: cadastre a unidade pelo CNES e crie o primeiro gestor. O seed de producao
+nao cria mais uma unidade demonstrativa.
+
+Antes de liberar usuarios, valide recepcao, painel, triagem, atendimento,
+documento e cancelamento em homologacao. Cadastre e teste as credenciais Synclab
+da unidade somente depois dessa verificacao.

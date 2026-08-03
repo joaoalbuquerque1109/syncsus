@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Administration\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Administration\Application\Services\HealthUnitFlowBootstrapper;
 use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
 use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
@@ -18,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 final class CatalogManagementController extends Controller
@@ -67,6 +67,11 @@ final class CatalogManagementController extends Controller
         $actor = $request->user();
         abort_unless($actor instanceof User && $actor->can('administration.manage'), 403);
         $unit = $this->unit($request);
+        if ($catalog === 'health-units' && $recordId === null) {
+            throw ValidationException::withMessages([
+                'health_unit' => 'Crie novas unidades como tenants na administração global.',
+            ]);
+        }
 
         $model = $this->model($catalog, $recordId);
         if ($model->exists && in_array($catalog, ['specialties', 'arrival-methods', 'entry-types'], true)) {
@@ -117,10 +122,14 @@ final class CatalogManagementController extends Controller
                 'organization_id' => ['required', Rule::in([(int) $unit->organization_id])],
                 'code' => [
                     'required', 'string', 'max:32',
-                    Rule::unique('health_units')->where('organization_id', $request->integer('organization_id'))->ignore($model->getKey()),
+                    Rule::in([(string) $unit->organization->code]),
                 ],
                 'name' => ['required', 'string', 'max:255'],
-                'cnes_code' => ['nullable', 'string', 'max:16'],
+                'cnes_code' => [
+                    'required',
+                    'digits:7',
+                    Rule::in([(string) $unit->organization->tenantIdentifier()]),
+                ],
                 'postal_code' => ['nullable', 'string', 'max:16'],
                 'state' => ['nullable', 'string', 'size:2'],
                 'city' => ['nullable', 'string', 'max:255'],
@@ -146,11 +155,10 @@ final class CatalogManagementController extends Controller
             $data['requires_triage'] = $request->boolean('requires_triage');
             $data['allows_provisional_patient'] = $request->boolean('allows_provisional_patient');
         }
-        $model->fill($data)->save();
-        if ($catalog === 'health-units' && $recordId === null && $model instanceof HealthUnit) {
-            app(HealthUnitFlowBootstrapper::class)->bootstrap($model);
-            $actor->healthUnits()->syncWithoutDetaching([$model->getKey()]);
+        if ($catalog === 'health-units') {
+            $data['cnes_code'] = preg_replace('/\D/', '', (string) $data['cnes_code']);
         }
+        $model->fill($data)->save();
         $audit->execute('administration.catalog_saved', $request, $actor, [
             'catalog' => $catalog,
             'record_id' => $model->getKey(),

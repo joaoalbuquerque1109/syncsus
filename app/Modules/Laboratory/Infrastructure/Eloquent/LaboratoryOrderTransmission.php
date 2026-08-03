@@ -69,7 +69,10 @@ final class LaboratoryOrderTransmission extends Model
             'status' => LaboratoryTransmissionStatus::class,
             'next_attempt_at' => 'immutable_datetime',
             'last_attempt_at' => 'immutable_datetime',
+            'sending_started_at' => 'immutable_datetime',
+            'lease_expires_at' => 'immutable_datetime',
             'accepted_at' => 'immutable_datetime',
+            'request_payload' => 'encrypted:array',
         ];
     }
 }

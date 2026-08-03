@@ -38,7 +38,11 @@ export default function publicPanel(config) {
                 const response = await window.axios.get(config.stateUrl, {
                     // A primeira leitura sempre hidrata a chamada atual. O cursor
                     // volta a ser usado nas leituras incrementais seguintes.
-                    params: { after: initialLoad ? undefined : this.cursor || undefined },
+                    params: {
+                        after: initialLoad
+                            ? undefined
+                            : this.cursor || undefined,
+                    },
                 });
                 const incoming = response.data.data;
                 const shouldAnnounce = !initialLoad;

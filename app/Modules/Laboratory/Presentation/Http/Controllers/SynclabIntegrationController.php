@@ -76,11 +76,13 @@ final class SynclabIntegrationController extends Controller
                 ]);
             }
 
-            $unit->update(['cnes_code' => preg_replace('/\D/', '', (string) $data['cnes_code'])]);
+            $cnes = preg_replace('/\D/', '', (string) $data['cnes_code']);
+            $unit->organization()->update(['cnes_code' => $cnes, 'code' => $cnes]);
+            $unit->update(['cnes_code' => $cnes]);
             $integration->fill([
                 'organization_id' => $unit->organization_id,
                 'base_url' => rtrim((string) $data['base_url'], '/'),
-                'external_tenant_code' => $unit->fresh()->cnes_code,
+                'external_tenant_code' => $cnes,
                 'username' => $username !== '' ? $username : null,
                 'password' => $password !== '' ? $password : null,
                 'is_active' => true,
@@ -96,7 +98,7 @@ final class SynclabIntegrationController extends Controller
                 $user,
                 [
                     'provider' => 'synclab',
-                    'cnes' => $unit->fresh()->cnes_code,
+                    'cnes' => $cnes,
                     'transmission_enabled' => $enabled,
                     'credentials_present' => $integration->hasCredentials(),
                 ],

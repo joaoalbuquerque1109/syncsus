@@ -20,6 +20,13 @@ final class Organization extends Model
         return $this->hasMany(HealthUnit::class);
     }
 
+    public function tenantIdentifier(): ?string
+    {
+        $digits = preg_replace('/\D/', '', (string) $this->cnes_code);
+
+        return is_string($digits) && strlen($digits) === 7 ? $digits : null;
+    }
+
     /** @return list<string> */
     public function uniqueIds(): array
     {

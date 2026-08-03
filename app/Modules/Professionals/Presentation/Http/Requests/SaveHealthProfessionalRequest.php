@@ -29,8 +29,8 @@ final class SaveHealthProfessionalRequest extends FormRequest
         $professionType = (string) $this->input('profession_type');
         $requiresOperationalAssignment = filled($this->input('user_id'))
             && in_array($professionType, ['doctor', 'nurse', 'technician'], true);
-        $unitIds = collect($this->input('health_unit_ids', []))->map(static fn (mixed $id): int => (int) $id)->filter()->all();
-        $specialtyIds = collect($this->input('specialty_ids', []))->map(static fn (mixed $id): int => (int) $id)->filter()->all();
+        $unitIds = $this->integerList('health_unit_ids');
+        $specialtyIds = $this->integerList('specialty_ids');
         $allowedQueues = Queue::query()
             ->whereHas('healthUnit', fn ($query) => $query->where('organization_id', $organizationId))
             ->whereIn('health_unit_id', $unitIds)
@@ -44,7 +44,7 @@ final class SaveHealthProfessionalRequest extends FormRequest
             $allowedQueues->whereRaw('1 = 0');
         }
         $allowedQueueIds = $allowedQueues->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all();
-        $selectedQueueIds = collect($this->input('queue_ids', []))->map(static fn (mixed $id): int => (int) $id)->filter()->all();
+        $selectedQueueIds = $this->integerList('queue_ids');
         $allowedServicePointIds = Queue::query()
             ->whereIn('id', $selectedQueueIds)
             ->with('servicePoints:id,is_active')
@@ -148,5 +148,17 @@ final class SaveHealthProfessionalRequest extends FormRequest
             'is_active' => $this->boolean('is_active'),
             'registrations' => $registrations,
         ]);
+    }
+
+    /** @return list<int> */
+    private function integerList(string $key): array
+    {
+        $input = $this->input($key, []);
+
+        return collect(is_array($input) ? $input : [])
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter()
+            ->values()
+            ->all();
     }
 }

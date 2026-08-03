@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Administration\Infrastructure\Eloquent;
 
-use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
+use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Support\Models\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;

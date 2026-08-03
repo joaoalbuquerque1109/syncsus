@@ -26,7 +26,7 @@ final class AuthenticationTest extends TestCase
         $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
 
         $response = $this->post('/login', [
-            'unit_code' => $unit->organization->code,
+            'unit_code' => $unit->organization->cnes_code,
             'email' => $user->email,
             'password' => 'Initial#Password2026',
         ]);
@@ -131,7 +131,7 @@ final class AuthenticationTest extends TestCase
         $this->assertTrue(Hash::check('Initial#Password2026', (string) $user->password));
     }
 
-    public function test_same_email_can_authenticate_in_distinct_units_using_unit_code(): void
+    public function test_same_email_can_authenticate_in_distinct_units_using_cnes(): void
     {
         $firstUnit = $this->createHealthUnit('UNIT-A');
         $secondUnit = $this->createHealthUnit('UNIT-B');
@@ -143,7 +143,7 @@ final class AuthenticationTest extends TestCase
         ]);
 
         $this->post('/login', [
-            'unit_code' => 'unit-b',
+            'unit_code' => $secondUnit->organization->cnes_code,
             'email' => $email,
             'password' => 'Initial#Password2026',
         ])->assertRedirect('/dashboard');

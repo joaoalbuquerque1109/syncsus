@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\Laboratory\Application\Actions;
 
 use App\Modules\Laboratory\Application\Contracts\LaboratoryProviderClient;
+use App\Modules\Laboratory\Application\Data\LaboratoryOrderPayload;
 use App\Modules\Laboratory\Application\Exceptions\InvalidLaboratoryOrder;
 use App\Modules\Laboratory\Application\Services\SynclabOrderPayloadBuilder;
 use App\Modules\Laboratory\Domain\Enums\LaboratoryTransmissionStatus;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryTransmissionAttempt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
@@ -41,11 +43,14 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
 
         $externalOrderNumber = (string) $transmission->order->getKey();
         try {
-            $payload = $this->payloadBuilder->build(
-                $transmission->order,
-                $transmission->integration,
-                $externalOrderNumber,
-            );
+            $snapshot = $transmission->getAttribute('request_payload');
+            $payload = is_array($snapshot)
+                ? new LaboratoryOrderPayload($snapshot)
+                : $this->payloadBuilder->build(
+                    $transmission->order,
+                    $transmission->integration,
+                    $externalOrderNumber,
+                );
         } catch (InvalidLaboratoryOrder $exception) {
             $transmission->update([
                 'status' => LaboratoryTransmissionStatus::ManualReview,
@@ -62,10 +67,15 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
         }
 
         $requestHash = hash('sha256', json_encode($payload->toArray(), JSON_THROW_ON_ERROR));
+        $workerToken = (string) Str::uuid();
+        $leaseSeconds = max(60, (int) config('sync_sus.synclab.timeout_seconds', 30) + 30);
         $attemptId = DB::transaction(function () use (
             $transmission,
             $externalOrderNumber,
             $requestHash,
+            $payload,
+            $workerToken,
+            $leaseSeconds,
         ): ?int {
             $locked = LaboratoryOrderTransmission::query()->lockForUpdate()->findOrFail($transmission->getKey());
             if (! in_array($locked->statusEnum(), [
@@ -80,8 +90,12 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
                 'external_order_number' => $externalOrderNumber,
                 'attempt_count' => $attemptNumber,
                 'last_attempt_at' => now(),
+                'sending_started_at' => now(),
+                'lease_expires_at' => now()->addSeconds($leaseSeconds),
+                'worker_token' => $workerToken,
                 'next_attempt_at' => null,
                 'request_hash' => $requestHash,
+                'request_payload' => $locked->request_payload ?? $payload->data,
                 'error_code' => null,
                 'last_error' => null,
             ]);
@@ -100,7 +114,15 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
         try {
             $result = $this->client->submitOrder($transmission->integration, $payload);
         } catch (Throwable $exception) {
-            $this->markRetrying($transmissionId, $attemptId, 'connection_error', $exception->getMessage());
+            if (! $this->markRetrying(
+                $transmissionId,
+                $attemptId,
+                $workerToken,
+                'connection_error',
+                $exception->getMessage(),
+            )) {
+                return;
+            }
             $transmission->integration->update([
                 'connection_status' => 'error',
                 'last_connection_test_at' => now(),
@@ -115,19 +137,30 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
         }
 
         if ($result->accepted) {
-            LaboratoryOrderTransmission::query()->whereKey($transmissionId)->update([
-                'status' => LaboratoryTransmissionStatus::Accepted,
-                'last_http_status' => $result->httpStatus,
-                'response_hash' => $result->responseHash,
-                'accepted_at' => now(),
-                'next_attempt_at' => null,
-                'error_code' => null,
-                'last_error' => null,
-            ]);
+            $updated = LaboratoryOrderTransmission::query()
+                ->whereKey($transmissionId)
+                ->where('status', LaboratoryTransmissionStatus::Sending->value)
+                ->where('worker_token', $workerToken)
+                ->update([
+                    'status' => LaboratoryTransmissionStatus::Accepted,
+                    'last_http_status' => $result->httpStatus,
+                    'response_hash' => $result->responseHash,
+                    'accepted_at' => now(),
+                    'next_attempt_at' => null,
+                    'worker_token' => null,
+                    'sending_started_at' => null,
+                    'lease_expires_at' => null,
+                    'error_code' => null,
+                    'last_error' => null,
+                ]);
+            if ($updated === 0) {
+                return;
+            }
             LaboratoryTransmissionAttempt::query()->whereKey($attemptId)->update([
                 'status' => 'accepted',
                 'http_status' => $result->httpStatus,
                 'response_hash' => $result->responseHash,
+                'response_payload' => $result->response,
                 'finished_at' => now(),
             ]);
             $transmission->integration->update([
@@ -144,20 +177,31 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
         }
 
         $retryable = $result->httpStatus === 429 || $result->httpStatus >= 500;
-        LaboratoryOrderTransmission::query()->whereKey($transmissionId)->update([
-            'status' => $retryable
-                ? LaboratoryTransmissionStatus::Retrying
-                : LaboratoryTransmissionStatus::Rejected,
-            'last_http_status' => $result->httpStatus,
-            'response_hash' => $result->responseHash,
-            'next_attempt_at' => $retryable ? now()->addSeconds($this->retryDelay($transmissionId)) : null,
-            'error_code' => 'http_'.$result->httpStatus,
-            'last_error' => 'Synclab respondeu HTTP '.$result->httpStatus.'.',
-        ]);
+        $updated = LaboratoryOrderTransmission::query()
+            ->whereKey($transmissionId)
+            ->where('status', LaboratoryTransmissionStatus::Sending->value)
+            ->where('worker_token', $workerToken)
+            ->update([
+                'status' => $retryable
+                    ? LaboratoryTransmissionStatus::Retrying
+                    : LaboratoryTransmissionStatus::Rejected,
+                'last_http_status' => $result->httpStatus,
+                'response_hash' => $result->responseHash,
+                'next_attempt_at' => $retryable ? now()->addSeconds($this->retryDelay($transmissionId)) : null,
+                'worker_token' => null,
+                'sending_started_at' => null,
+                'lease_expires_at' => null,
+                'error_code' => 'http_'.$result->httpStatus,
+                'last_error' => 'Synclab respondeu HTTP '.$result->httpStatus.'.',
+            ]);
+        if ($updated === 0) {
+            return;
+        }
         LaboratoryTransmissionAttempt::query()->whereKey($attemptId)->update([
             'status' => $retryable ? 'retrying' : 'rejected',
             'http_status' => $result->httpStatus,
             'response_hash' => $result->responseHash,
+            'response_payload' => $result->response,
             'error_code' => 'http_'.$result->httpStatus,
             'error_message' => 'Synclab respondeu HTTP '.$result->httpStatus.'.',
             'finished_at' => now(),
@@ -193,24 +237,44 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
             $transmission->update([
                 'status' => LaboratoryTransmissionStatus::AwaitingConfiguration,
                 'next_attempt_at' => null,
+                'worker_token' => null,
+                'sending_started_at' => null,
+                'lease_expires_at' => null,
             ]);
         }
     }
 
-    private function markRetrying(int $transmissionId, int $attemptId, string $code, string $message): void
-    {
-        LaboratoryOrderTransmission::query()->whereKey($transmissionId)->update([
-            'status' => LaboratoryTransmissionStatus::Retrying,
-            'next_attempt_at' => now()->addSeconds($this->retryDelay($transmissionId)),
-            'error_code' => $code,
-            'last_error' => mb_substr($message, 0, 2000),
-        ]);
+    private function markRetrying(
+        int $transmissionId,
+        int $attemptId,
+        string $workerToken,
+        string $code,
+        string $message,
+    ): bool {
+        $updated = LaboratoryOrderTransmission::query()
+            ->whereKey($transmissionId)
+            ->where('status', LaboratoryTransmissionStatus::Sending->value)
+            ->where('worker_token', $workerToken)
+            ->update([
+                'status' => LaboratoryTransmissionStatus::Retrying,
+                'next_attempt_at' => now()->addSeconds($this->retryDelay($transmissionId)),
+                'worker_token' => null,
+                'sending_started_at' => null,
+                'lease_expires_at' => null,
+                'error_code' => $code,
+                'last_error' => mb_substr($message, 0, 2000),
+            ]);
+        if ($updated === 0) {
+            return false;
+        }
         LaboratoryTransmissionAttempt::query()->whereKey($attemptId)->update([
             'status' => 'retrying',
             'error_code' => $code,
             'error_message' => mb_substr($message, 0, 2000),
             'finished_at' => now(),
         ]);
+
+        return true;
     }
 
     private function retryDelay(int $transmissionId): int

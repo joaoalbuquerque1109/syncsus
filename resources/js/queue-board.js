@@ -13,7 +13,9 @@ export default function queueBoard(config) {
         timer: null,
         errorTimer: null,
         refreshing: false,
-        minimumAlertDurationMs: 5000,
+        // The extra rendering margin guarantees at least five visible seconds
+        // after Alpine has painted the alert.
+        minimumAlertDurationMs: 5500,
 
         init() {
             this.refresh().finally(() => this.schedule());

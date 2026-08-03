@@ -33,6 +33,7 @@ use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -458,7 +459,7 @@ final class DocumentsAndReportsTest extends TestCase
         DB::disableQueryLog();
 
         $this->assertCount(2, $queries);
-        $indexes = collect(DB::select("PRAGMA index_list('encounters')"))
+        $indexes = collect(Schema::getIndexes('encounters'))
             ->pluck('name');
         $this->assertContains('encounters_unit_status_closed_at_index', $indexes);
     }

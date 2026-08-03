@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Professionals\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
-use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
+use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;

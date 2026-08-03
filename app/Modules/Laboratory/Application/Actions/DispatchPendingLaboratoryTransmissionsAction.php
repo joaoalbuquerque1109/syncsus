@@ -8,13 +8,17 @@ use App\Modules\Laboratory\Application\Jobs\SubmitLaboratoryOrderJob;
 use App\Modules\Laboratory\Domain\Enums\LaboratoryTransmissionStatus;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 
-final class DispatchPendingLaboratoryTransmissionsAction
+final readonly class DispatchPendingLaboratoryTransmissionsAction
 {
+    public function __construct(private RecoverStaleLaboratoryTransmissionsAction $recoverStale) {}
+
     public function execute(): int
     {
         if (! config('sync_sus.synclab.enabled')) {
             return 0;
         }
+
+        $this->recoverStale->execute();
 
         $transmissions = LaboratoryOrderTransmission::query()
             ->with('integration')

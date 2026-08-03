@@ -55,7 +55,7 @@ final class QueueVisibilityService
 
         $profile = $this->activeProfile($user);
         if ($profile === null) {
-            return new Collection();
+            return new Collection;
         }
 
         return $query->whereHas(

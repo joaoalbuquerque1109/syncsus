@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('laboratory_transmission_attempts', function (Blueprint $table): void {
             $table->id();
             $table->foreignId('laboratory_order_transmission_id')
-                ->constrained('laboratory_order_transmissions')
+                ->constrained('laboratory_order_transmissions', indexName: 'lab_attempt_transmission_fk')
                 ->cascadeOnDelete();
             $table->unsignedSmallInteger('attempt_number');
             $table->string('status', 32)->index();

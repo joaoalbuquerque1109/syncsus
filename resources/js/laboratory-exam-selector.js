@@ -20,7 +20,8 @@ export default function laboratoryExamSelector(config = {}) {
                     params: { q: term },
                 });
                 this.results = response.data.data.filter(
-                    (exam) => !this.selected.some((item) => item.id === exam.id),
+                    (exam) =>
+                        !this.selected.some((item) => item.id === exam.id),
                 );
                 this.open = true;
             } finally {

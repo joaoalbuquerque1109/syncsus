@@ -15,10 +15,10 @@
         @csrf
         <x-form.input
             name="unit_code"
-            label="Código da unidade"
+            label="CNES da unidade"
             :value="old('unit_code')"
             autocomplete="organization"
-            placeholder="Ex.: URGENCIA-CENTRAL"
+            placeholder="Ex.: 6612547"
             required
             autofocus
         />
