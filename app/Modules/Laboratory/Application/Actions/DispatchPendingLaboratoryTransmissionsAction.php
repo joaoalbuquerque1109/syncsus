@@ -19,7 +19,6 @@ final class DispatchPendingLaboratoryTransmissionsAction
         $transmissions = LaboratoryOrderTransmission::query()
             ->with('integration')
             ->whereIn('status', [
-                LaboratoryTransmissionStatus::AwaitingConfiguration->value,
                 LaboratoryTransmissionStatus::Pending->value,
                 LaboratoryTransmissionStatus::Retrying->value,
             ])
@@ -31,9 +30,6 @@ final class DispatchPendingLaboratoryTransmissionsAction
         foreach ($transmissions as $transmission) {
             if (! $transmission->integration->is_active || ! $transmission->integration->transmission_enabled) {
                 continue;
-            }
-            if ($transmission->statusEnum() === LaboratoryTransmissionStatus::AwaitingConfiguration) {
-                $transmission->update(['status' => LaboratoryTransmissionStatus::Pending]);
             }
             SubmitLaboratoryOrderJob::dispatch((int) $transmission->getKey())->afterCommit();
             $dispatched++;

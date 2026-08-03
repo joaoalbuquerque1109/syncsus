@@ -6,7 +6,11 @@ namespace Tests\Feature;
 
 use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
 use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Actions\DispatchPendingLaboratoryTransmissionsAction;
 use App\Modules\Laboratory\Application\Actions\SubmitLaboratoryOrderTransmissionAction;
+use App\Modules\Laboratory\Application\Jobs\SubmitLaboratoryOrderJob;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
@@ -16,9 +20,11 @@ use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\OperationalCatalogSeeder;
+use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -39,6 +45,13 @@ final class SynclabOrderSubmissionTest extends TestCase
         $this->assertSame(1, $transmission->attempt_count);
         $this->assertSame(200, $transmission->last_http_status);
         $this->assertNotNull($transmission->accepted_at);
+        $this->assertDatabaseHas('laboratory_transmission_attempts', [
+            'laboratory_order_transmission_id' => $transmission->getKey(),
+            'attempt_number' => 1,
+            'status' => 'accepted',
+            'http_status' => 200,
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.transmission_accepted']);
 
         Http::assertSent(function (Request $request) use ($order): bool {
             $payload = $request->data();
@@ -75,7 +88,45 @@ final class SynclabOrderSubmissionTest extends TestCase
         }
     }
 
-    /** @return array{ExamOrder, LaboratoryOrderTransmission} */
+    public function test_administrator_retries_a_rejected_order_but_not_an_accepted_order(): void
+    {
+        Queue::fake();
+        $this->seed(RolePermissionSeeder::class);
+        [$order, $transmission, $unit] = $this->outboundOrder('RETRY-TEST');
+        $transmission->update(['status' => 'rejected', 'error_code' => 'http_400']);
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->post(route('laboratory.orders.retry', $order))
+            ->assertRedirect(route('laboratory.orders.show', $order));
+
+        $this->assertSame('pending', $transmission->fresh()->statusEnum()->value);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.transmission_manual_retry']);
+        Queue::assertPushed(SubmitLaboratoryOrderJob::class);
+
+        $transmission->update(['status' => 'accepted']);
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->post(route('laboratory.orders.retry', $order))
+            ->assertSessionHasErrors('transmission');
+    }
+
+    public function test_enabling_integration_does_not_send_old_unreviewed_orders_in_bulk(): void
+    {
+        Queue::fake();
+        [, $transmission] = $this->outboundOrder('OLD-ORDER');
+        $transmission->update(['status' => 'awaiting_configuration']);
+
+        $dispatched = app(DispatchPendingLaboratoryTransmissionsAction::class)->execute();
+
+        $this->assertSame(0, $dispatched);
+        $this->assertSame('awaiting_configuration', $transmission->fresh()->statusEnum()->value);
+        Queue::assertNothingPushed();
+    }
+
+    /** @return array{ExamOrder, LaboratoryOrderTransmission, HealthUnit, User} */
     private function outboundOrder(string $encounterNumber = 'SYNC-TEST-001'): array
     {
         config()->set('sync_sus.synclab.enabled', true);
@@ -176,6 +227,6 @@ final class SynclabOrderSubmissionTest extends TestCase
             'status' => 'pending',
         ]);
 
-        return [$order, $transmission];
+        return [$order, $transmission, $unit, $user];
     }
 }

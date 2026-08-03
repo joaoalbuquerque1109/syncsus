@@ -11,6 +11,7 @@ use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Support\Models\HasPublicId;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 final class LaboratoryOrderTransmission extends Model
 {
@@ -45,6 +46,12 @@ final class LaboratoryOrderTransmission extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(ExamOrder::class, 'exam_order_id');
+    }
+
+    /** @return HasMany<LaboratoryTransmissionAttempt, $this> */
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(LaboratoryTransmissionAttempt::class)->orderByDesc('attempt_number');
     }
 
     public function statusEnum(): LaboratoryTransmissionStatus

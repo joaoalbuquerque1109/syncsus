@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Actions\CancelLaboratoryOrderAction;
+use App\Modules\Laboratory\Application\Actions\RetryLaboratoryOrderTransmissionAction;
 use App\Modules\Laboratory\Presentation\Http\Requests\CancelLaboratoryOrderRequest;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use Illuminate\Http\RedirectResponse;
@@ -58,7 +59,8 @@ final class LaboratoryOrderController extends Controller
         return view('laboratory.orders.show', [
             'order' => $order->load([
                 'encounter.patient.identifiers', 'requestedBy.professionalProfile.registrations',
-                'createdBy', 'cancelledBy', 'items.laboratoryExam', 'laboratoryTransmissions.integration',
+                'createdBy', 'cancelledBy', 'items.laboratoryExam',
+                'laboratoryTransmissions.integration', 'laboratoryTransmissions.attempts',
             ]),
         ]);
     }
@@ -74,6 +76,23 @@ final class LaboratoryOrderController extends Controller
         $action->execute($order, (string) $request->input('reason'), $user, $unit, $request);
 
         return redirect()->route('laboratory.orders.index')->with('success', 'Requisição cancelada sem apagar o histórico.');
+    }
+
+    public function retry(
+        Request $request,
+        ExamOrder $order,
+        RetryLaboratoryOrderTransmissionAction $action,
+    ): RedirectResponse {
+        $unit = $this->unit($request);
+        $this->ensureUnit($order, $unit);
+        $user = $request->user();
+        abort_unless($user instanceof User, 403);
+        $action->execute($order, $unit, $user, $request);
+
+        return redirect()->route('laboratory.orders.show', $order)->with(
+            'success',
+            'Requisição encaminhada novamente para a fila do Synclab.',
+        );
     }
 
     private function unit(Request $request): HealthUnit

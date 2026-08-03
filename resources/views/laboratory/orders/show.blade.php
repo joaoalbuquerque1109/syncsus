@@ -9,6 +9,7 @@
         'manual_review' => 'Requer revisão',
         'cancelled' => 'Cancelada',
     ];
+    $retryableTransmissionStatuses = ['awaiting_configuration', 'retrying', 'rejected', 'manual_review'];
 @endphp
 
 <x-layout.app title="Requisição de exames">
@@ -28,7 +29,41 @@
         <aside class="space-y-5">
             <section class="app-card p-5"><h2 class="font-extrabold">Paciente</h2><p class="mt-3 font-bold">{{ $order->encounter->patient->displayName() }}</p><p class="text-sm text-slate-500">{{ $order->encounter->patient->medical_record_number }}</p><p class="mt-2 text-sm text-slate-500">Atendimento {{ $order->encounter->encounter_number }}</p></section>
             <section class="app-card p-5"><h2 class="font-extrabold">Solicitante</h2><p class="mt-3 font-bold">{{ $order->requestedBy?->professionalProfile?->displayName() ?? $order->requestedBy?->name }}</p><p class="text-sm text-slate-500">{{ $order->requestedBy?->professionalProfile?->primaryRegistrationLabel() ?? 'Identificação institucional' }}</p></section>
-            <section class="app-card p-5"><h2 class="font-extrabold">Integração Synclab</h2>@forelse($order->laboratoryTransmissions as $transmission)<p class="mt-3 text-sm"><strong>{{ $transmissionLabels[$transmission->status->value] ?? $transmission->status->value }}</strong><br><span class="safe-wrap text-xs text-slate-500">OS {{ $transmission->external_order_number ?? $order->id }}</span>@if($transmission->last_http_status)<br><span class="text-xs text-slate-500">HTTP {{ $transmission->last_http_status }}</span>@endif</p>@empty<p class="mt-3 text-sm text-slate-500">Ainda não preparada para integração.</p>@endforelse</section>
+            <section class="app-card p-5">
+                <h2 class="font-extrabold">Integração Synclab</h2>
+                @forelse($order->laboratoryTransmissions as $transmission)
+                    <div class="mt-3 text-sm">
+                        <strong>{{ $transmissionLabels[$transmission->status->value] ?? $transmission->status->value }}</strong>
+                        <p class="mt-1 text-xs text-slate-500">OS {{ $transmission->external_order_number ?? $order->id }} · {{ $transmission->attempt_count }} tentativa(s)</p>
+                        @if($transmission->last_http_status)<p class="mt-1 text-xs text-slate-500">HTTP {{ $transmission->last_http_status }}</p>@endif
+                        @if($transmission->last_error)<p class="mt-2 safe-wrap rounded-lg bg-red-50 p-2 text-xs text-red-800">{{ $transmission->last_error }}</p>@endif
+
+                        @can('administration.manage')
+                            @if($order->status === 'pending' && in_array($transmission->status->value, $retryableTransmissionStatuses, true))
+                                <form method="POST" action="{{ route('laboratory.orders.retry', $order) }}" class="mt-3">
+                                    @csrf
+                                    <button class="w-full rounded-lg bg-brand-600 px-3 py-2 text-xs font-extrabold text-white">Tentar novamente</button>
+                                </form>
+                            @endif
+                        @endcan
+
+                        <h3 class="mt-4 text-xs font-extrabold uppercase tracking-wide text-slate-500">Histórico de tentativas</h3>
+                        <div class="mt-2 space-y-2">
+                            @forelse($transmission->attempts as $attempt)
+                                <div class="rounded-lg border border-slate-200 p-2 text-xs">
+                                    <div class="flex justify-between gap-2"><strong>#{{ $attempt->attempt_number }} · {{ ucfirst($attempt->status) }}</strong><span>{{ $attempt->started_at->format('d/m H:i:s') }}</span></div>
+                                    @if($attempt->http_status)<p class="mt-1 text-slate-500">HTTP {{ $attempt->http_status }}</p>@endif
+                                    @if($attempt->error_message)<p class="mt-1 safe-wrap text-red-700">{{ $attempt->error_message }}</p>@endif
+                                </div>
+                            @empty
+                                <p class="text-xs text-slate-500">Nenhuma tentativa de rede registrada.</p>
+                            @endforelse
+                        </div>
+                    </div>
+                @empty
+                    <p class="mt-3 text-sm text-slate-500">Ainda não preparada para integração.</p>
+                @endforelse
+            </section>
             @if($order->status === 'cancelled')<section class="rounded-xl border border-red-200 bg-red-50 p-5"><h2 class="font-extrabold text-red-800">Cancelamento</h2><p class="mt-2 safe-wrap text-sm text-red-800">{{ $order->cancellation_reason }}</p><p class="mt-2 text-xs text-red-700">{{ $order->cancelled_at?->format('d/m/Y H:i') }} · {{ $order->cancelledBy?->name }}</p></section>@endif
         </aside>
     </div>

@@ -9,6 +9,7 @@ use App\Modules\Laboratory\Application\Exceptions\InvalidLaboratoryOrder;
 use App\Modules\Laboratory\Application\Services\SynclabOrderPayloadBuilder;
 use App\Modules\Laboratory\Domain\Enums\LaboratoryTransmissionStatus;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryTransmissionAttempt;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -18,6 +19,7 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
     public function __construct(
         private SynclabOrderPayloadBuilder $payloadBuilder,
         private LaboratoryProviderClient $client,
+        private RecordLaboratoryTransmissionAuditAction $audit,
     ) {}
 
     public function execute(int $transmissionId): void
@@ -52,39 +54,62 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
                 'last_error' => $exception->getMessage(),
                 'next_attempt_at' => null,
             ]);
+            $this->audit->execute($transmission, 'laboratory.transmission_manual_review', [
+                'error_code' => 'invalid_order',
+            ]);
 
             return;
         }
 
-        $claimed = DB::transaction(function () use ($transmission, $externalOrderNumber, $payload): bool {
+        $requestHash = hash('sha256', json_encode($payload->toArray(), JSON_THROW_ON_ERROR));
+        $attemptId = DB::transaction(function () use (
+            $transmission,
+            $externalOrderNumber,
+            $requestHash,
+        ): ?int {
             $locked = LaboratoryOrderTransmission::query()->lockForUpdate()->findOrFail($transmission->getKey());
             if (! in_array($locked->statusEnum(), [
                 LaboratoryTransmissionStatus::Pending,
                 LaboratoryTransmissionStatus::Retrying,
             ], true)) {
-                return false;
+                return null;
             }
+            $attemptNumber = $locked->attempt_count + 1;
             $locked->update([
                 'status' => LaboratoryTransmissionStatus::Sending,
                 'external_order_number' => $externalOrderNumber,
-                'attempt_count' => $locked->attempt_count + 1,
+                'attempt_count' => $attemptNumber,
                 'last_attempt_at' => now(),
                 'next_attempt_at' => null,
-                'request_hash' => hash('sha256', json_encode($payload->toArray(), JSON_THROW_ON_ERROR)),
+                'request_hash' => $requestHash,
                 'error_code' => null,
                 'last_error' => null,
             ]);
 
-            return true;
+            return (int) $locked->attempts()->create([
+                'attempt_number' => $attemptNumber,
+                'status' => 'sending',
+                'request_hash' => $requestHash,
+                'started_at' => now(),
+            ])->getKey();
         });
-        if (! $claimed) {
+        if ($attemptId === null) {
             return;
         }
 
         try {
             $result = $this->client->submitOrder($transmission->integration, $payload);
         } catch (Throwable $exception) {
-            $this->markRetrying($transmissionId, 'connection_error', $exception->getMessage());
+            $this->markRetrying($transmissionId, $attemptId, 'connection_error', $exception->getMessage());
+            $transmission->integration->update([
+                'connection_status' => 'error',
+                'last_connection_test_at' => now(),
+                'last_error' => 'Falha de conexao ao enviar uma requisicao.',
+            ]);
+            $this->audit->execute($transmission, 'laboratory.transmission_retrying', [
+                'attempt' => $transmission->attempt_count + 1,
+                'error_code' => 'connection_error',
+            ]);
 
             throw new RuntimeException('Falha temporaria ao acessar o Synclab.', previous: $exception);
         }
@@ -98,6 +123,21 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
                 'next_attempt_at' => null,
                 'error_code' => null,
                 'last_error' => null,
+            ]);
+            LaboratoryTransmissionAttempt::query()->whereKey($attemptId)->update([
+                'status' => 'accepted',
+                'http_status' => $result->httpStatus,
+                'response_hash' => $result->responseHash,
+                'finished_at' => now(),
+            ]);
+            $transmission->integration->update([
+                'connection_status' => 'connected',
+                'last_connection_test_at' => now(),
+                'last_error' => null,
+            ]);
+            $this->audit->execute($transmission, 'laboratory.transmission_accepted', [
+                'attempt' => $transmission->attempt_count + 1,
+                'http_status' => $result->httpStatus,
             ]);
 
             return;
@@ -114,6 +154,24 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
             'error_code' => 'http_'.$result->httpStatus,
             'last_error' => 'Synclab respondeu HTTP '.$result->httpStatus.'.',
         ]);
+        LaboratoryTransmissionAttempt::query()->whereKey($attemptId)->update([
+            'status' => $retryable ? 'retrying' : 'rejected',
+            'http_status' => $result->httpStatus,
+            'response_hash' => $result->responseHash,
+            'error_code' => 'http_'.$result->httpStatus,
+            'error_message' => 'Synclab respondeu HTTP '.$result->httpStatus.'.',
+            'finished_at' => now(),
+        ]);
+        $transmission->integration->update([
+            'connection_status' => 'error',
+            'last_connection_test_at' => now(),
+            'last_error' => 'Ultimo envio respondeu HTTP '.$result->httpStatus.'.',
+        ]);
+        $this->audit->execute(
+            $transmission,
+            $retryable ? 'laboratory.transmission_retrying' : 'laboratory.transmission_rejected',
+            ['attempt' => $transmission->attempt_count + 1, 'http_status' => $result->httpStatus],
+        );
         if ($retryable) {
             throw new RuntimeException('Synclab temporariamente indisponivel (HTTP '.$result->httpStatus.').');
         }
@@ -139,13 +197,19 @@ final readonly class SubmitLaboratoryOrderTransmissionAction
         }
     }
 
-    private function markRetrying(int $transmissionId, string $code, string $message): void
+    private function markRetrying(int $transmissionId, int $attemptId, string $code, string $message): void
     {
         LaboratoryOrderTransmission::query()->whereKey($transmissionId)->update([
             'status' => LaboratoryTransmissionStatus::Retrying,
             'next_attempt_at' => now()->addSeconds($this->retryDelay($transmissionId)),
             'error_code' => $code,
             'last_error' => mb_substr($message, 0, 2000),
+        ]);
+        LaboratoryTransmissionAttempt::query()->whereKey($attemptId)->update([
+            'status' => 'retrying',
+            'error_code' => $code,
+            'error_message' => mb_substr($message, 0, 2000),
+            'finished_at' => now(),
         ]);
     }
 
