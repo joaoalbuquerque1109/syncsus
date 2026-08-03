@@ -19,6 +19,7 @@ final class LaboratoryOrderController extends Controller
 {
     public function index(Request $request): View
     {
+        $this->ensurePlatformAdministrator($request);
         $unit = $this->unit($request);
         $filters = $request->validate([
             'q' => ['nullable', 'string', 'max:80'],
@@ -101,6 +102,12 @@ final class LaboratoryOrderController extends Controller
         abort_unless($unit instanceof HealthUnit, 403);
 
         return $unit;
+    }
+
+    private function ensurePlatformAdministrator(Request $request): void
+    {
+        $user = $request->user();
+        abort_unless($user instanceof User && $user->isPlatformAdministrator(), 403);
     }
 
     private function ensureUnit(ExamOrder $order, HealthUnit $unit): void

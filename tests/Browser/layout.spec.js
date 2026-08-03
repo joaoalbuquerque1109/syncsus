@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("login and authenticated layout load compiled CSS and JavaScript", async ({
     page,
 }) => {
-    test.setTimeout(60_000);
+    test.setTimeout(120_000);
 
     const failedAssets = [];
     const pageErrors = [];

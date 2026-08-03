@@ -153,17 +153,29 @@ final class ReceptionOpeningTest extends TestCase
 
         $this->actingAs($receptionist)->withSession($session)
             ->get(route('laboratory.orders.index'))
+            ->assertForbidden();
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create'))
+            ->assertOk()
+            ->assertDontSee('href="'.route('laboratory.orders.index').'"', false);
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('laboratory.orders.index'))
+            ->assertForbidden();
+
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $this->actingAs($administrator)->withSession($session)
+            ->get(route('laboratory.orders.index'))
             ->assertOk()
             ->assertSee('Requisições de exames')
             ->assertSee('Paciente Demonstrativo')
             ->assertSee('Dra. Solicitante')
+            ->assertSee('href="'.route('laboratory.orders.index').'"', false)
             ->assertSee('min-w-[1280px]', false)
             ->assertSee('min-w-24 items-center justify-center whitespace-nowrap', false)
             ->assertSee('2');
 
         $otherUnit = $this->createHealthUnit('NORTH');
-        $administrator = $this->createPlatformAdministrator();
-        $administrator->assignRole('administrator');
         $this->actingAs($administrator)
             ->withSession(['active_health_unit_id' => $otherUnit->getKey()])
             ->get(route('laboratory.orders.index'))
