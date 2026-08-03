@@ -14,6 +14,7 @@ use App\Modules\Identity\Presentation\Http\Controllers\ActiveHealthUnitControlle
 use App\Modules\Identity\Presentation\Http\Controllers\AuthenticatedSessionController;
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
 use App\Modules\Medical\Presentation\Http\Controllers\DiagnosisCodeSearchController;
+use App\Modules\Medical\Presentation\Http\Controllers\LaboratoryExamSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\MedicalConsultationController;
 use App\Modules\Operations\Presentation\Http\Controllers\OperationsController;
 use App\Modules\Patients\Presentation\Http\Controllers\PatientClinicalHistoryController;
@@ -149,6 +150,7 @@ Route::middleware(['auth', 'active'])->group(function (): void {
         Route::prefix('medical')->name('medical.')->group(function (): void {
             Route::get('/queue', [MedicalConsultationController::class, 'queue'])->middleware('permission:medical.view')->name('queue');
             Route::get('/cid-codes/search', DiagnosisCodeSearchController::class)->middleware('permission:medical.view')->name('cid-codes.search');
+            Route::get('/laboratory-exams/search', LaboratoryExamSearchController::class)->middleware('permission:medical.view')->name('laboratory-exams.search');
             Route::post('/queue-entries/{entry}/start', [MedicalConsultationController::class, 'start'])->middleware('permission:medical.start')->name('start');
             Route::get('/consultations/{consultation}', [MedicalConsultationController::class, 'show'])->middleware('permission:medical.view')->name('show');
             Route::put('/consultations/{consultation}/draft', [MedicalConsultationController::class, 'draft'])->name('draft');

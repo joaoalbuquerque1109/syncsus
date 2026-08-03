@@ -336,7 +336,7 @@
 
                 <section x-show="tab === 'exams'" x-cloak class="space-y-5 p-5 lg:p-7">
                     @if($editable)
-                        <form method="POST" action="{{ route('medical.exam-orders', $consultation) }}" x-data="examOrderItems(@js(old('form_context') === 'exam_order' && is_array(old('items')) ? array_values(old('items')) : [[]]))" class="rounded-xl border border-slate-200 p-4">
+                        <form method="POST" action="{{ route('medical.exam-orders', $consultation) }}" x-data="examOrderItems(@js(old('form_context') === 'exam_order' && is_array(old('items')) ? array_values(old('items')) : [[]]), { searchUrl: @js(route('medical.laboratory-exams.search')) })" class="rounded-xl border border-slate-200 p-4">
                             @csrf
                             <input type="hidden" name="form_context" value="exam_order">
                             <input type="hidden" name="version" value="{{ $consultation->version() }}">
@@ -350,8 +350,23 @@
                                         <legend class="sr-only">Dados do exame</legend>
                                         <div class="mb-4 flex items-center justify-between gap-3"><p class="font-extrabold text-slate-800">Exame <span x-text="index + 1"></span></p><button x-show="items.length > 1" type="button" @click="removeItem(index)" class="grid size-9 place-items-center rounded-lg border border-red-200 bg-white text-red-700 hover:bg-red-50" aria-label="Remover exame" title="Remover exame"><x-icons.trash /></button></div>
                                         <div class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-                                            <div><label class="field-label" :for="`exam_name_${index}`">Exame *</label><input :id="`exam_name_${index}`" :name="`items[${index}][exam_name]`" x-model="item.exam_name" required class="field-control"></div>
-                                            <div><label class="field-label" :for="`exam_group_${index}`">Grupo *</label><select :id="`exam_group_${index}`" :name="`items[${index}][group]`" x-model="item.group" class="field-control"><option value="laboratory">Laboratório</option><option value="imaging">Imagem</option><option value="cardiology">Cardiologia</option><option value="other">Outro</option></select></div>
+                                            <div class="relative">
+                                                <label class="field-label" :for="`exam_name_${index}`">Exame *</label>
+                                                <input type="hidden" :name="`items[${index}][laboratory_exam_id]`" :value="item.laboratory_exam_id">
+                                                <input :id="`exam_name_${index}`" :name="`items[${index}][exam_name]`" x-model="item.exam_name" @input.debounce.250ms="searchCatalog(index)" @focus="item.catalogOpen = item.catalogResults.length > 0" @keydown.escape="item.catalogOpen = false" autocomplete="off" required class="field-control">
+                                                <p x-show="item.group === 'laboratory' && item.catalogSearching" class="mt-1 text-xs text-slate-500">Buscando no catálogo do laboratório...</p>
+                                                <p x-show="item.group === 'laboratory' && item.laboratory_exam_id" class="mt-1 text-xs font-bold text-emerald-700">Exame vinculado ao catálogo Synclab.</p>
+                                                <div x-show="item.catalogOpen" @click.outside="item.catalogOpen = false" class="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+                                                    <template x-for="exam in item.catalogResults" :key="exam.id">
+                                                        <button type="button" @click="selectCatalogExam(item, exam)" class="block w-full border-b border-slate-100 px-3 py-3 text-left last:border-0 hover:bg-brand-50">
+                                                            <span class="block text-sm font-bold" x-text="exam.label"></span>
+                                                            <span class="mt-1 block text-xs text-slate-500" x-text="[exam.material, exam.container, exam.cap_color].filter(Boolean).join(' · ')"></span>
+                                                        </button>
+                                                    </template>
+                                                    <p x-show="!item.catalogSearching && item.catalogResults.length === 0" class="p-3 text-sm text-slate-500">Nenhum exame encontrado no catálogo desta unidade.</p>
+                                                </div>
+                                            </div>
+                                            <div><label class="field-label" :for="`exam_group_${index}`">Grupo *</label><select :id="`exam_group_${index}`" :name="`items[${index}][group]`" x-model="item.group" @change="groupChanged(item)" class="field-control"><option value="laboratory">Laboratório</option><option value="imaging">Imagem</option><option value="cardiology">Cardiologia</option><option value="other">Outro</option></select></div>
                                             <div><label class="field-label" :for="`internal_code_${index}`">Código interno</label><input :id="`internal_code_${index}`" :name="`items[${index}][internal_code]`" x-model="item.internal_code" class="field-control"></div>
                                             <div><label class="field-label" :for="`laterality_${index}`">Lateralidade</label><select :id="`laterality_${index}`" :name="`items[${index}][laterality]`" x-model="item.laterality" class="field-control"><option value="not_applicable">Não se aplica</option><option value="right">Direita</option><option value="left">Esquerda</option><option value="bilateral">Bilateral</option></select></div>
                                             <div><label class="field-label" :for="`preparation_${index}`">Preparo</label><textarea :id="`preparation_${index}`" :name="`items[${index}][preparation]`" x-model="item.preparation" rows="2" class="field-control"></textarea></div>
