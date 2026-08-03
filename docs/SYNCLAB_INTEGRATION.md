@@ -47,4 +47,17 @@ SYNC_SUS_SYNCLAB_TIMEOUT=30
 
 Depois de configurar as variáveis, execute o deploy normalmente. A inicialização aplica migrations e seeders; o mesmo container do Railway executa a aplicação web, o worker da fila e o agendador. Não é necessário criar outro serviço neste momento.
 
+### Ambiente local no Windows
+
+O PHP precisa confiar na cadeia HTTPS. O bundle pode ser obtido em `https://curl.se/ca/cacert.pem`. Configure no `C:\php\php.ini`:
+
+```ini
+curl.cainfo="C:\caminho\seguro\cacert.pem"
+openssl.cafile="C:\caminho\seguro\cacert.pem"
+```
+
+Use uma fila assíncrona (`QUEUE_CONNECTION=database` ou `redis`) e inicie todo o ambiente com `composer run dev`. Esse comando sobe servidor, worker das filas `integrations,default`, agendador, logs e Vite. Assim uma indisponibilidade do Synclab não bloqueia a tela clínica.
+
+Pedidos criados enquanto a integração estava desativada permanecem em `awaiting_configuration`. Eles não são enviados em lote ao habilitar a unidade; um gestor deve revisar e usar **Tentar novamente** em cada pedido.
+
 Credenciais e dados reais de pacientes nunca devem ser versionados. Antes do primeiro envio em produção, use uma requisição de paciente fictício autorizada pelo Synclab e confira o registro correspondente no grid do sistema de destino.

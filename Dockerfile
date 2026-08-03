@@ -17,7 +17,8 @@ RUN composer install \
     --no-scripts
 
 FROM php:8.5-fpm-alpine AS app
-RUN apk add --no-cache icu-libs libzip libpng oniguruma \
+RUN apk add --no-cache ca-certificates icu-libs libzip libpng oniguruma \
+    && update-ca-certificates \
     && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS icu-dev libzip-dev libpng-dev oniguruma-dev \
     && docker-php-ext-install bcmath intl pcntl pdo_mysql zip \
     && pecl install redis \
