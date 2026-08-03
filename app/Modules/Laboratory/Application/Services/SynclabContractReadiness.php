@@ -14,10 +14,10 @@ final class SynclabContractReadiness
             return ['invalid_contract_configuration'];
         }
 
-        return array_values(array_keys(array_filter(
+        return array_keys(array_filter(
             $pending,
             static fn (mixed $value): bool => $value === null || $value === '',
-        )));
+        ));
     }
 
     public function allowsTransmission(): bool

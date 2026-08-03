@@ -47,10 +47,10 @@ final readonly class CreateExamOrderAction
                 $laboratoryExam = $this->resolveLaboratoryExam($item, $unit);
                 $order->items()->create([
                     ...Arr::only($item, ['internal_code', 'exam_name', 'group', 'laterality', 'preparation', 'justification']),
-                    'internal_code' => $laboratoryExam?->external_code ?? ($item['internal_code'] ?? null),
-                    'exam_name' => $laboratoryExam?->name ?? $item['exam_name'],
+                    'internal_code' => $laboratoryExam->external_code ?? ($item['internal_code'] ?? null),
+                    'exam_name' => $laboratoryExam->name ?? $item['exam_name'],
                     'group' => $laboratoryExam === null ? $item['group'] : 'laboratory',
-                    'preparation' => $laboratoryExam?->collection_instructions ?? ($item['preparation'] ?? null),
+                    'preparation' => $laboratoryExam->collection_instructions ?? ($item['preparation'] ?? null),
                     'laboratory_integration_id' => $laboratoryExam?->laboratory_integration_id,
                     'laboratory_exam_id' => $laboratoryExam?->getKey(),
                     'external_exam_code' => $laboratoryExam?->external_code,

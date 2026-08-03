@@ -11,6 +11,7 @@ use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use DateTimeInterface;
 
 final class SynclabOrderPayloadBuilder
 {
@@ -62,11 +63,12 @@ final class SynclabOrderPayloadBuilder
         })->all();
 
         $unit = $order->encounter->healthUnit;
+        $birthDate = $patient->getAttribute('birth_date');
         $patientData = array_filter([
             'codigo' => (string) $patient->medical_record_number,
             'nome' => (string) $patient->full_name,
             'sexo' => $this->synclabSex($patient),
-            'dt_nascimento' => $patient->birth_date?->format('Y-m-d'),
+            'dt_nascimento' => $birthDate instanceof DateTimeInterface ? $birthDate->format('Y-m-d') : null,
             'cpf' => $cpf,
             'cns' => $cns,
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
