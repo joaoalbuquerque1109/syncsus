@@ -35,8 +35,19 @@
     <section class="app-card overflow-hidden">
         <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4"><h2 class="font-extrabold">Pedidos encontrados</h2><span class="text-xs font-bold text-slate-500">{{ $orders->total() }} registro(s)</span></div>
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[1100px] text-left text-sm">
-                <thead class="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="px-4 py-3">ID</th><th class="px-4 py-3">Data</th><th class="px-4 py-3">Paciente</th><th class="px-4 py-3">Solicitante</th><th class="px-4 py-3">Tipo de exame</th><th class="px-4 py-3">Total</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Ações</th></tr></thead>
+            <table class="w-full min-w-[1280px] text-left text-sm">
+                <thead class="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+                    <tr>
+                        <th class="w-16 whitespace-nowrap px-4 py-3">ID</th>
+                        <th class="min-w-28 whitespace-nowrap px-4 py-3">Data</th>
+                        <th class="min-w-96 px-4 py-3">Paciente</th>
+                        <th class="min-w-52 px-4 py-3">Solicitante</th>
+                        <th class="min-w-36 whitespace-nowrap px-4 py-3">Tipo de exame</th>
+                        <th class="w-20 whitespace-nowrap px-4 py-3 text-center">Total</th>
+                        <th class="min-w-52 whitespace-nowrap px-4 py-3">Status</th>
+                        <th class="w-32 whitespace-nowrap px-4 py-3 text-right">Ações</th>
+                    </tr>
+                </thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse($orders as $order)
                         @php
@@ -45,18 +56,18 @@
                             $transmissionStatus = $transmission?->status?->value;
                         @endphp
                         <tr class="align-top hover:bg-slate-50/70">
-                            <td class="px-4 py-4 font-bold">{{ $order->id }}</td>
+                            <td class="whitespace-nowrap px-4 py-4 font-bold">{{ $order->id }}</td>
                             <td class="px-4 py-4 whitespace-nowrap">{{ $order->requested_at->format('d/m/Y') }}<br><span class="text-slate-500">{{ $order->requested_at->format('H:i') }}</span></td>
                             <td class="safe-wrap px-4 py-4"><strong>{{ $order->encounter->patient->medical_record_number }} · {{ $order->encounter->patient->displayName() }}</strong><br><span class="text-xs text-amber-700">{{ $originLabels[$order->origin] ?? $order->origin }}</span></td>
                             <td class="safe-wrap px-4 py-4">{{ $profile?->institutional_code ?? $order->requestedBy?->getKey() }} · {{ $profile?->displayName() ?? $order->requestedBy?->name }}</td>
-                            <td class="px-4 py-4"><span class="rounded-md bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">Laboratorial</span></td>
-                            <td class="px-4 py-4 font-bold">{{ $order->items->count() }}</td>
+                            <td class="whitespace-nowrap px-4 py-4"><span class="inline-flex whitespace-nowrap rounded-md bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">Laboratorial</span></td>
+                            <td class="whitespace-nowrap px-4 py-4 text-center font-bold">{{ $order->items->count() }}</td>
                             <td class="px-4 py-4">
-                                <span @class(['rounded-md px-2 py-1 text-xs font-bold', 'bg-yellow-100 text-yellow-800' => $order->status === 'pending', 'bg-red-100 text-red-800' => $order->status === 'cancelled'])>{{ $statusLabels[$order->status] ?? $order->status }}</span>
+                                <span @class(['inline-flex whitespace-nowrap rounded-md px-2 py-1 text-xs font-bold', 'bg-yellow-100 text-yellow-800' => $order->status === 'pending', 'bg-red-100 text-red-800' => $order->status === 'cancelled'])>{{ $statusLabels[$order->status] ?? $order->status }}</span>
                                 @if($transmissionStatus)<p class="mt-2 text-[0.68rem] text-slate-500">Integração: {{ $transmissionLabels[$transmissionStatus] ?? $transmissionStatus }}</p>@endif
                             </td>
-                            <td class="px-4 py-4 text-right" x-data="{ cancelling: false }">
-                                <div class="flex justify-end gap-1"><a href="{{ route('laboratory.orders.show', $order) }}" class="rounded-l-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white" title="Visualizar">Visualizar</a>@can('laboratory.orders.cancel')@if($order->status === 'pending' && $transmissionStatus !== 'accepted')<button type="button" @click="cancelling = !cancelling" class="grid size-9 place-items-center rounded-r-lg bg-red-600 text-white" title="Cancelar requisição" aria-label="Cancelar requisição"><x-icons.trash /></button>@endif @endcan</div>
+                            <td class="whitespace-nowrap px-4 py-4 text-right" x-data="{ cancelling: false }">
+                                <div class="flex justify-end gap-1"><a href="{{ route('laboratory.orders.show', $order) }}" class="inline-flex min-w-24 items-center justify-center whitespace-nowrap rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white" title="Visualizar">Visualizar</a>@can('laboratory.orders.cancel')@if($order->status === 'pending' && $transmissionStatus !== 'accepted')<button type="button" @click="cancelling = !cancelling" class="grid size-9 shrink-0 place-items-center rounded-lg bg-red-600 text-white" title="Cancelar requisição" aria-label="Cancelar requisição"><x-icons.trash /></button>@endif @endcan</div>
                                 <form x-show="cancelling" x-cloak method="POST" action="{{ route('laboratory.orders.cancel', $order) }}" class="mt-3 w-72 rounded-lg border border-red-200 bg-white p-3 text-left shadow-lg">@csrf<textarea name="reason" required minlength="10" rows="2" class="field-control" placeholder="Motivo do cancelamento"></textarea><label class="mt-2 flex gap-2 text-xs"><input type="checkbox" name="confirmation" value="1" required> Confirmo o cancelamento</label><button class="mt-2 w-full rounded-lg bg-red-700 px-3 py-2 text-xs font-bold text-white">Confirmar</button></form>
                             </td>
                         </tr>

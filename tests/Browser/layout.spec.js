@@ -68,6 +68,26 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
         longTextLayout.cardClientWidth,
     );
 
+    await page.goto("/laboratory/orders");
+    const laboratoryTable = page.locator("table").first();
+    await expect(laboratoryTable).toBeVisible();
+    const laboratoryTableLayout = await laboratoryTable.evaluate((table) => {
+        const headers = Array.from(table.querySelectorAll("thead th"));
+
+        return {
+            minWidth: Number.parseFloat(getComputedStyle(table).minWidth),
+            wrapperOverflowX: getComputedStyle(table.parentElement).overflowX,
+            nowrapHeaders: [0, 1, 4, 5, 6, 7].map(
+                (index) => getComputedStyle(headers[index]).whiteSpace,
+            ),
+        };
+    });
+    expect(laboratoryTableLayout.minWidth).toBeGreaterThanOrEqual(1280);
+    expect(laboratoryTableLayout.wrapperOverflowX).toBe("auto");
+    expect(laboratoryTableLayout.nowrapHeaders).toEqual(
+        Array(6).fill("nowrap"),
+    );
+
     await page.goto("/queues");
     const queueBoard = page.locator('[x-data^="queueBoard"]').first();
     await expect(queueBoard).toBeVisible();

@@ -157,6 +157,8 @@ final class ReceptionOpeningTest extends TestCase
             ->assertSee('Requisições de exames')
             ->assertSee('Paciente Demonstrativo')
             ->assertSee('Dra. Solicitante')
+            ->assertSee('min-w-[1280px]', false)
+            ->assertSee('min-w-24 items-center justify-center whitespace-nowrap', false)
             ->assertSee('2');
 
         $otherUnit = $this->createHealthUnit('NORTH');
