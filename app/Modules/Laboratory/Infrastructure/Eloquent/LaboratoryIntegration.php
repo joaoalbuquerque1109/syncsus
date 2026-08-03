@@ -55,6 +55,11 @@ final class LaboratoryIntegration extends Model
         return $this->hasMany(LaboratoryOrderTransmission::class);
     }
 
+    public function hasCredentials(): bool
+    {
+        return filled($this->username) && filled($this->password);
+    }
+
     protected function casts(): array
     {
         return [

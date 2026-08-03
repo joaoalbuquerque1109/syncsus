@@ -81,6 +81,11 @@
                 'bg-brand-600 text-white' => request()->routeIs('administration.flow.*'),
                 'hover:bg-white/8 hover:text-white' => !request()->routeIs('administration.flow.*'),
             ])><span aria-hidden="true">⚙</span> Administração</a>
+            <a href="{{ route('administration.synclab.edit') }}" @class([
+                'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
+                'bg-brand-600 text-white' => request()->routeIs('administration.synclab.*'),
+                'hover:bg-white/8 hover:text-white' => !request()->routeIs('administration.synclab.*'),
+            ])><span aria-hidden="true">S</span> Integração Synclab</a>
             @if(auth()->user()->isPlatformAdministrator())
             <a href="{{ route('administration.operations') }}" @class([
                 'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',

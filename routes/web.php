@@ -14,6 +14,7 @@ use App\Modules\Identity\Presentation\Http\Controllers\ActiveHealthUnitControlle
 use App\Modules\Identity\Presentation\Http\Controllers\AuthenticatedSessionController;
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
+use App\Modules\Laboratory\Presentation\Http\Controllers\SynclabIntegrationController;
 use App\Modules\Medical\Presentation\Http\Controllers\DiagnosisCodeSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\LaboratoryExamSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\MedicalConsultationController;
@@ -119,6 +120,13 @@ Route::middleware(['auth', 'active'])->group(function (): void {
         Route::get('/administration/operations', OperationsController::class)
             ->middleware('permission:administration.manage')
             ->name('administration.operations');
+        Route::prefix('administration/integrations/synclab')
+            ->name('administration.synclab.')
+            ->middleware('permission:administration.manage')
+            ->group(function (): void {
+                Route::get('/', [SynclabIntegrationController::class, 'edit'])->name('edit');
+                Route::put('/', [SynclabIntegrationController::class, 'update'])->name('update');
+            });
         Route::prefix('administration/professionals')
             ->name('administration.professionals.')
             ->middleware('permission:administration.manage')
