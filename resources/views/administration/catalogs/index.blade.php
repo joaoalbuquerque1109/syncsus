@@ -11,9 +11,10 @@
         Os locais abaixo pertencem exclusivamente a esta organização.
     </x-alert>
 
-    <div x-data="{ tab: 'units' }">
+    @php($initialTab = in_array(request('tab'), ['units', 'specialties', 'arrivals', 'entries', 'exams'], true) ? request('tab') : 'units')
+    <div x-data="{ tab: @js($initialTab) }">
         <div class="mb-5 flex flex-wrap gap-2">
-            @foreach(['units' => 'Unidades', 'specialties' => 'Especialidades', 'arrivals' => 'Formas de chegada', 'entries' => 'Tipos de entrada'] as $tab => $label)
+            @foreach(['units' => 'Unidades', 'specialties' => 'Especialidades', 'arrivals' => 'Formas de chegada', 'entries' => 'Tipos de entrada', 'exams' => 'Exames'] as $tab => $label)
                 <button type="button" @click="tab = '{{ $tab }}'" :class="tab === '{{ $tab }}' ? 'bg-brand-600 text-white' : 'bg-white text-slate-700'" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold">{{ $label }}</button>
             @endforeach
         </div>
@@ -66,5 +67,7 @@
             </div></x-card>
             <x-card class="h-fit p-5"><h2 class="font-extrabold">Novo tipo de entrada</h2><form method="POST" action="{{ route('administration.catalogs.store', 'entry-types') }}" class="mt-4 space-y-3">@csrf<x-form.input name="code" label="Código" required /><x-form.input name="name" label="Nome" required /><x-form.input name="display_order" label="Ordem" type="number" value="0" /><x-form.select name="default_queue_id" label="Fila padrão"><option value="">Sem fila</option>@foreach($queues as $queue)<option value="{{ $queue->getKey() }}">{{ $queue->name }}</option>@endforeach</x-form.select><label class="flex gap-2 text-sm"><input type="checkbox" name="requires_triage" value="1" checked> Exige triagem</label><label class="flex gap-2 text-sm"><input type="checkbox" name="allows_provisional_patient" value="1" checked> Aceita provisório</label><label class="flex gap-2 text-sm"><input type="checkbox" name="is_active" value="1" checked> Ativo</label><x-button.primary>Cadastrar</x-button.primary></form></x-card>
         </section>
+
+        @include('administration.catalogs.partials.laboratory-exams')
     </div>
 </x-layout.app>

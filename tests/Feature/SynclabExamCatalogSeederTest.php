@@ -44,4 +44,41 @@ final class SynclabExamCatalogSeederTest extends TestCase
             static fn (LaboratoryExam $exam): bool => strlen((string) $exam->sus_procedure_code) === 10,
         ));
     }
+
+    public function test_it_does_not_overwrite_or_deactivate_manually_managed_exams(): void
+    {
+        $unit = $this->createHealthUnit('CENTRAL');
+        $this->seed(SynclabExamCatalogSeeder::class);
+        $integration = LaboratoryIntegration::query()->sole();
+        $overridden = $integration->exams()->where('external_code', '127')->sole();
+        $overridden->update([
+            'name' => 'Hemograma configurado pela unidade',
+            'is_active' => false,
+            'source_version' => null,
+            'content_hash' => null,
+        ]);
+        $integration->exams()->create([
+            'external_code' => 'LOCAL-01',
+            'name' => 'Exame cadastrado manualmente',
+            'is_active' => true,
+            'source_version' => null,
+        ]);
+
+        $this->seed(SynclabExamCatalogSeeder::class);
+
+        $this->assertDatabaseHas('laboratory_exams', [
+            'id' => $overridden->getKey(),
+            'name' => 'Hemograma configurado pela unidade',
+            'is_active' => false,
+            'source_version' => null,
+        ]);
+        $this->assertDatabaseHas('laboratory_exams', [
+            'laboratory_integration_id' => $integration->getKey(),
+            'external_code' => 'LOCAL-01',
+            'name' => 'Exame cadastrado manualmente',
+            'is_active' => true,
+        ]);
+        $this->assertSame(124, $integration->exams()->count());
+        $this->assertSame($unit->getKey(), $integration->health_unit_id);
+    }
 }

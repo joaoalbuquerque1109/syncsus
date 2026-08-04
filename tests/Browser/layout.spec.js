@@ -43,6 +43,24 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     expect(failedAssets).toEqual([]);
     expect(pageErrors).toEqual([]);
 
+    const sidebarScroll = page.locator("[data-sidebar-scroll]");
+    await expect(sidebarScroll).toBeVisible();
+    const sidebarLayout = await sidebarScroll.evaluate((element) => ({
+        overflowY: getComputedStyle(element).overflowY,
+        clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight,
+    }));
+    expect(sidebarLayout.overflowY).toBe("auto");
+    expect(sidebarLayout.scrollHeight).toBeGreaterThan(
+        sidebarLayout.clientHeight,
+    );
+    const sidebarScrollTop = await sidebarScroll.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+
+        return element.scrollTop;
+    });
+    expect(sidebarScrollTop).toBeGreaterThan(0);
+
     await page.goto("/reception/open");
     await page.getByRole("button", { name: "Continuar" }).first().click();
     await page.getByRole("button", { name: "Cadastrar paciente" }).click();
@@ -101,6 +119,17 @@ test("login and authenticated layout load compiled CSS and JavaScript", async ({
     expect(laboratoryTableLayout.nowrapHeaders).toEqual(
         Array(6).fill("nowrap"),
     );
+
+    await page.goto("/administration/catalogs?tab=exams");
+    await expect(
+        page.getByRole("heading", { name: "Exames laboratoriais" }),
+    ).toBeVisible();
+    await expect(
+        page.getByRole("heading", { name: "Novo exame" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Buscar exame")).toBeVisible();
+    await expect(page.locator("#new_exam_code")).toBeVisible();
+    await expect(page.locator("#new_exam_name")).toBeVisible();
 
     await page.goto("/queues");
     const queueBoard = page.locator('[x-data^="queueBoard"]').first();

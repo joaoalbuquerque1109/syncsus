@@ -34,6 +34,9 @@ final class SynclabExamCatalogSeeder extends Seeder
                     'laboratory_integration_id' => $integration->getKey(),
                     'external_code' => $externalCode,
                 ]);
+                if ($exam->exists && $exam->source_version === null) {
+                    continue;
+                }
                 $exam->fill([
                     'acronym' => $this->nullable($row['mnemonico']),
                     'integration_acronym' => $this->nullable($row['mnemonico']),
@@ -51,6 +54,7 @@ final class SynclabExamCatalogSeeder extends Seeder
 
             LaboratoryExam::query()
                 ->where('laboratory_integration_id', $integration->getKey())
+                ->whereNotNull('source_version')
                 ->whereNotIn('external_code', $activeCodes)
                 ->update(['is_active' => false]);
         }
