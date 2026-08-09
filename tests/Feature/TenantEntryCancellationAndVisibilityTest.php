@@ -10,6 +10,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Reception\Domain\Enums\AdministrativePriority;
@@ -67,8 +68,8 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $user = $this->createUserWithUnit($unit);
         $user->assignRole('receptionist');
         $patient = $this->patient($unit, $user->getKey(), 'P-ENTRY-1');
-        $triageQueue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-TRIAGE')->sole();
-        $medicalQueue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
+        $triageQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $medicalQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
         $return = EntryType::query()->where('code', 'RETURN')->sole();
         $session = ['active_health_unit_id' => $unit->getKey()];
 
@@ -123,7 +124,7 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $profile->healthUnits()->attach($unit);
         $profile->specialties()->attach($clinical, ['is_primary' => true]);
 
-        $triage = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-TRIAGE')->sole();
+        $triage = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
         $triagePoint = $triage->servicePoints()->sole();
         $triageTwo = $triage->replicate(['public_id']);
         $triageTwo->fill(['code' => 'QUEUE-TRIAGE-2', 'name' => 'Fila de Triagem 2', 'display_order' => 2])->save();
@@ -131,12 +132,15 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $triagePointTwo->fill(['code' => 'TRIAGE-POINT-2', 'name' => 'Ponto 02 · Triagem 02'])->save();
         $triageTwo->servicePoints()->attach($triagePointTwo);
         $nurseProfile = $nurse->professionalProfile()->sole();
-        $nurseProfile->queues()->sync([$triage->getKey()]);
-        $nurseProfile->servicePoints()->sync([$triagePoint->getKey()]);
-        $clinic = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
-        $pediatrics = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-PEDIATRICS')->sole();
-        $profile->queues()->attach($clinic);
-        $profile->servicePoints()->sync($clinic->servicePoints()->pluck('service_points.id'));
+        $assignments = app(ProfessionalOperationalAssignments::class);
+        $assignments->sync($nurseProfile, [(int) $triage->getKey()], [(int) $triagePoint->getKey()]);
+        $clinic = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
+        $pediatrics = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-PEDIATRICS')->sole();
+        $assignments->sync(
+            $profile,
+            [(int) $clinic->getKey()],
+            $clinic->servicePoints()->pluck('service_points.id')->map(fn (mixed $id): int => (int) $id)->all(),
+        );
         $session = ['active_health_unit_id' => $unit->getKey()];
 
         $this->actingAs($nurse)->withSession($session)->get(route('queues.index'))

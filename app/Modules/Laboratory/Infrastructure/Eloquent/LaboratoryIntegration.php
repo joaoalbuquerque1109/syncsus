@@ -7,11 +7,10 @@ namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class LaboratoryIntegration extends Model
+final class LaboratoryIntegration extends TenantModel
 {
     use HasPublicId;
 
@@ -31,16 +30,14 @@ final class LaboratoryIntegration extends Model
         'result_api_token_hash',
     ];
 
-    /** @return BelongsTo<Organization, $this> */
-    public function organization(): BelongsTo
+    public function resolveOrganization(): ?Organization
     {
-        return $this->belongsTo(Organization::class);
+        return $this->resolveCoreReference(Organization::class, 'organization_public_id', 'organization_id');
     }
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
     }
 
     /** @return HasMany<LaboratoryMaterial, $this> */

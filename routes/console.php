@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Actions\BackfillCanonicalExamCatalogAction;
 use App\Modules\Laboratory\Application\Actions\DispatchPendingLaboratoryTransmissionsAction;
@@ -14,19 +15,45 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamCatalogImportCandidate;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroupImportConflict;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Support\Tenancy\TenantConnectionManager;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('synclab:dispatch-pending', function (
     DispatchPendingLaboratoryTransmissionsAction $action,
+    TenantContext $tenantContext,
+    TenantConnectionManager $connectionManager,
 ): void {
-    $this->info($action->execute().' transmissao(oes) Synclab encaminhada(s) para a fila.');
+    $dispatched = 0;
+    foreach (HealthUnit::query()->where('is_active', true)->get() as $unit) {
+        $tenantContext->reset();
+        $tenantContext->resolve($unit, $connectionManager->connectionName($unit));
+        try {
+            $dispatched += $action->execute($unit);
+        } finally {
+            $tenantContext->reset();
+        }
+    }
+    $this->info($dispatched.' transmissao(oes) Synclab encaminhada(s) para a fila.');
 })->purpose('Encaminha requisicoes laboratoriais pendentes para o worker Synclab.');
 
 Artisan::command('synclab:dispatch-received-results', function (
     DispatchReceivedLaboratoryResultsAction $action,
+    TenantContext $tenantContext,
+    TenantConnectionManager $connectionManager,
 ): void {
-    $this->info($action->execute().' resultado(s) Synclab recebido(s) encaminhado(s) para a fila.');
+    $dispatched = 0;
+    foreach (HealthUnit::query()->where('is_active', true)->get() as $unit) {
+        $tenantContext->reset();
+        $tenantContext->resolve($unit, $connectionManager->connectionName($unit));
+        try {
+            $dispatched += $action->execute($unit);
+        } finally {
+            $tenantContext->reset();
+        }
+    }
+    $this->info($dispatched.' resultado(s) Synclab recebido(s) encaminhado(s) para a fila.');
 })->purpose('Recupera resultados Synclab recebidos que ainda aguardam processamento.');
 
 Artisan::command('laboratory:backfill-exam-catalog', function (
@@ -68,19 +95,23 @@ Artisan::command('laboratory:review-exam-catalog {integration}', function (): vo
         ->where('public_id', (string) $this->argument('integration'))
         ->firstOrFail();
     $rows = ExamCatalogImportCandidate::query()
-        ->with(['laboratoryExam:id,external_code,name', 'suggestedExam:id,public_id,name'])
+        ->with('laboratoryExam:id,external_code,name')
         ->where('laboratory_integration_id', $integration->getKey())
         ->pending()
         ->orderBy('match_status')
         ->get()
-        ->map(fn (ExamCatalogImportCandidate $candidate): array => [
-            $candidate->public_id,
-            $candidate->match_status->value,
-            $candidate->laboratoryExam->external_code,
-            $candidate->laboratoryExam->name,
-            $candidate->suggestedExam?->public_id,
-            $candidate->suggestedExam?->name,
-        ])->all();
+        ->map(function (ExamCatalogImportCandidate $candidate): array {
+            $suggestedExam = $candidate->resolveSuggestedExam();
+
+            return [
+                $candidate->public_id,
+                $candidate->match_status->value,
+                $candidate->laboratoryExam->external_code,
+                $candidate->laboratoryExam->name,
+                $suggestedExam?->public_id,
+                $suggestedExam?->name,
+            ];
+        })->all();
     $this->table(['Candidato', 'Estado', 'Código', 'Exame importado', 'Sugestão', 'Exame sugerido'], $rows);
 })->purpose('Lista candidatos pendentes de revisão do catálogo Synclab.');
 

@@ -12,6 +12,7 @@ use App\Modules\Documents\Domain\Enums\ClinicalDocumentType;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -58,7 +59,7 @@ final readonly class IssueClinicalDocumentAction
         $prepared = $this->render($consultation, $type, $content, $user, $unit);
 
         try {
-            return DB::transaction(fn (): ClinicalDocument => $this->persist(
+            $document = DB::transaction(fn (): ClinicalDocument => $this->persist(
                 $prepared['document'],
                 $prepared['version'],
                 $consultation,
@@ -67,6 +68,10 @@ final readonly class IssueClinicalDocumentAction
                 $unit,
                 $request,
             ));
+            $document->setRelation('healthUnit', $unit);
+            $document->setRelation('patient', Patient::query()->findOrFail($document->patient_id));
+
+            return $document;
         } catch (Throwable $exception) {
             $this->discardRenderedVersion($prepared['version']);
 
@@ -85,7 +90,8 @@ final readonly class IssueClinicalDocumentAction
         User $user,
         HealthUnit $unit,
     ): array {
-        $consultation->loadMissing('encounter.patient');
+        $consultation->loadMissing('encounter');
+        $patient = Patient::query()->findOrFail($consultation->encounter->patient_id);
         $document = new ClinicalDocument;
         $document->forceFill([
             'public_id' => (string) Str::ulid(),
@@ -93,6 +99,7 @@ final readonly class IssueClinicalDocumentAction
             'health_unit_id' => $unit->getKey(),
             'encounter_id' => $consultation->encounter_id,
             'patient_id' => $consultation->encounter->patient_id,
+            'patient_public_id' => $patient->public_id,
             'medical_consultation_id' => $consultation->getKey(),
             'document_type' => $type,
             'title' => $type->label(),

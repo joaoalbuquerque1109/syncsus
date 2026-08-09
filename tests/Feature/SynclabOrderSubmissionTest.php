@@ -183,7 +183,8 @@ final class SynclabOrderSubmissionTest extends TestCase
             // A falha temporaria e esperada para preparar a segunda tentativa.
         }
 
-        $order->requestedBy()->update(['name' => 'Nome alterado depois da solicitacao']);
+        User::query()->findOrFail($order->requested_by)
+            ->update(['name' => 'Nome alterado depois da solicitacao']);
         config()->set('sync_sus.synclab.public_identifiers_enabled', true);
         app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $transmission->getKey());
 

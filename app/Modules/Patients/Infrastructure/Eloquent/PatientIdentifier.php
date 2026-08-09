@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Patients\Infrastructure\Eloquent;
 
 use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\CoreModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class PatientIdentifier extends Model
+final class PatientIdentifier extends CoreModel
 {
     protected $guarded = [];
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Laboratory\Application\Actions;
 
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Services\CatalogReader;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroup;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroupImportConflict;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
@@ -18,6 +19,7 @@ final readonly class ResolveExamGroupImportConflictAction
     public function __construct(
         private RecordLaboratoryCatalogAuditAction $audit,
         private SyncExamGroupItemsAction $syncItems,
+        private CatalogReader $catalog,
     ) {}
 
     public function execute(
@@ -27,9 +29,11 @@ final readonly class ResolveExamGroupImportConflictAction
     ): ExamGroupImportConflict {
         return DB::transaction(function () use ($conflict, $decision, $actor): ExamGroupImportConflict {
             $conflict = ExamGroupImportConflict::query()
-                ->with(['integration', 'group.items.exam'])
+                ->with('integration')
                 ->lockForUpdate()
                 ->findOrFail($conflict->getKey());
+            $group = $conflict->resolveGroup()?->load('items.exam');
+            $conflict->setRelation('group', $group);
             $this->authorize($conflict, $actor);
             if ($conflict->status !== 'pending') {
                 throw new LogicException('Este conflito de grupo já foi resolvido.');
@@ -38,8 +42,7 @@ final readonly class ResolveExamGroupImportConflictAction
                 throw new InvalidArgumentException('Decisão inválida para o conflito de grupo.');
             }
 
-            $before = $conflict->group?->items->pluck('exam.public_id')->filter()->values()->all() ?? [];
-            $group = $conflict->group;
+            $before = $group?->items->pluck('exam.public_id')->filter()->values()->all() ?? [];
             if ($decision !== 'ignore') {
                 [$examIds, $displayOrders] = $this->resolveSourceItems($conflict);
                 if ($group === null) {
@@ -51,7 +54,7 @@ final readonly class ResolveExamGroupImportConflictAction
                     ]);
                 }
                 if ($decision === 'merge') {
-                    $examIds = collect($group->items()->pluck('exam_id'))->merge($examIds)->unique()->values()->all();
+                    $examIds = $group->items()->pluck('exam_id')->merge($examIds)->unique()->values()->all();
                 }
                 $this->syncItems->execute($group, $examIds, $displayOrders, $decision === 'merge');
             }
@@ -78,6 +81,8 @@ final readonly class ResolveExamGroupImportConflictAction
                 ],
             );
 
+            $conflict->unsetRelation('group');
+
             return $conflict->refresh();
         });
     }
@@ -98,7 +103,8 @@ final readonly class ResolveExamGroupImportConflictAction
         $mappings = ExamMapping::query()
             ->where('laboratory_integration_id', $conflict->laboratory_integration_id)
             ->where('is_active', true)
-            ->whereHas('exam', fn ($query) => $query->where('is_active', true))
+            ->whereIn('exam_public_id', $this->catalog
+                ->activeExamPublicIdsForOrganization((int) $conflict->organization_id))
             ->whereIn('external_code', $codes)
             ->get()
             ->keyBy('external_code');

@@ -208,7 +208,12 @@ final readonly class OpenEncounterAction
                 (int) $encounter->getKey(),
             );
 
-            return $encounter->load(['patient.identifiers', 'healthUnit', 'receptionRecord', 'queueEntries.queue']);
+            $encounter->load(['receptionRecord', 'queueEntries.queue']);
+            $patient->loadMissing('identifiers');
+            $encounter->setRelation('patient', $patient);
+            $encounter->setRelation('healthUnit', $unit);
+
+            return $encounter;
         });
     }
 }

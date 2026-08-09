@@ -26,7 +26,7 @@ final class LaboratoryIntegrationFoundationTest extends TestCase
         $this->assertFalse($integration->is_active);
         $this->assertFalse($integration->transmission_enabled);
         $this->assertFalse($integration->result_sync_enabled);
-        $this->assertSame($unit->getKey(), $integration->healthUnit->getKey());
+        $this->assertSame($unit->getKey(), $integration->resolveHealthUnit()?->getKey());
     }
 
     public function test_credentials_are_encrypted_at_rest(): void

@@ -10,9 +10,12 @@ use App\Modules\Laboratory\Domain\Enums\LaboratoryTransmissionStatus;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
+use App\Support\Tenancy\TenantConnectionManager;
 
 final class PrepareLaboratoryTransmissionsAction
 {
+    public function __construct(private readonly TenantConnectionManager $connectionManager) {}
+
     public function execute(ExamOrder $order, HealthUnit $unit): void
     {
         $integrationIds = $order->items()
@@ -45,7 +48,11 @@ final class PrepareLaboratoryTransmissionsAction
                 ],
             );
             if ($ready) {
-                SubmitLaboratoryOrderJob::dispatch((int) $transmission->getKey())->afterCommit();
+                SubmitLaboratoryOrderJob::dispatch(
+                    (int) $transmission->getKey(),
+                    (string) $unit->public_id,
+                    $this->connectionManager->connectionName($unit),
+                )->afterCommit();
             }
         }
     }

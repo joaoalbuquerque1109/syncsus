@@ -8,6 +8,8 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Laboratory\Application\Actions\MatchSynclabExamCatalogAction;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Support\Tenancy\TenantConnectionManager;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -25,6 +27,9 @@ final class SynclabExamCatalogSeeder extends Seeder
         $rows = $this->parentExamRows($catalogPath);
         $version = hash_file('sha256', $catalogPath) ?: null;
         foreach (HealthUnit::query()->get() as $unit) {
+            $context = app(TenantContext::class);
+            $context->reset();
+            $context->resolve($unit, app(TenantConnectionManager::class)->connectionName($unit));
             $integration = $this->integration($unit);
             $activeCodes = [];
 

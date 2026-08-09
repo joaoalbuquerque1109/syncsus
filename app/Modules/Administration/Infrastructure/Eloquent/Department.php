@@ -4,18 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Administration\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class Department extends Model
+final class Department extends TenantModel
 {
     protected $guarded = [];
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
+    }
+
+    public function getHealthUnitAttribute(): ?HealthUnit
+    {
+        return $this->relationLoaded('healthUnit') ? $this->getRelation('healthUnit') : $this->resolveHealthUnit();
     }
 
     /** @return HasMany<Room, $this> */

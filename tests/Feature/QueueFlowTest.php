@@ -16,6 +16,7 @@ use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientIdentifier;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
@@ -307,12 +308,15 @@ final class QueueFlowTest extends TestCase
         $fixture = $this->performanceQueues($unit);
         $profile = $professionalUser->professionalProfile()->sole();
         $allowedIndexes = [0, 2, 7];
-        $profile->queues()->sync(collect($allowedIndexes)
-            ->map(fn (int $index): int => (int) $fixture['queues'][$index]->getKey())
-            ->all());
-        $profile->servicePoints()->sync(collect($allowedIndexes)
-            ->map(fn (int $index): int => (int) $fixture['primaryPoints'][$index]->getKey())
-            ->all());
+        app(ProfessionalOperationalAssignments::class)->sync(
+            $profile,
+            collect($allowedIndexes)
+                ->map(fn (int $index): int => (int) $fixture['queues'][$index]->getKey())
+                ->all(),
+            collect($allowedIndexes)
+                ->map(fn (int $index): int => (int) $fixture['primaryPoints'][$index]->getKey())
+                ->all(),
+        );
         $session = ['active_health_unit_id' => $unit->getKey()];
 
         $this->actingAs($professionalUser)->withSession($session)->get(route('queues.index'))->assertOk();

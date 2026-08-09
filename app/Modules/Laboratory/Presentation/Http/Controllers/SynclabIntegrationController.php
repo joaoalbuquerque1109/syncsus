@@ -11,6 +11,7 @@ use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Actions\RotateSynclabResultTokenAction;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Modules\Laboratory\Presentation\Http\Requests\UpdateSynclabIntegrationRequest;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,11 +35,21 @@ final class SynclabIntegrationController extends Controller
             : collect();
         $recentTransmissions = $integration->exists
             ? $integration->transmissions()
-                ->with('order.encounter.patient')
+                ->with('order.encounter')
                 ->latest('updated_at')
                 ->limit(10)
                 ->get()
             : collect();
+        $patients = Patient::query()
+            ->whereKey($recentTransmissions->pluck('order.encounter.patient_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy(fn (Patient $patient): int => (int) $patient->getKey());
+        foreach ($recentTransmissions as $transmission) {
+            $transmission->order->encounter->setRelation(
+                'patient',
+                $patients->get((int) $transmission->order->encounter->patient_id),
+            );
+        }
         $catalogTotal = $integration->exists ? $integration->exams()->where('is_active', true)->count() : 0;
         $catalogMapped = $integration->exists
             ? $integration->exams()->where('is_active', true)->whereNotNull('sus_procedure_code')->count()

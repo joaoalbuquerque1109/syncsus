@@ -6,7 +6,9 @@ namespace App\Modules\Queues\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Application\Services\QueueVisibilityService;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
@@ -63,8 +65,8 @@ final class QueueController extends Controller
         $query = QueueEntry::query()
             ->where('queue_id', $queue->getKey())
             ->with([
-                'servicePoint', 'assignedUser',
-                'encounter.patient.identifiers', 'encounter.arrivalMethod', 'encounter.riskLevel',
+                'servicePoint',
+                'encounter.arrivalMethod',
                 'encounter.triageAssessment', 'encounter.medicalConsultation',
             ]);
         $visibility->applyEntryScope($query, $queue, $user);
@@ -82,15 +84,28 @@ final class QueueController extends Controller
         if ($term !== '') {
             $normalized = NormalizesBrazilianData::name($term);
             $digits = NormalizesBrazilianData::digits($term);
-            $query->where(function ($query) use ($term, $normalized, $digits): void {
+            $patientIds = Patient::query()
+                ->where(function ($patients) use ($normalized, $digits): void {
+                    $patients->where('normalized_name', 'like', "%{$normalized}%")
+                        ->orWhere('medical_record_number', 'like', "%{$normalized}%");
+                    if ($digits !== null) {
+                        $patients->orWhereHas(
+                            'identifiers',
+                            fn ($identifiers) => $identifiers->where('normalized_value', 'like', "%{$digits}%"),
+                        );
+                    }
+                })
+                ->pluck('id')
+                ->all();
+            $query->where(function ($query) use ($term, $patientIds): void {
                 $query->where('ticket_number', 'like', "%{$term}%")
-                    ->orWhereHas('encounter.patient', function ($query) use ($normalized, $digits): void {
-                        $query->where('normalized_name', 'like', "%{$normalized}%")
-                            ->orWhere('medical_record_number', 'like', "%{$normalized}%");
-                        if ($digits !== null) {
-                            $query->orWhereHas('identifiers', fn ($query) => $query->where('normalized_value', 'like', "%{$digits}%"));
-                        }
-                    });
+                    ->when(
+                        $patientIds !== [],
+                        fn ($entries) => $entries->orWhereHas(
+                            'encounter',
+                            fn ($encounters) => $encounters->whereIn('patient_id', $patientIds),
+                        ),
+                    );
             });
         }
 
@@ -99,6 +114,23 @@ final class QueueController extends Controller
             ->orderBy('entered_at')
             ->limit(100)
             ->get();
+        $patients = Patient::query()
+            ->whereKey($entries->pluck('encounter.patient_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy(fn (Patient $patient): int => (int) $patient->getKey());
+        $riskLevels = RiskLevel::query()
+            ->whereKey($entries->pluck('encounter.risk_level_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy(fn (RiskLevel $riskLevel): int => (int) $riskLevel->getKey());
+        $assignedUsers = User::query()
+            ->whereKey($entries->pluck('assigned_user_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy(fn (User $assignedUser): string => (string) $assignedUser->getKey());
+        foreach ($entries as $entry) {
+            $entry->encounter->setRelation('patient', $patients->get((int) $entry->encounter->patient_id));
+            $entry->encounter->setRelation('riskLevel', $riskLevels->get((int) $entry->encounter->risk_level_id));
+            $entry->setRelation('assignedUser', $assignedUsers->get((string) $entry->assigned_user_id));
+        }
         $data = [];
         foreach ($entries as $entry) {
             $data[] = $this->serialize($entry, $user, (string) $queue->department->type);

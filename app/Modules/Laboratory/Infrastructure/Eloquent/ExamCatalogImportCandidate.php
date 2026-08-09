@@ -8,8 +8,8 @@ use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Domain\Enums\ExamCatalogMatchStatus;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -18,16 +18,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $source_hash
  * @property int|null $suggested_exam_id
  */
-final class ExamCatalogImportCandidate extends Model
+final class ExamCatalogImportCandidate extends TenantModel
 {
     use HasPublicId;
 
     protected $guarded = [];
 
-    /** @return BelongsTo<Organization, $this> */
-    public function organization(): BelongsTo
+    public function resolveOrganization(): ?Organization
     {
-        return $this->belongsTo(Organization::class);
+        return $this->resolveCoreReference(Organization::class, 'organization_public_id', 'organization_id');
     }
 
     /** @return BelongsTo<LaboratoryIntegration, $this> */
@@ -42,10 +41,9 @@ final class ExamCatalogImportCandidate extends Model
         return $this->belongsTo(LaboratoryExam::class);
     }
 
-    /** @return BelongsTo<Exam, $this> */
-    public function suggestedExam(): BelongsTo
+    public function resolveSuggestedExam(): ?Exam
     {
-        return $this->belongsTo(Exam::class, 'suggested_exam_id');
+        return $this->resolveCoreReference(Exam::class, 'suggested_exam_public_id', 'suggested_exam_id');
     }
 
     /** @return BelongsTo<ExamMapping, $this> */
@@ -54,10 +52,9 @@ final class ExamCatalogImportCandidate extends Model
         return $this->belongsTo(ExamMapping::class, 'existing_mapping_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function resolvedBy(): BelongsTo
+    public function resolveResolvedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'resolved_by');
+        return User::query()->find($this->resolved_by);
     }
 
     /**

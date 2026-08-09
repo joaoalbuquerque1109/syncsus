@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Laboratory\Application\Services;
 
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
+use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Data\LaboratoryOrderPayload;
 use App\Modules\Laboratory\Application\Exceptions\InvalidLaboratoryOrder;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
@@ -25,13 +27,27 @@ final class SynclabOrderPayloadBuilder
         LaboratoryIntegration $integration,
         string $externalOrderNumber,
     ): LaboratoryOrderPayload {
-        $order->loadMissing([
-            'requestedBy.professionalProfile.registrations',
-            'encounter.healthUnit.organization',
-            'encounter.currentDepartment',
-            'encounter.patient.identifiers',
-            'items.laboratoryExam',
-        ]);
+        $order->loadMissing(['encounter.currentDepartment', 'items.laboratoryExam']);
+        if (! $order->encounter->relationLoaded('patient')) {
+            $order->encounter->setRelation(
+                'patient',
+                Patient::query()->with('identifiers')->findOrFail($order->encounter->patient_id),
+            );
+        }
+        if (! $order->encounter->relationLoaded('healthUnit')) {
+            $order->encounter->setRelation(
+                'healthUnit',
+                HealthUnit::query()->with('organization')->findOrFail($order->encounter->health_unit_id),
+            );
+        }
+        if (! $order->relationLoaded('requestedBy')) {
+            $order->setRelation(
+                'requestedBy',
+                User::query()
+                    ->with('professionalProfile.registrations')
+                    ->findOrFail($order->requested_by),
+            );
+        }
 
         $patient = $order->encounter->patient;
         $identifiers = $patient->identifiers->keyBy(
@@ -88,7 +104,10 @@ final class SynclabOrderPayloadBuilder
         if (strlen($cnes) !== 7) {
             throw new InvalidLaboratoryOrder('A unidade precisa possuir um codigo CNES valido com 7 digitos.');
         }
-        $requestedBy = $order->requestedBy;
+        $requestedBy = $order->getRelation('requestedBy');
+        if (! $requestedBy instanceof User) {
+            throw new InvalidLaboratoryOrder('O solicitante do pedido não foi encontrado no Core.');
+        }
         $profileValue = $requestedBy->getRelationValue('professionalProfile');
         $professionalName = (string) $requestedBy->name;
         $registration = null;

@@ -7,12 +7,12 @@ namespace App\Modules\Medical\Infrastructure\Eloquent;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryResultIngestion;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-final class ExamOrderItem extends Model
+final class ExamOrderItem extends TenantModel
 {
     protected $guarded = [];
 

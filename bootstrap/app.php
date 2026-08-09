@@ -12,6 +12,7 @@ use App\Support\DeploymentNetworkConfiguration;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Spatie\Permission\Middleware\PermissionMiddleware;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -51,6 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => PermissionMiddleware::class,
             'synclab.results' => AuthenticateSynclabResultWebhook::class,
         ]);
+        $middleware->prependToPriorityList(SubstituteBindings::class, EnsureActiveHealthUnit::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

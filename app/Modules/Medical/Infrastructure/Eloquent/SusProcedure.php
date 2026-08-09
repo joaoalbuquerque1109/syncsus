@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Medical\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\CoreModel;
 
-final class SusProcedure extends Model
+final class SusProcedure extends CoreModel
 {
     protected $guarded = [];
 

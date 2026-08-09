@@ -6,14 +6,15 @@ namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Services\CatalogReader;
 use App\Modules\Laboratory\Domain\Enums\ExamMappingMatchType;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
-final class ExamMapping extends Model
+final class ExamMapping extends TenantModel
 {
     use HasPublicId;
 
@@ -26,9 +27,11 @@ final class ExamMapping extends Model
     protected static function booted(): void
     {
         self::saving(function (ExamMapping $mapping): void {
-            $examOrganizationId = Exam::query()
-                ->whereKey($mapping->exam_id)
-                ->value('organization_id');
+            $exam = app(CatalogReader::class)->exam($mapping->exam_public_id, $mapping->exam_id);
+            $examOrganizationId = $exam?->organization_id;
+            if ($exam !== null) {
+                $mapping->exam_public_id = $exam->public_id;
+            }
             $integrationOrganizationId = LaboratoryIntegration::query()
                 ->whereKey($mapping->laboratory_integration_id)
                 ->value('organization_id');
@@ -42,10 +45,14 @@ final class ExamMapping extends Model
         });
     }
 
-    /** @return BelongsTo<Exam, $this> */
-    public function exam(): BelongsTo
+    public function resolveExam(): ?Exam
     {
-        return $this->belongsTo(Exam::class);
+        return app(CatalogReader::class)->exam($this->exam_public_id, $this->exam_id);
+    }
+
+    public function getExamAttribute(): ?Exam
+    {
+        return $this->resolveExam();
     }
 
     /** @return BelongsTo<LaboratoryIntegration, $this> */
@@ -54,10 +61,9 @@ final class ExamMapping extends Model
         return $this->belongsTo(LaboratoryIntegration::class, 'laboratory_integration_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function mappedBy(): BelongsTo
+    public function resolveMappedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'mapped_by');
+        return User::query()->find($this->mapped_by);
     }
 
     /**
@@ -67,8 +73,8 @@ final class ExamMapping extends Model
     public function scopeForHealthUnit(Builder $query, HealthUnit $unit): Builder
     {
         return $query
-            ->whereHas('exam', fn (Builder $exam) => $exam
-                ->where('organization_id', $unit->organization_id))
+            ->whereIn('exam_public_id', app(CatalogReader::class)
+                ->activeExamPublicIdsForOrganization((int) $unit->organization_id))
             ->whereHas('integration', fn (Builder $integration) => $integration
                 ->where('organization_id', $unit->organization_id)
                 ->where('health_unit_id', $unit->getKey()));

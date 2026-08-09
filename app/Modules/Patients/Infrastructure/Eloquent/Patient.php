@@ -8,15 +8,15 @@ use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use App\Support\Models\CoreModel;
 use App\Support\Models\HasPublicId;
 use DateTimeInterface;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
-final class Patient extends Model
+final class Patient extends CoreModel
 {
     use HasPublicId;
 

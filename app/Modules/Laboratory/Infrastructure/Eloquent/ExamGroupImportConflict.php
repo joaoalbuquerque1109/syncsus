@@ -7,8 +7,8 @@ namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
@@ -18,7 +18,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property list<int>|null $added_exam_ids
  * @property list<int>|null $removed_exam_ids
  */
-final class ExamGroupImportConflict extends Model
+final class ExamGroupImportConflict extends TenantModel
 {
     use HasPublicId;
 
@@ -28,10 +28,9 @@ final class ExamGroupImportConflict extends Model
         'status' => 'pending',
     ];
 
-    /** @return BelongsTo<Organization, $this> */
-    public function organization(): BelongsTo
+    public function resolveOrganization(): ?Organization
     {
-        return $this->belongsTo(Organization::class);
+        return $this->resolveCoreReference(Organization::class, 'organization_public_id', 'organization_id');
     }
 
     /** @return BelongsTo<LaboratoryIntegration, $this> */
@@ -40,16 +39,14 @@ final class ExamGroupImportConflict extends Model
         return $this->belongsTo(LaboratoryIntegration::class, 'laboratory_integration_id');
     }
 
-    /** @return BelongsTo<ExamGroup, $this> */
-    public function group(): BelongsTo
+    public function resolveGroup(): ?ExamGroup
     {
-        return $this->belongsTo(ExamGroup::class, 'exam_group_id');
+        return $this->exam_group_id === null ? null : ExamGroup::query()->find($this->exam_group_id);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function resolvedBy(): BelongsTo
+    public function resolveResolvedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'resolved_by');
+        return User::query()->find($this->resolved_by);
     }
 
     /**

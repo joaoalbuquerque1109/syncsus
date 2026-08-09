@@ -26,7 +26,10 @@ use RuntimeException;
  */
 final readonly class ClinicalDocumentVersionService
 {
-    public function __construct(private PdfRenderer $renderer) {}
+    public function __construct(
+        private PdfRenderer $renderer,
+        private ClinicalDocumentContextLoader $contextLoader,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $content
@@ -37,13 +40,7 @@ final readonly class ClinicalDocumentVersionService
         array $content,
         int $versionNumber,
     ): array {
-        $document->loadMissing([
-            'healthUnit.organization',
-            'patient.identifiers',
-            'encounter',
-            'consultation.professional.professionalProfile.registrations',
-            'consultation.professional.professionalProfile.specialties',
-        ]);
+        $this->contextLoader->load($document);
         $html = View::make('documents.pdf', [
             'document' => $document,
             'content' => $content,

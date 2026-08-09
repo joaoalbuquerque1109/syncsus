@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Triage\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 
-final class VitalSignRange extends Model
+final class VitalSignRange extends TenantModel
 {
     protected $guarded = [];
 

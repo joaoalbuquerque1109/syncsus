@@ -6,12 +6,15 @@ namespace App\Modules\Professionals\Application\Actions;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 final class SaveHealthProfessionalAction
 {
+    public function __construct(private readonly ProfessionalOperationalAssignments $assignments) {}
+
     /** @param array<string, mixed> $data */
     public function execute(
         array $data,
@@ -44,11 +47,16 @@ final class SaveHealthProfessionalAction
             $professional->healthUnits()->sync($data['health_unit_ids']);
             $this->syncSpecialties($professional, $data);
             $this->syncRegistrations($professional, $data);
-            $professional->queues()->sync($data['queue_ids'] ?? []);
-            $professional->servicePoints()->sync($data['service_point_ids'] ?? []);
+            $this->assignments->sync(
+                $professional,
+                array_map('intval', $data['queue_ids'] ?? []),
+                array_map('intval', $data['service_point_ids'] ?? []),
+            );
 
-            return $professional->fresh(['user', 'healthUnits', 'specialties', 'registrations', 'queues', 'servicePoints'])
+            $saved = $professional->fresh(['user', 'healthUnits', 'specialties', 'registrations'])
                 ?? $professional;
+
+            return $this->assignments->hydrateOne($saved);
         });
     }
 

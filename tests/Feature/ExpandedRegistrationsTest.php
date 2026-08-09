@@ -31,7 +31,7 @@ final class ExpandedRegistrationsTest extends TestCase
             'name' => 'Cardiologia',
             'is_active' => true,
         ]);
-        $queue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
+        $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
         $queue->update(['specialty_id' => $specialty->getKey()]);
         $servicePoint = $queue->servicePoints()->sole();
 

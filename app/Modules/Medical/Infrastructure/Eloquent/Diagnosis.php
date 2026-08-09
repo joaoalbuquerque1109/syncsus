@@ -6,10 +6,10 @@ namespace App\Modules\Medical\Infrastructure\Eloquent;
 
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class Diagnosis extends Model
+final class Diagnosis extends TenantModel
 {
     protected $guarded = [];
 
@@ -25,16 +25,19 @@ final class Diagnosis extends Model
         return $this->belongsTo(Encounter::class);
     }
 
-    /** @return BelongsTo<DiagnosisCode, $this> */
-    public function catalogCode(): BelongsTo
+    public function resolveCatalogCode(): ?DiagnosisCode
     {
-        return $this->belongsTo(DiagnosisCode::class, 'diagnosis_code_id');
+        return DiagnosisCode::query()->find($this->diagnosis_code_id);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function diagnosedBy(): BelongsTo
+    public function getCatalogCodeAttribute(): ?DiagnosisCode
     {
-        return $this->belongsTo(User::class, 'diagnosed_by');
+        return $this->relationLoaded('catalogCode') ? $this->getRelation('catalogCode') : $this->resolveCatalogCode();
+    }
+
+    public function resolveDiagnosedBy(): ?User
+    {
+        return User::query()->find($this->diagnosed_by);
     }
 
     protected function casts(): array

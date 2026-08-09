@@ -7,10 +7,10 @@ namespace App\Modules\Queues\Infrastructure\Eloquent;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class QueueEntryHistory extends Model
+final class QueueEntryHistory extends TenantModel
 {
     public $timestamps = false;
 
@@ -30,10 +30,9 @@ final class QueueEntryHistory extends Model
         return $this->belongsTo(ServicePoint::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function performer(): BelongsTo
+    public function resolvePerformer(): ?User
     {
-        return $this->belongsTo(User::class, 'performed_by');
+        return User::query()->find($this->performed_by);
     }
 
     protected function casts(): array

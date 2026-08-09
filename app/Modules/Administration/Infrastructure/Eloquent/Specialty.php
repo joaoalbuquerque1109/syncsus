@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Modules\Administration\Infrastructure\Eloquent;
 
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\CoreModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-final class Specialty extends Model
+final class Specialty extends CoreModel
 {
     protected $guarded = [];
 

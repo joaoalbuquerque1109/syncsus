@@ -36,7 +36,7 @@ final readonly class CompleteTriageAction
     {
         return DB::transaction(function () use ($assessment, $data, $user, $unit, $request): QueueEntry {
             $locked = TriageAssessment::query()
-                ->with(['encounter.patient', 'queueEntry.queue'])
+                ->with(['encounter', 'queueEntry.queue'])
                 ->whereKey($assessment->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();

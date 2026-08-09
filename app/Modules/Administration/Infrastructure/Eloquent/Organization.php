@@ -6,11 +6,11 @@ namespace App\Modules\Administration\Infrastructure\Eloquent;
 
 use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroup;
+use App\Support\Models\CoreModel;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class Organization extends Model
+final class Organization extends CoreModel
 {
     use HasUlids;
 

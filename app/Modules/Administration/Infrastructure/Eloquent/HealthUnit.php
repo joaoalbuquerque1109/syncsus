@@ -7,13 +7,13 @@ namespace App\Modules\Administration\Infrastructure\Eloquent;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Infrastructure\Eloquent\HealthUnitExam;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
+use App\Support\Models\CoreModel;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class HealthUnit extends Model
+final class HealthUnit extends CoreModel
 {
     use HasUlids;
 

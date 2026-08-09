@@ -6,11 +6,14 @@ namespace App\Modules\Reports\Application\Queries;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use App\Modules\Reports\Application\Services\EncounterCoreHydrator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 final class EncounterReportQuery
 {
+    public function __construct(private readonly EncounterCoreHydrator $coreHydrator) {}
+
     /**
      * @param  array<string, mixed>  $filters
      * @return array{summary: array<string, mixed>, rows: list<array<string, mixed>>}
@@ -19,6 +22,7 @@ final class EncounterReportQuery
     {
         $query = $this->query($unit, $filters);
         $encounters = $query->orderByDesc('arrival_at')->limit(1000)->get();
+        $this->coreHydrator->hydrate($encounters);
         $rows = $encounters->map(fn (Encounter $encounter): array => $this->row($encounter, $showPatientNames))->all();
         $totalMinutes = collect($rows)->pluck('total_minutes')->filter(fn (mixed $value): bool => is_int($value));
         $triageWait = collect($rows)->pluck('arrival_to_triage_minutes')->filter(fn (mixed $value): bool => is_int($value));
@@ -45,8 +49,7 @@ final class EncounterReportQuery
     {
         $query = Encounter::query()
             ->with([
-                'patient', 'entryType', 'arrivalMethod', 'riskLevel', 'assignedSpecialty',
-                'medicalConsultation.professional', 'destination',
+                'entryType', 'arrivalMethod', 'medicalConsultation', 'destination',
             ])
             ->where('health_unit_id', $unit->getKey())
             ->whereBetween('arrival_at', [

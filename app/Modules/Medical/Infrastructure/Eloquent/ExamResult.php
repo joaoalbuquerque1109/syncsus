@@ -7,10 +7,10 @@ namespace App\Modules\Medical\Infrastructure\Eloquent;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryResultIngestion;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class ExamResult extends Model
+final class ExamResult extends TenantModel
 {
     use HasPublicId;
 
@@ -22,10 +22,9 @@ final class ExamResult extends Model
         return $this->belongsTo(ExamOrderItem::class, 'exam_order_item_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function recordedBy(): BelongsTo
+    public function resolveRecordedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'recorded_by');
+        return User::query()->find($this->recorded_by);
     }
 
     /** @return BelongsTo<LaboratoryResultIngestion, $this> */

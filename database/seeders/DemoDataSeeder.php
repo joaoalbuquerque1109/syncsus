@@ -22,6 +22,7 @@ use App\Modules\Medical\Infrastructure\Eloquent\PhysicalExam;
 use App\Modules\Medical\Infrastructure\Eloquent\Prescription;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientAccessLog;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueCall;
@@ -234,8 +235,9 @@ final class DemoDataSeeder extends Seeder
                 $queues->whereIn('specialty_id', $professional->specialties()->pluck('specialties.id'));
             }
             $assignedQueues = $queues->get();
-            $professional->queues()->sync($assignedQueues->modelKeys());
-            $professional->servicePoints()->sync(
+            app(ProfessionalOperationalAssignments::class)->sync(
+                $professional,
+                $assignedQueues->modelKeys(),
                 $assignedQueues
                     ->flatMap(fn (Queue $queue) => $queue->servicePoints()->pluck('service_points.id'))
                     ->unique()
@@ -372,8 +374,8 @@ final class DemoDataSeeder extends Seeder
             ->where('code', 'WALK_IN')->firstOrFail();
         $specialty = Specialty::query()->where('organization_id', $unit->organization_id)
             ->where('code', 'CLINICA')->firstOrFail();
-        $triageQueue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-TRIAGE')->firstOrFail();
-        $medicalQueue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->firstOrFail();
+        $triageQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->firstOrFail();
+        $medicalQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->firstOrFail();
         $triagePoint = $triageQueue->servicePoints()->firstOrFail();
         $medicalPoint = $medicalQueue->servicePoints()->firstOrFail();
         $protocol = TriageProtocol::query()->where('code', 'SYNC-TRIAGE')->firstOrFail();

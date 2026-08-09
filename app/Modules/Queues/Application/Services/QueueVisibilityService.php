@@ -15,6 +15,9 @@ use Illuminate\Database\Eloquent\Collection;
 
 final class QueueVisibilityService
 {
+    /** @var array<int, array{queues: list<int>, service_points: list<int>}> */
+    private array $assignmentCache = [];
+
     public function hasBroadAccess(User $user): bool
     {
         return $user->isPlatformAdministrator() || $user->hasAnyRole(['manager', 'receptionist']);
@@ -34,10 +37,9 @@ final class QueueVisibilityService
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereHas(
-            'professionals',
-            fn (Builder $professional): Builder => $professional->whereKey($profile->getKey()),
-        );
+        $queueIds = $this->queueIds($profile);
+
+        return $queueIds === [] ? $query->whereRaw('1 = 0') : $query->whereKey($queueIds);
     }
 
     /**
@@ -59,18 +61,18 @@ final class QueueVisibilityService
             return new Collection;
         }
 
-        return $query->whereHas(
-            'professionals',
-            fn (Builder $professional): Builder => $professional->whereKey($profile->getKey()),
-        )->get();
+        $servicePointIds = $this->servicePointIds($profile);
+
+        return $servicePointIds === [] ? new Collection : $query->whereKey($servicePointIds)->get();
     }
 
     public function servicePointsEagerLoadConstraint(User $user): Closure
     {
         $hasBroadAccess = $this->hasBroadAccess($user);
         $profile = $hasBroadAccess ? null : $this->activeProfile($user);
+        $servicePointIds = $profile === null ? [] : $this->servicePointIds($profile);
 
-        return static function ($query) use ($hasBroadAccess, $profile): void {
+        return static function ($query) use ($hasBroadAccess, $profile, $servicePointIds): void {
             $query->where('service_points.is_active', true)
                 ->with('room')
                 ->orderBy('service_points.name');
@@ -85,10 +87,7 @@ final class QueueVisibilityService
                 return;
             }
 
-            $query->whereHas(
-                'professionals',
-                fn (Builder $professional): Builder => $professional->whereKey($profile->getKey()),
-            );
+            $query->whereKey($servicePointIds);
         };
     }
 
@@ -145,5 +144,43 @@ final class QueueVisibilityService
         $profile = $user->professionalProfile;
 
         return $profile instanceof HealthProfessional && $profile->is_active ? $profile : null;
+    }
+
+    /** @return list<int> */
+    private function queueIds(HealthProfessional $profile): array
+    {
+        return $this->assignments($profile)['queues'];
+    }
+
+    /** @return list<int> */
+    private function servicePointIds(HealthProfessional $profile): array
+    {
+        return $this->assignments($profile)['service_points'];
+    }
+
+    /** @return array{queues: list<int>, service_points: list<int>} */
+    private function assignments(HealthProfessional $profile): array
+    {
+        $profileId = (int) $profile->getKey();
+        if (isset($this->assignmentCache[$profileId])) {
+            return $this->assignmentCache[$profileId];
+        }
+
+        $connection = $profile->getConnection();
+        $queueAssignments = $connection->table('health_professional_queue')
+            ->selectRaw("'queue' as assignment_type, queue_id as assigned_id")
+            ->where('health_professional_id', $profileId);
+        $rows = $connection->table('health_professional_service_point')
+            ->selectRaw("'service_point' as assignment_type, service_point_id as assigned_id")
+            ->where('health_professional_id', $profileId)
+            ->unionAll($queueAssignments)
+            ->get();
+
+        return $this->assignmentCache[$profileId] = [
+            'queues' => $rows->where('assignment_type', 'queue')
+                ->pluck('assigned_id')->map(static fn (mixed $id): int => (int) $id)->values()->all(),
+            'service_points' => $rows->where('assignment_type', 'service_point')
+                ->pluck('assigned_id')->map(static fn (mixed $id): int => (int) $id)->values()->all(),
+        ];
     }
 }

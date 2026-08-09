@@ -8,23 +8,26 @@ use App\Modules\Administration\Infrastructure\Eloquent\Department;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
-use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class Queue extends Model
+final class Queue extends TenantModel
 {
     use HasPublicId;
 
     protected $guarded = [];
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
+    }
+
+    public function getHealthUnitAttribute(): ?HealthUnit
+    {
+        return $this->relationLoaded('healthUnit') ? $this->getRelation('healthUnit') : $this->resolveHealthUnit();
     }
 
     /** @return BelongsTo<Department, $this> */
@@ -33,10 +36,14 @@ final class Queue extends Model
         return $this->belongsTo(Department::class);
     }
 
-    /** @return BelongsTo<Specialty, $this> */
-    public function specialty(): BelongsTo
+    public function resolveSpecialty(): ?Specialty
     {
-        return $this->belongsTo(Specialty::class);
+        return $this->resolveCoreReference(Specialty::class, 'specialty_public_id', 'specialty_id');
+    }
+
+    public function getSpecialtyAttribute(): ?Specialty
+    {
+        return $this->relationLoaded('specialty') ? $this->getRelation('specialty') : $this->resolveSpecialty();
     }
 
     /** @return HasMany<QueueEntry, $this> */
@@ -49,13 +56,6 @@ final class Queue extends Model
     public function servicePoints(): BelongsToMany
     {
         return $this->belongsToMany(ServicePoint::class)->withTimestamps();
-    }
-
-    /** @return BelongsToMany<HealthProfessional, $this> */
-    public function professionals(): BelongsToMany
-    {
-        return $this->belongsToMany(HealthProfessional::class, 'health_professional_queue')
-            ->withTimestamps();
     }
 
     /** @return HasMany<QueueCall, $this> */

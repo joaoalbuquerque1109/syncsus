@@ -11,6 +11,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Professionals\Application\Actions\SaveHealthProfessionalAction;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Professionals\Presentation\Http\Requests\SaveHealthProfessionalRequest;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
@@ -20,13 +21,15 @@ use Illuminate\View\View;
 
 final class HealthProfessionalController extends Controller
 {
+    public function __construct(private readonly ProfessionalOperationalAssignments $assignments) {}
+
     public function index(Request $request): View
     {
         $unit = $this->unit($request);
         $term = trim((string) $request->query('q'));
         $professionals = HealthProfessional::query()
             ->where('organization_id', $unit->organization_id)
-            ->with(['registrations', 'specialties', 'healthUnits', 'queues', 'servicePoints'])
+            ->with(['registrations', 'specialties', 'healthUnits'])
             ->when($term !== '', fn ($query) => $query->where(
                 fn ($query) => $query->where('full_name', 'like', "%{$term}%")
                     ->orWhere('institutional_code', 'like', "%{$term}%")
@@ -35,6 +38,7 @@ final class HealthProfessionalController extends Controller
             ->orderBy('full_name')
             ->paginate(20)
             ->withQueryString();
+        $this->assignments->hydrate($professionals->getCollection());
 
         return view('administration.professionals.index', compact('professionals', 'term'));
     }
@@ -66,7 +70,8 @@ final class HealthProfessionalController extends Controller
     {
         $unit = $this->unit($request);
         abort_unless((int) $professional->organization_id === (int) $unit->organization_id, 404);
-        $professional->load(['registrations', 'specialties', 'healthUnits', 'queues', 'servicePoints']);
+        $professional->load(['registrations', 'specialties', 'healthUnits']);
+        $this->assignments->hydrateOne($professional);
 
         return view('administration.professionals.form', $this->formData($request, $professional));
     }
@@ -107,20 +112,31 @@ final class HealthProfessionalController extends Controller
             ->orderBy('name')
             ->get();
         $queues = Queue::query()
-            ->whereHas('healthUnit', fn ($query) => $query->where('organization_id', $unit->organization_id))
+            ->where('health_unit_id', $unit->getKey())
             ->where('is_active', true)
-            ->with(['healthUnit', 'department', 'specialty'])
+            ->with('department')
             ->orderBy('health_unit_id')
             ->orderBy('display_order')
             ->orderBy('name')
             ->get();
+        $specialties = Specialty::query()
+            ->whereKey($queues->pluck('specialty_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy(fn (Specialty $specialty): int => (int) $specialty->getKey());
+        foreach ($queues as $queue) {
+            $queue->setRelation('healthUnit', $unit);
+            $queue->setRelation('specialty', $specialties->get((int) $queue->specialty_id));
+        }
         $servicePoints = ServicePoint::query()
-            ->whereHas('room.department.healthUnit', fn ($query) => $query->where('organization_id', $unit->organization_id))
+            ->whereHas('room.department', fn ($query) => $query->where('health_unit_id', $unit->getKey()))
             ->where('is_active', true)
             ->whereHas('queues', fn ($query) => $query->whereIn('queues.id', $queues->modelKeys()))
-            ->with(['room.department.healthUnit', 'queues' => fn ($query) => $query->whereIn('queues.id', $queues->modelKeys())])
+            ->with(['room.department', 'queues' => fn ($query) => $query->whereIn('queues.id', $queues->modelKeys())])
             ->orderBy('name')
             ->get();
+        foreach ($servicePoints as $servicePoint) {
+            $servicePoint->room->department->setRelation('healthUnit', $unit);
+        }
 
         return [
             'professional' => $professional,

@@ -18,6 +18,7 @@ use App\Modules\Medical\Application\Actions\CreateReferralAction;
 use App\Modules\Medical\Application\Actions\SaveMedicalDraftAction;
 use App\Modules\Medical\Application\Actions\StartMedicalConsultationAction;
 use App\Modules\Medical\Application\Actions\VoidClinicalRecordAction;
+use App\Modules\Medical\Application\Services\MedicalConsultationContextLoader;
 use App\Modules\Medical\Infrastructure\Eloquent\ClinicalNote;
 use App\Modules\Medical\Infrastructure\Eloquent\Diagnosis;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
@@ -70,26 +71,18 @@ final class MedicalConsultationController extends Controller
         ]);
     }
 
-    public function show(Request $request, MedicalConsultation $consultation, LogPatientAccessAction $access): View
-    {
+    public function show(
+        Request $request,
+        MedicalConsultation $consultation,
+        LogPatientAccessAction $access,
+        MedicalConsultationContextLoader $contextLoader,
+    ): View {
         [$user, $unit] = $this->context($request);
         $this->ensureUnit($consultation, $unit);
         if ($consultation->statusEnum()->value === 'draft') {
             abort_unless($user->canManageClinicalRecordOwnedBy($consultation->professional_id), 403);
         }
-        $consultation->load([
-            'encounter.patient.identifiers', 'encounter.patient.allergies', 'encounter.patient.conditions',
-            'encounter.patient.medications', 'encounter.patient.socialHistory',
-            'encounter.arrivalMethod', 'encounter.riskLevel', 'encounter.triageAssessment.vitalSigns',
-            'queueEntry.queue', 'professional.professionalProfile.registrations',
-            'professional.professionalProfile.specialties', 'specialty', 'room', 'physicalExam',
-            'diagnoses.diagnosedBy', 'prescriptions.items', 'prescriptions.document.currentVersion',
-            'examOrders.items.result.recordedBy', 'examOrders.document.currentVersion',
-            'clinicalNotes.author', 'referrals.specialty', 'referrals.document.currentVersion',
-            'medicalCertificates.diagnosisCode', 'medicalCertificates.document.currentVersion',
-            'documents.currentVersion',
-            'destination.recordedBy', 'addenda.author',
-        ]);
+        $contextLoader->load($consultation);
         $access->execute($request, $user, $consultation->encounter->patient, (int) $unit->getKey(), 'medical_record_view');
 
         return view('medical.show', [

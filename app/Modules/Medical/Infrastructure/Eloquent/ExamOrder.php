@@ -11,11 +11,11 @@ use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class ExamOrder extends Model
+final class ExamOrder extends TenantModel
 {
     use HasPublicId;
 
@@ -26,10 +26,12 @@ final class ExamOrder extends Model
         self::creating(function (ExamOrder $order): void {
             $attributes = $order->getAttributes();
             if (($attributes['organization_id'] ?? null) === null || ($attributes['health_unit_id'] ?? null) === null) {
-                $encounter = Encounter::query()->with('healthUnit')->find($order->encounter_id);
+                $encounter = Encounter::query()->find($order->encounter_id);
                 if ($encounter !== null) {
                     if (($attributes['organization_id'] ?? null) === null) {
-                        $order->organization_id = $encounter->healthUnit->organization_id;
+                        $order->organization_id = HealthUnit::query()
+                            ->whereKey($encounter->health_unit_id)
+                            ->value('organization_id');
                     }
                     if (($attributes['health_unit_id'] ?? null) === null) {
                         $order->health_unit_id = $encounter->health_unit_id;
@@ -61,34 +63,29 @@ final class ExamOrder extends Model
         return $this->belongsTo(Encounter::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function requestedBy(): BelongsTo
+    public function resolveRequestedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'requested_by');
+        return User::query()->find($this->requested_by);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function createdBy(): BelongsTo
+    public function resolveCreatedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return User::query()->find($this->created_by);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function cancelledBy(): BelongsTo
+    public function resolveCancelledBy(): ?User
     {
-        return $this->belongsTo(User::class, 'cancelled_by');
+        return User::query()->find($this->cancelled_by);
     }
 
-    /** @return BelongsTo<Organization, $this> */
-    public function organization(): BelongsTo
+    public function resolveOrganization(): ?Organization
     {
-        return $this->belongsTo(Organization::class);
+        return $this->resolveCoreReference(Organization::class, 'organization_public_id', 'organization_id');
     }
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
     }
 
     /** @return HasMany<ExamOrderItem, $this> */

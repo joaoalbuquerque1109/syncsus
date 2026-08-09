@@ -31,9 +31,13 @@ final class SaveHealthProfessionalRequest extends FormRequest
             && in_array($professionType, ['doctor', 'nurse', 'technician'], true);
         $unitIds = $this->integerList('health_unit_ids');
         $specialtyIds = $this->integerList('specialty_ids');
+        $allowedUnitIds = HealthUnit::query()
+            ->where('organization_id', $organizationId)
+            ->whereIn('id', $unitIds)
+            ->pluck('id')
+            ->all();
         $allowedQueues = Queue::query()
-            ->whereHas('healthUnit', fn ($query) => $query->where('organization_id', $organizationId))
-            ->whereIn('health_unit_id', $unitIds)
+            ->whereIn('health_unit_id', $allowedUnitIds)
             ->where('is_active', true);
         if ($professionType === 'doctor') {
             $allowedQueues->whereHas('department', fn ($query) => $query->where('type', 'medical'))

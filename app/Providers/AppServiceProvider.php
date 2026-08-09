@@ -9,6 +9,9 @@ use App\Modules\Documents\Infrastructure\Pdf\DompdfRenderer;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Contracts\LaboratoryProviderClient;
 use App\Modules\Laboratory\Infrastructure\Synclab\SynclabClient;
+use App\Support\Tenancy\ActiveHealthUnitTenantResolver;
+use App\Support\Tenancy\TenantContext;
+use App\Support\Tenancy\TenantResolver;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -22,6 +25,8 @@ final class AppServiceProvider extends ServiceProvider
     {
         $this->app->bind(PdfRenderer::class, DompdfRenderer::class);
         $this->app->bind(LaboratoryProviderClient::class, SynclabClient::class);
+        $this->app->scoped(TenantContext::class);
+        $this->app->bind(TenantResolver::class, ActiveHealthUnitTenantResolver::class);
     }
 
     public function boot(): void

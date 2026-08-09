@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
+use App\Support\Models\CoreModel;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class ExamGroup extends Model
+final class ExamGroup extends CoreModel
 {
     use HasPublicId;
 

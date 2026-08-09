@@ -10,12 +10,14 @@ use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Documents\Application\Actions\CreateDocumentVersionAction;
 use App\Modules\Documents\Application\Actions\IssueClinicalDocumentAction;
 use App\Modules\Documents\Application\Actions\VoidClinicalDocumentAction;
+use App\Modules\Documents\Application\Services\ClinicalDocumentContextLoader;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Documents\Presentation\Http\Requests\CreateDocumentVersionRequest;
 use App\Modules\Documents\Presentation\Http\Requests\IssueClinicalDocumentRequest;
 use App\Modules\Documents\Presentation\Http\Requests\VoidClinicalDocumentRequest;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
+use App\Support\Tenancy\PublicLookupService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -39,11 +41,14 @@ final class ClinicalDocumentController extends Controller
         return redirect()->route('documents.show', $document)->with('success', 'Documento emitido e PDF armazenado com segurança.');
     }
 
-    public function show(Request $request, ClinicalDocument $document): View
-    {
+    public function show(
+        Request $request,
+        ClinicalDocument $document,
+        ClinicalDocumentContextLoader $contextLoader,
+    ): View {
         [, $unit] = $this->context($request);
         $this->ensureDocumentUnit($document, $unit);
-        $document->load(['patient', 'encounter', 'healthUnit.organization', 'creator', 'voidedBy', 'currentVersion.creator', 'versions.creator']);
+        $contextLoader->load($document, true);
 
         return view('documents.show', ['document' => $document]);
     }
@@ -52,10 +57,11 @@ final class ClinicalDocumentController extends Controller
         Request $request,
         ClinicalDocument $document,
         RecordAuditEventAction $audit,
+        ClinicalDocumentContextLoader $contextLoader,
     ): BinaryFileResponse {
         [$user, $unit] = $this->context($request);
         $this->ensureDocumentUnit($document, $unit);
-        $document->loadMissing(['currentVersion', 'patient']);
+        $contextLoader->load($document);
         abort_unless($document->currentVersion !== null, 404);
         $path = $document->currentVersion->pdf_path;
         abort_unless(Storage::disk('local_private')->exists($path), 404);
@@ -105,14 +111,19 @@ final class ClinicalDocumentController extends Controller
         return back()->with('success', 'Documento anulado. O histórico e os arquivos foram preservados.');
     }
 
-    public function verify(string $verificationCode): View
-    {
-        $document = ClinicalDocument::query()
-            ->with(['healthUnit.organization', 'patient', 'currentVersion'])
-            ->where('verification_code', $verificationCode)
-            ->firstOrFail();
+    public function verify(
+        string $verificationCode,
+        PublicLookupService $lookups,
+        ClinicalDocumentContextLoader $contextLoader,
+    ): View {
+        try {
+            $document = $lookups->resolveClinicalDocument($verificationCode);
+            $contextLoader->load($document);
 
-        return view('documents.verify', ['document' => $document]);
+            return view('documents.verify', ['document' => $document]);
+        } finally {
+            $lookups->reset();
+        }
     }
 
     /** @return array{User, HealthUnit} */

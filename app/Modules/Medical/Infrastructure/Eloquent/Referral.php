@@ -8,25 +8,28 @@ use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class Referral extends Model
+final class Referral extends TenantModel
 {
     use HasPublicId;
 
     protected $guarded = [];
 
-    /** @return BelongsTo<User, $this> */
-    public function requestedBy(): BelongsTo
+    public function resolveRequestedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'requested_by');
+        return User::query()->find($this->requested_by);
     }
 
-    /** @return BelongsTo<Specialty, $this> */
-    public function specialty(): BelongsTo
+    public function resolveSpecialty(): ?Specialty
     {
-        return $this->belongsTo(Specialty::class);
+        return $this->resolveCoreReference(Specialty::class, 'specialty_public_id', 'specialty_id');
+    }
+
+    public function getSpecialtyAttribute(): ?Specialty
+    {
+        return $this->relationLoaded('specialty') ? $this->getRelation('specialty') : $this->resolveSpecialty();
     }
 
     /** @return BelongsTo<ClinicalDocument, $this> */

@@ -119,13 +119,24 @@ final class ReceptionController extends Controller
         $unit = $request->attributes->get('active_health_unit');
         abort_unless($unit instanceof HealthUnit && $encounter->health_unit_id === $unit->getKey(), 404);
 
-        return view('reception.receipt', [
-            'encounter' => $encounter->load([
-                'patient.identifiers', 'healthUnit', 'entryType', 'arrivalMethod',
-                'currentDepartment', 'assignedSpecialty', 'receptionRecord', 'companions',
-                'queueEntries' => fn ($query) => $query->with('queue')->latest(),
-            ]),
+        $encounter->load([
+            'entryType', 'arrivalMethod', 'currentDepartment', 'receptionRecord', 'companions',
+            'queueEntries' => fn ($query) => $query->with('queue')->latest(),
         ]);
+        $encounter->setRelation(
+            'patient',
+            Patient::query()->with('identifiers')->findOrFail($encounter->patient_id),
+        );
+        $encounter->setRelation('healthUnit', $unit);
+        $encounter->setRelation(
+            'assignedSpecialty',
+            $encounter->assigned_specialty_id === null
+                ? null
+                : Specialty::query()
+                    ->find($encounter->assigned_specialty_id),
+        );
+
+        return view('reception.receipt', ['encounter' => $encounter]);
     }
 
     public function cancel(

@@ -18,7 +18,9 @@ use LogicException;
 
 final readonly class ResolveExamCatalogCandidateAction
 {
-    public function __construct(private RecordLaboratoryCatalogAuditAction $audit) {}
+    public function __construct(
+        private RecordLaboratoryCatalogAuditAction $audit,
+    ) {}
 
     public function execute(
         ExamCatalogImportCandidate $candidate,
@@ -35,7 +37,7 @@ final readonly class ResolveExamCatalogCandidateAction
             $enableForUnit,
         ): ExamCatalogImportCandidate {
             $candidate = ExamCatalogImportCandidate::query()
-                ->with(['laboratoryExam', 'integration', 'suggestedExam', 'existingMapping.exam'])
+                ->with(['laboratoryExam', 'integration', 'existingMapping'])
                 ->lockForUpdate()
                 ->findOrFail($candidate->getKey());
             $this->authorize($candidate, $actor);
@@ -43,7 +45,7 @@ final readonly class ResolveExamCatalogCandidateAction
                 throw new LogicException('Este candidato de catálogo já foi resolvido.');
             }
 
-            $beforeMapping = $candidate->existingMapping?->exam?->public_id;
+            $beforeMapping = $candidate->existingMapping?->resolveExam()?->public_id;
             $mapping = match ($decision) {
                 'confirm' => $this->confirm($candidate, $actor),
                 'create' => $this->createCanonicalExam($candidate, $actor),
@@ -58,6 +60,7 @@ final readonly class ResolveExamCatalogCandidateAction
                     'exam_id' => $mapping->exam_id,
                     'health_unit_id' => $candidate->integration->health_unit_id,
                 ], [
+                    'exam_public_id' => $mapping->resolveExam()?->public_id,
                     'is_enabled' => true,
                     'enabled_at' => now(),
                     'enabled_by' => $actor->getKey(),
@@ -70,7 +73,6 @@ final readonly class ResolveExamCatalogCandidateAction
                 'resolved_by' => $actor->getKey(),
                 'resolved_at' => now(),
             ])->save();
-            $mapping?->loadMissing('exam');
             $this->audit->execute(
                 'laboratory.exam_catalog_match_resolved',
                 $actor,
@@ -81,7 +83,7 @@ final readonly class ResolveExamCatalogCandidateAction
                     'match_status' => $candidate->match_status->value,
                     'external_code' => $candidate->laboratoryExam->external_code,
                     'before_exam' => $beforeMapping,
-                    'after_exam' => $mapping?->exam?->public_id,
+                    'after_exam' => $mapping?->resolveExam()?->public_id,
                     'enabled_for_unit' => $enableForUnit,
                 ],
             );
@@ -100,11 +102,12 @@ final readonly class ResolveExamCatalogCandidateAction
 
     private function confirm(ExamCatalogImportCandidate $candidate, User $actor): ExamMapping
     {
-        if ($candidate->match_status !== ExamCatalogMatchStatus::Probable || $candidate->suggestedExam === null) {
+        $suggestedExam = $candidate->resolveSuggestedExam();
+        if ($candidate->match_status !== ExamCatalogMatchStatus::Probable || $suggestedExam === null) {
             throw new LogicException('A confirmação exige um match provável com exame sugerido.');
         }
 
-        return $this->saveMapping($candidate, $candidate->suggestedExam, ExamMappingMatchType::Probable, $actor);
+        return $this->saveMapping($candidate, $suggestedExam, ExamMappingMatchType::Probable, $actor);
     }
 
     private function createCanonicalExam(ExamCatalogImportCandidate $candidate, User $actor): ExamMapping
@@ -138,7 +141,7 @@ final readonly class ResolveExamCatalogCandidateAction
         User $actor,
         ?Exam $selectedExam,
     ): ExamMapping {
-        $exam = $selectedExam ?? $candidate->suggestedExam;
+        $exam = $selectedExam ?? $candidate->resolveSuggestedExam();
         if ($candidate->match_status !== ExamCatalogMatchStatus::Conflict || $exam === null) {
             throw new LogicException('O remapeamento exige um conflito e um exame canônico selecionado.');
         }
@@ -163,6 +166,7 @@ final readonly class ResolveExamCatalogCandidateAction
             'external_code' => $candidate->laboratoryExam->external_code,
         ], [
             'exam_id' => $exam->getKey(),
+            'exam_public_id' => $exam->public_id,
             'external_name_snapshot' => $candidate->laboratoryExam->name,
             'match_type' => $matchType,
             'match_confidence' => $candidate->match_confidence,

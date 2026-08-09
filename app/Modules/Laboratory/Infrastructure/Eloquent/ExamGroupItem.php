@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 
+use App\Support\Models\CoreModel;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
-final class ExamGroupItem extends Model
+final class ExamGroupItem extends CoreModel
 {
     use HasPublicId;
 

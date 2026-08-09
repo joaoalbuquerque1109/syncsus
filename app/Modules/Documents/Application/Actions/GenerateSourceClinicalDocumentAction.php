@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Documents\Application\Actions;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Documents\Application\Services\ClinicalDocumentVersionService;
 use App\Modules\Documents\Domain\Enums\ClinicalDocumentType;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
@@ -161,7 +162,10 @@ final readonly class GenerateSourceClinicalDocumentAction
     /** @return array<string, mixed> */
     private function referralContent(Referral $referral): array
     {
-        $referral->loadMissing('specialty');
+        $referral->setRelation(
+            'specialty',
+            $referral->specialty_id === null ? null : Specialty::query()->find($referral->specialty_id),
+        );
 
         return [
             'source_public_id' => $referral->public_id,

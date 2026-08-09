@@ -8,12 +8,12 @@ use App\Modules\Laboratory\Domain\Enums\LaboratoryResultIngestionStatus;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrderItem;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamResult;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use UnexpectedValueException;
 
-final class LaboratoryResultIngestion extends Model
+final class LaboratoryResultIngestion extends TenantModel
 {
     use HasPublicId;
 

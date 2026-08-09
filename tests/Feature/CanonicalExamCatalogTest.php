@@ -74,7 +74,8 @@ final class CanonicalExamCatalogTest extends TestCase
 
         $this->artisan('laboratory:backfill-exam-catalog')->assertExitCode(0);
 
-        $mapping = ExamMapping::query()->with('exam')->sole();
+        $mapping = ExamMapping::query()->sole();
+        $mapping->setRelation('exam', $mapping->resolveExam());
         $availability = HealthUnitExam::query()->sole();
         $this->assertSame($active->external_code, $mapping->external_code);
         $this->assertSame($active->name, $mapping->external_name_snapshot);

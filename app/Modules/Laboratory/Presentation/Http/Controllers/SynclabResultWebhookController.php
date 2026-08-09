@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\Laboratory\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Laboratory\Application\Actions\RecordLaboratoryResultAuditAction;
 use App\Modules\Laboratory\Application\Jobs\ProcessSynclabExamResultJob;
 use App\Modules\Laboratory\Application\Services\SynclabResultPayloadHasher;
 use App\Modules\Laboratory\Domain\Enums\LaboratoryResultIngestionStatus;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryResultIngestion;
+use App\Support\Tenancy\TenantConnectionManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -21,6 +23,7 @@ final class SynclabResultWebhookController extends Controller
         Request $request,
         SynclabResultPayloadHasher $hasher,
         RecordLaboratoryResultAuditAction $audit,
+        TenantConnectionManager $connectionManager,
     ): JsonResponse {
         $integration = $request->attributes->get('laboratory_integration');
         abort_unless($integration instanceof LaboratoryIntegration, 401);
@@ -135,7 +138,12 @@ final class SynclabResultWebhookController extends Controller
         }
 
         $audit->execute($ingestion, 'laboratory.result_received');
-        ProcessSynclabExamResultJob::dispatch((int) $ingestion->getKey())->afterCommit();
+        $unit = HealthUnit::query()->findOrFail($integration->health_unit_id);
+        ProcessSynclabExamResultJob::dispatch(
+            (int) $ingestion->getKey(),
+            (string) $unit->public_id,
+            $connectionManager->connectionName($unit),
+        )->afterCommit();
 
         return response()->json([
             'status' => 'received',

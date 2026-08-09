@@ -9,10 +9,13 @@ use App\Modules\Medical\Infrastructure\Eloquent\EncounterDestination;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Reception\Domain\Enums\EncounterStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use App\Modules\Reports\Application\Services\EncounterCoreHydrator;
 use Illuminate\Support\Facades\Cache;
 
 final class OperationalDashboardQuery
 {
+    public function __construct(private readonly EncounterCoreHydrator $coreHydrator) {}
+
     /** @return array<string, int|string> */
     public function metrics(HealthUnit $unit): array
     {
@@ -104,8 +107,6 @@ final class OperationalDashboardQuery
     {
         $encounters = Encounter::query()
             ->with([
-                'patient',
-                'riskLevel',
                 'currentRoom',
                 'currentDepartment',
                 'queueEntries' => fn ($query) => $query
@@ -124,6 +125,7 @@ final class OperationalDashboardQuery
             ->orderBy('arrival_at')
             ->limit(20)
             ->get();
+        $this->coreHydrator->hydrate($encounters);
 
         return $encounters->map(function (Encounter $encounter) use ($showPatientNames): array {
             $entry = $encounter->queueEntries->first();

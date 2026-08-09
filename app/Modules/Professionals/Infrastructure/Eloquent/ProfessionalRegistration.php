@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Modules\Professionals\Infrastructure\Eloquent;
 
+use App\Support\Models\CoreModel;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class ProfessionalRegistration extends Model
+final class ProfessionalRegistration extends CoreModel
 {
     use HasPublicId;
 

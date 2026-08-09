@@ -9,11 +9,11 @@ use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Laboratory\Domain\Enums\LaboratoryTransmissionStatus;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class LaboratoryOrderTransmission extends Model
+final class LaboratoryOrderTransmission extends TenantModel
 {
     use HasPublicId;
 
@@ -24,16 +24,14 @@ final class LaboratoryOrderTransmission extends Model
         'attempt_count' => 0,
     ];
 
-    /** @return BelongsTo<Organization, $this> */
-    public function organization(): BelongsTo
+    public function resolveOrganization(): ?Organization
     {
-        return $this->belongsTo(Organization::class);
+        return $this->resolveCoreReference(Organization::class, 'organization_public_id', 'organization_id');
     }
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
     }
 
     /** @return BelongsTo<LaboratoryIntegration, $this> */

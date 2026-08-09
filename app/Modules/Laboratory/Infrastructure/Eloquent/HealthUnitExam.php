@@ -6,13 +6,13 @@ namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Services\CatalogReader;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
-final class HealthUnitExam extends Model
+final class HealthUnitExam extends TenantModel
 {
     use HasPublicId;
 
@@ -25,9 +25,11 @@ final class HealthUnitExam extends Model
     protected static function booted(): void
     {
         self::saving(function (HealthUnitExam $availability): void {
-            $examOrganizationId = Exam::query()
-                ->whereKey($availability->exam_id)
-                ->value('organization_id');
+            $exam = app(CatalogReader::class)->exam($availability->exam_public_id, $availability->exam_id);
+            $examOrganizationId = $exam?->organization_id;
+            if ($exam !== null) {
+                $availability->exam_public_id = $exam->public_id;
+            }
             $unit = HealthUnit::query()->find($availability->health_unit_id);
 
             if ($examOrganizationId === null || $unit === null) {
@@ -53,22 +55,24 @@ final class HealthUnitExam extends Model
         });
     }
 
-    /** @return BelongsTo<Exam, $this> */
-    public function exam(): BelongsTo
+    public function resolveExam(): ?Exam
     {
-        return $this->belongsTo(Exam::class);
+        return app(CatalogReader::class)->exam($this->exam_public_id, $this->exam_id);
     }
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function getExamAttribute(): ?Exam
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveExam();
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function enabledBy(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(User::class, 'enabled_by');
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
+    }
+
+    public function resolveEnabledBy(): ?User
+    {
+        return User::query()->find($this->enabled_by);
     }
 
     /**
@@ -79,8 +83,8 @@ final class HealthUnitExam extends Model
     {
         return $query
             ->where('health_unit_id', $unit->getKey())
-            ->whereHas('exam', fn (Builder $exam) => $exam
-                ->where('organization_id', $unit->organization_id));
+            ->whereIn('exam_public_id', app(CatalogReader::class)
+                ->activeExamPublicIdsForOrganization((int) $unit->organization_id));
     }
 
     protected function casts(): array

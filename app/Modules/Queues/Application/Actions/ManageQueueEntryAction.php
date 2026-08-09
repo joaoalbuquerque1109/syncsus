@@ -416,9 +416,12 @@ final readonly class ManageQueueEntryAction
 
     private function reload(QueueEntry $entry): QueueEntry
     {
-        return $entry->fresh([
-            'queue.department', 'servicePoint', 'assignedUser',
-            'encounter.patient', 'encounter.arrivalMethod',
+        $entry = $entry->fresh([
+            'queue.department', 'servicePoint', 'encounter.arrivalMethod',
         ]) ?? $entry;
+        $entry->setRelation('assignedUser', $entry->resolveAssignedUser());
+        $entry->encounter->setRelation('patient', $entry->encounter->resolvePatient());
+
+        return $entry;
     }
 }

@@ -5,14 +5,15 @@ declare(strict_types=1);
 namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Laboratory\Application\Services\CatalogReader;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrderItem;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class LaboratoryExam extends Model
+final class LaboratoryExam extends TenantModel
 {
     use HasPublicId;
 
@@ -48,26 +49,27 @@ final class LaboratoryExam extends Model
      */
     public function scopeAvailableForHealthUnit(Builder $query, HealthUnit $unit): Builder
     {
+        $examPublicIds = app(CatalogReader::class)
+            ->activeExamPublicIdsForOrganization((int) $unit->organization_id);
+
         return $query
             ->where('laboratory_exams.is_active', true)
             ->whereHas('integration', fn (Builder $integration) => $integration
                 ->where('organization_id', $unit->organization_id)
                 ->where('health_unit_id', $unit->getKey())
                 ->where('is_active', true))
-            ->whereExists(function ($mapping) use ($unit): void {
+            ->whereExists(function ($mapping) use ($unit, $examPublicIds): void {
                 $mapping->selectRaw('1')
                     ->from('exam_mappings')
-                    ->join('exams', 'exams.id', '=', 'exam_mappings.exam_id')
                     ->join('health_unit_exams', function ($join): void {
-                        $join->on('health_unit_exams.exam_id', '=', 'exam_mappings.exam_id');
+                        $join->on('health_unit_exams.exam_public_id', '=', 'exam_mappings.exam_public_id');
                     })
                     ->whereColumn(
                         'exam_mappings.laboratory_integration_id',
                         'laboratory_exams.laboratory_integration_id',
                     )
                     ->whereColumn('exam_mappings.external_code', 'laboratory_exams.external_code')
-                    ->where('exams.organization_id', $unit->organization_id)
-                    ->where('exams.is_active', true)
+                    ->whereIn('exam_mappings.exam_public_id', $examPublicIds)
                     ->where('exam_mappings.is_active', true)
                     ->where('health_unit_exams.health_unit_id', $unit->getKey())
                     ->where('health_unit_exams.is_enabled', true);

@@ -7,10 +7,10 @@ namespace App\Modules\Triage\Infrastructure\Eloquent;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class VitalSignMeasurement extends Model
+final class VitalSignMeasurement extends TenantModel
 {
     use HasPublicId;
 
@@ -28,10 +28,9 @@ final class VitalSignMeasurement extends Model
         return $this->belongsTo(Encounter::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function recordedBy(): BelongsTo
+    public function resolveRecordedBy(): ?User
     {
-        return $this->belongsTo(User::class, 'recorded_by');
+        return User::query()->find($this->recorded_by);
     }
 
     protected function casts(): array

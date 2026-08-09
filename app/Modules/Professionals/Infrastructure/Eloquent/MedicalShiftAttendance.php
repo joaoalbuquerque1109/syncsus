@@ -8,31 +8,27 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Support\Models\TenantModel;
 
-final class MedicalShiftAttendance extends Model
+final class MedicalShiftAttendance extends TenantModel
 {
     use HasPublicId;
 
     protected $guarded = [];
 
-    /** @return BelongsTo<Organization, $this> */
-    public function organization(): BelongsTo
+    public function resolveOrganization(): ?Organization
     {
-        return $this->belongsTo(Organization::class);
+        return $this->resolveCoreReference(Organization::class, 'organization_public_id', 'organization_id');
     }
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function user(): BelongsTo
+    public function resolveUser(): ?User
     {
-        return $this->belongsTo(User::class);
+        return User::query()->find($this->user_id);
     }
 
     protected function casts(): array

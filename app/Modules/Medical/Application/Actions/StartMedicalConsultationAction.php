@@ -33,7 +33,7 @@ final readonly class StartMedicalConsultationAction
     ): MedicalConsultation {
         return DB::transaction(function () use ($entry, $expectedVersion, $user, $unit, $request): MedicalConsultation {
             $locked = QueueEntry::query()
-                ->with(['queue.department', 'servicePoint.room', 'assignedUser', 'encounter.medicalConsultation'])
+                ->with(['queue.department', 'servicePoint.room', 'encounter.medicalConsultation'])
                 ->whereKey($entry->getKey())
                 ->whereHas('queue', fn ($query) => $query->where('health_unit_id', $unit->getKey()))
                 ->lockForUpdate()

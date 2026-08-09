@@ -11,19 +11,18 @@ use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class MedicalCertificate extends Model
+final class MedicalCertificate extends TenantModel
 {
     use HasPublicId;
 
     protected $guarded = [];
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function resolveHealthUnit(): ?HealthUnit
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
     }
 
     /** @return BelongsTo<Encounter, $this> */
@@ -32,10 +31,9 @@ final class MedicalCertificate extends Model
         return $this->belongsTo(Encounter::class);
     }
 
-    /** @return BelongsTo<Patient, $this> */
-    public function patient(): BelongsTo
+    public function resolvePatient(): ?Patient
     {
-        return $this->belongsTo(Patient::class);
+        return $this->resolveCoreReference(Patient::class, 'patient_public_id', 'patient_id');
     }
 
     /** @return BelongsTo<MedicalConsultation, $this> */
@@ -44,16 +42,14 @@ final class MedicalCertificate extends Model
         return $this->belongsTo(MedicalConsultation::class, 'medical_consultation_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function issuer(): BelongsTo
+    public function resolveIssuer(): ?User
     {
-        return $this->belongsTo(User::class, 'issued_by');
+        return User::query()->find($this->issued_by);
     }
 
-    /** @return BelongsTo<DiagnosisCode, $this> */
-    public function diagnosisCode(): BelongsTo
+    public function resolveDiagnosisCode(): ?DiagnosisCode
     {
-        return $this->belongsTo(DiagnosisCode::class);
+        return $this->diagnosis_code_id === null ? null : DiagnosisCode::query()->find($this->diagnosis_code_id);
     }
 
     /** @return BelongsTo<ClinicalDocument, $this> */

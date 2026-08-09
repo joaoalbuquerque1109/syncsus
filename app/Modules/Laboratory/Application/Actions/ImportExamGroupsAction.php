@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Laboratory\Application\Actions;
 
+use App\Modules\Laboratory\Application\Services\CatalogReader;
 use App\Modules\Laboratory\Application\Services\ExamNameNormalizer;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroup;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroupImportConflict;
@@ -16,7 +17,10 @@ use SplFileObject;
 
 final readonly class ImportExamGroupsAction
 {
-    public function __construct(private ExamNameNormalizer $normalizer) {}
+    public function __construct(
+        private ExamNameNormalizer $normalizer,
+        private CatalogReader $catalog,
+    ) {}
 
     /** @return array{created: int, unchanged: int, conflicts: int} */
     public function execute(LaboratoryIntegration $integration, string $path): array
@@ -38,7 +42,8 @@ final readonly class ImportExamGroupsAction
                 $mappings = ExamMapping::query()
                     ->where('laboratory_integration_id', $integration->getKey())
                     ->where('is_active', true)
-                    ->whereHas('exam', fn ($query) => $query->where('is_active', true))
+                    ->whereIn('exam_public_id', $this->catalog
+                        ->activeExamPublicIdsForOrganization((int) $integration->organization_id))
                     ->whereIn('external_code', $codes)
                     ->get()
                     ->keyBy('external_code');

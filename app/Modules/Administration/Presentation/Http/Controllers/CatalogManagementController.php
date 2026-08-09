@@ -30,6 +30,14 @@ final class CatalogManagementController extends Controller
         $examSearch = mb_substr(trim((string) $request->query('exam_q')), 0, 80);
         $normalizedExamSearch = mb_strtoupper(str_replace(['%', '_'], '', $examSearch));
 
+        $queues = Queue::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->orderBy('name')
+            ->get();
+        foreach ($queues as $queue) {
+            $queue->setRelation('healthUnit', $unit);
+        }
+
         return view('administration.catalogs.index', [
             'specialties' => Specialty::query()->where('organization_id', $unit->organization_id)
                 ->orderBy('display_order')->orderBy('name')->get(),
@@ -40,8 +48,7 @@ final class CatalogManagementController extends Controller
             'healthUnits' => HealthUnit::query()->with('organization')
                 ->where('organization_id', $unit->organization_id)->orderBy('name')->get(),
             'organizations' => Organization::query()->whereKey($unit->organization_id)->get(),
-            'queues' => Queue::query()->with('healthUnit')
-                ->where('health_unit_id', $unit->getKey())->orderBy('name')->get(),
+            'queues' => $queues,
             'laboratoryExams' => LaboratoryExam::query()
                 ->whereHas('integration', fn ($query) => $query
                     ->where('organization_id', $unit->organization_id)

@@ -11,13 +11,17 @@ use App\Modules\Laboratory\Application\Jobs\SubmitLaboratoryOrderJob;
 use App\Modules\Laboratory\Domain\Enums\LaboratoryTransmissionStatus;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
+use App\Support\Tenancy\TenantConnectionManager;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final readonly class RetryLaboratoryOrderTransmissionAction
 {
-    public function __construct(private RecordAuditEventAction $audit) {}
+    public function __construct(
+        private RecordAuditEventAction $audit,
+        private TenantConnectionManager $connectionManager,
+    ) {}
 
     public function execute(
         ExamOrder $order,
@@ -87,7 +91,11 @@ final readonly class RetryLaboratoryOrderTransmissionAction
             return $transmission;
         });
 
-        SubmitLaboratoryOrderJob::dispatch((int) $transmission->getKey())->afterCommit();
+        SubmitLaboratoryOrderJob::dispatch(
+            (int) $transmission->getKey(),
+            (string) $unit->public_id,
+            $this->connectionManager->connectionName($unit),
+        )->afterCommit();
 
         return $transmission;
     }

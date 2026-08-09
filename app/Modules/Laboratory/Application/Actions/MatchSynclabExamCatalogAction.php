@@ -60,13 +60,13 @@ final readonly class MatchSynclabExamCatalogAction
         Collection $canonicalExams,
     ): ExamCatalogMatchStatus {
         $mapping = ExamMapping::query()
-            ->with('exam')
             ->where('laboratory_integration_id', $integration->getKey())
             ->where('external_code', $laboratoryExam->external_code)
             ->first();
+        $mappedExam = $mapping?->resolveExam();
         [$suggestedExam, $confidence, $reason, $ambiguous] = $this->suggest($laboratoryExam, $canonicalExams);
 
-        if ($mapping !== null && $mapping->is_active && $mapping->exam?->is_active) {
+        if ($mapping !== null && $mapping->is_active && $mappedExam?->is_active) {
             $isConflict = ($suggestedExam !== null && (int) $suggestedExam->getKey() !== (int) $mapping->exam_id)
                 || $ambiguous;
             if ($isConflict) {
@@ -85,6 +85,7 @@ final readonly class MatchSynclabExamCatalogAction
                 'exam_id' => $mapping->exam_id,
                 'health_unit_id' => $integration->health_unit_id,
             ], [
+                'exam_public_id' => $mappedExam->public_id,
                 'is_enabled' => true,
                 'enabled_at' => now(),
             ]);
@@ -93,7 +94,7 @@ final readonly class MatchSynclabExamCatalogAction
                 $integration,
                 $laboratoryExam,
                 ExamCatalogMatchStatus::Exact,
-                $mapping->exam,
+                $mappedExam,
                 $mapping,
                 1.0,
                 'existing_external_code_mapping',

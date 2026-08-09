@@ -45,7 +45,7 @@ final class ClinicalCorrectionTest extends TestCase
             'reference_health_unit_id' => $unit->getKey(),
             'created_by' => $doctor->getKey(),
         ]);
-        $queue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
+        $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
         $encounter = Encounter::query()->create([
             'encounter_number' => 'CORRECTION-0001',
             'patient_id' => $patient->getKey(),

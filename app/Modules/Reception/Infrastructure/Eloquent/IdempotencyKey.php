@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Reception\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 
-final class IdempotencyKey extends Model
+final class IdempotencyKey extends TenantModel
 {
     protected $guarded = [];
 

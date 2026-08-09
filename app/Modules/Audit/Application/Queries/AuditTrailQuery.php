@@ -6,9 +6,12 @@ namespace App\Modules\Audit\Application\Queries;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
+use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientAccessLog;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 
 final class AuditTrailQuery
@@ -19,14 +22,17 @@ final class AuditTrailQuery
     public function events(HealthUnit $unit, array $filters): LengthAwarePaginator
     {
         $query = AuditLog::query()
-            ->with(['user', 'patient', 'encounter'])
+            ->with('encounter')
             ->where('health_unit_id', $unit->getKey());
         $this->applyCommonFilters($query, $filters);
         if (filled($filters['action'] ?? null)) {
             $query->where('action', (string) $filters['action']);
         }
 
-        return $query->latest('occurred_at')->paginate(50, ['*'], 'audit_page')->withQueryString();
+        $paginator = $query->latest('occurred_at')->paginate(50, ['*'], 'audit_page')->withQueryString();
+        $this->hydrateCoreRelations($paginator);
+
+        return $paginator;
     }
 
     /** @param array<string, mixed> $filters
@@ -35,14 +41,17 @@ final class AuditTrailQuery
     public function accesses(HealthUnit $unit, array $filters): LengthAwarePaginator
     {
         $query = PatientAccessLog::query()
-            ->with(['user', 'patient', 'encounter'])
+            ->with('encounter')
             ->where('health_unit_id', $unit->getKey());
         $this->applyCommonFilters($query, $filters);
         if (filled($filters['access_type'] ?? null)) {
             $query->where('access_type', (string) $filters['access_type']);
         }
 
-        return $query->latest('occurred_at')->paginate(50, ['*'], 'access_page')->withQueryString();
+        $paginator = $query->latest('occurred_at')->paginate(50, ['*'], 'access_page')->withQueryString();
+        $this->hydrateCoreRelations($paginator);
+
+        return $paginator;
     }
 
     /** @param array<string, mixed> $filters
@@ -101,15 +110,44 @@ final class AuditTrailQuery
         }
         if (filled($filters['patient'] ?? null)) {
             $term = (string) $filters['patient'];
-            $query->whereHas('patient', fn (Builder $patient) => $patient
+            $patientIds = Patient::query()
                 ->where('public_id', $term)
-                ->orWhere('medical_record_number', $term));
+                ->orWhere('medical_record_number', $term)
+                ->pluck('id')
+                ->all();
+            $query->whereIn('patient_id', $patientIds);
         }
         if (filled($filters['encounter'] ?? null)) {
             $term = (string) $filters['encounter'];
-            $query->whereHas('encounter', fn (Builder $encounter) => $encounter
+            $encounterIds = Encounter::query()
                 ->where('public_id', $term)
-                ->orWhere('encounter_number', $term));
+                ->orWhere('encounter_number', $term)
+                ->pluck('id')
+                ->all();
+            $query->whereIn('encounter_id', $encounterIds);
+        }
+    }
+
+    /**
+     * @template TRecord of AuditLog|PatientAccessLog
+     *
+     * @param  LengthAwarePaginator<int, TRecord>  $paginator
+     */
+    private function hydrateCoreRelations(LengthAwarePaginator $paginator): void
+    {
+        $records = $paginator->getCollection();
+        $users = User::query()
+            ->whereKey($records->pluck('user_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy(fn (User $user): string => (string) $user->getKey());
+        $patients = Patient::query()
+            ->whereKey($records->pluck('patient_id')->filter()->unique()->all())
+            ->get()
+            ->keyBy(fn (Patient $patient): int => (int) $patient->getKey());
+
+        foreach ($records as $record) {
+            $record->setRelation('user', $users->get((string) $record->user_id));
+            $record->setRelation('patient', $patients->get((int) $record->patient_id));
         }
     }
 }

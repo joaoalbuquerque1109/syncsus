@@ -8,8 +8,11 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
+use App\Support\Tenancy\TenantConnectionManager;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\Hash;
 
@@ -34,13 +37,40 @@ abstract class TestCase extends BaseTestCase
             'is_active' => true,
         ]);
 
-        return HealthUnit::query()->create([
+        $unit = HealthUnit::query()->create([
             'organization_id' => $organization->getKey(),
             'code' => $code,
             'cnes_code' => $cnes,
             'name' => "Unidade {$code}",
             'is_active' => true,
         ]);
+        $this->activateTenant($unit);
+
+        return $unit;
+    }
+
+    /** @return array{health_unit: HealthUnit} */
+    protected function createCoreFixtures(string $code = 'CORE'): array
+    {
+        return ['health_unit' => $this->createHealthUnit($code)];
+    }
+
+    /** @return array{health_unit: HealthUnit, connection: string} */
+    protected function createTenantFixtures(HealthUnit $unit): array
+    {
+        $connection = $this->activateTenant($unit);
+
+        return ['health_unit' => $unit, 'connection' => $connection];
+    }
+
+    protected function activateTenant(HealthUnit $unit): string
+    {
+        $context = app(TenantContext::class);
+        $connection = app(TenantConnectionManager::class)->connectionName($unit);
+        $context->reset();
+        $context->resolve($unit, $connection);
+
+        return $connection;
     }
 
     protected function createUserWithUnit(
@@ -84,8 +114,9 @@ abstract class TestCase extends BaseTestCase
             ->where('is_active', true)
             ->whereHas('department', fn ($query) => $query->where('type', 'medical'))
             ->get();
-        $profile->queues()->syncWithoutDetaching($queues->modelKeys());
-        $profile->servicePoints()->syncWithoutDetaching(
+        app(ProfessionalOperationalAssignments::class)->syncWithoutDetaching(
+            $profile,
+            $queues->modelKeys(),
             $queues->flatMap(fn (Queue $queue) => $queue->servicePoints()->pluck('service_points.id'))->unique()->all(),
         );
     }
@@ -109,8 +140,9 @@ abstract class TestCase extends BaseTestCase
             ->where('is_active', true)
             ->whereHas('department', fn ($query) => $query->where('type', 'triage'))
             ->get();
-        $profile->queues()->syncWithoutDetaching($queues->modelKeys());
-        $profile->servicePoints()->syncWithoutDetaching(
+        app(ProfessionalOperationalAssignments::class)->syncWithoutDetaching(
+            $profile,
+            $queues->modelKeys(),
             $queues->flatMap(fn (Queue $queue) => $queue->servicePoints()->pluck('service_points.id'))->unique()->all(),
         );
     }

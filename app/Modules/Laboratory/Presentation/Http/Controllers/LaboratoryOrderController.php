@@ -12,6 +12,8 @@ use App\Modules\Laboratory\Application\Actions\RetryLaboratoryOrderTransmissionA
 use App\Modules\Laboratory\Application\Services\LaboratoryOrderAccessService;
 use App\Modules\Laboratory\Presentation\Http\Requests\CancelLaboratoryOrderRequest;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -28,27 +30,36 @@ final class LaboratoryOrderController extends Controller
             'origin' => ['nullable', 'in:reception,medical'],
         ]);
         $search = trim(str_replace(['%', '_'], '', (string) ($filters['q'] ?? '')));
+        $patientIds = $search === '' ? [] : Patient::query()
+            ->where('full_name', 'like', '%'.$search.'%')
+            ->orWhere('medical_record_number', 'like', '%'.$search.'%')
+            ->pluck('id')->all();
+        $userIds = $search === '' ? [] : User::query()
+            ->where('name', 'like', '%'.$search.'%')
+            ->pluck('id')->all();
         $orders = ExamOrder::query()
             ->with([
-                'encounter.patient', 'requestedBy.professionalProfile.registrations',
-                'createdBy', 'items', 'laboratoryTransmissions',
+                'encounter', 'items', 'laboratoryTransmissions',
             ])
             ->where('organization_id', $unit->organization_id)
             ->where('health_unit_id', $unit->getKey())
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['origin'] ?? null, fn ($query, $origin) => $query->where('origin', $origin))
-            ->when($search !== '', function ($query) use ($search): void {
-                $query->where(function ($inner) use ($search): void {
-                    $inner->where('id', ctype_digit($search) ? (int) $search : 0)
-                        ->orWhereHas('encounter.patient', fn ($patient) => $patient
-                            ->where('full_name', 'like', '%'.$search.'%')
-                            ->orWhere('medical_record_number', 'like', '%'.$search.'%'))
-                        ->orWhereHas('requestedBy', fn ($user) => $user->where('name', 'like', '%'.$search.'%'));
+            ->when($search !== '', function ($query) use ($search, $patientIds, $userIds): void {
+                $query->where(function ($inner) use ($search, $patientIds, $userIds): void {
+                    $inner->where('id', ctype_digit($search) ? (int) $search : 0);
+                    if ($patientIds !== []) {
+                        $inner->orWhereHas('encounter', fn ($encounters) => $encounters->whereIn('patient_id', $patientIds));
+                    }
+                    if ($userIds !== []) {
+                        $inner->orWhereIn('requested_by', $userIds);
+                    }
                 });
             })
             ->latest('requested_at')
             ->paginate(10)
             ->withQueryString();
+        $this->hydrateCoreReferences($orders->getCollection());
 
         return view('laboratory.orders.index', compact('orders', 'filters'));
     }
@@ -63,12 +74,14 @@ final class LaboratoryOrderController extends Controller
         $user = $request->user();
         abort_unless($user instanceof User && $access->canView($user, $order, $unit), 403);
 
+        $order->load([
+            'encounter', 'items.laboratoryExam', 'items.result',
+            'laboratoryTransmissions.integration', 'laboratoryTransmissions.attempts',
+        ]);
+        $this->hydrateCoreReferences(new Collection([$order]));
+
         return view('laboratory.orders.show', [
-            'order' => $order->load([
-                'encounter.patient.identifiers', 'requestedBy.professionalProfile.registrations',
-                'createdBy', 'cancelledBy', 'items.laboratoryExam', 'items.result',
-                'laboratoryTransmissions.integration', 'laboratoryTransmissions.attempts',
-            ]),
+            'order' => $order,
             'backUrl' => $this->contextualReturnUrl($order, $user),
             'canViewClinicalDetails' => $access->canViewClinicalDetails($user),
         ]);
@@ -151,5 +164,24 @@ final class LaboratoryOrderController extends Controller
         return $user->hasRole('manager')
             ? route('administration.synclab.edit')
             : route('dashboard');
+    }
+
+    /** @param Collection<int, ExamOrder> $orders */
+    private function hydrateCoreReferences(Collection $orders): void
+    {
+        $patients = Patient::query()->with('identifiers')
+            ->whereKey($orders->pluck('encounter.patient_id')->filter()->unique()->all())
+            ->get()->keyBy(fn (Patient $patient): int => (int) $patient->getKey());
+        $users = User::query()->with('professionalProfile.registrations')
+            ->whereKey(collect($orders->pluck('requested_by'))
+                ->merge($orders->pluck('created_by'))
+                ->merge($orders->pluck('cancelled_by'))->filter()->unique()->all())
+            ->get()->keyBy(fn (User $user): string => (string) $user->getKey());
+        foreach ($orders as $order) {
+            $order->encounter->setRelation('patient', $patients->get((int) $order->encounter->patient_id));
+            $order->setRelation('requestedBy', $users->get((string) $order->requested_by));
+            $order->setRelation('createdBy', $users->get((string) $order->created_by));
+            $order->setRelation('cancelledBy', $users->get((string) $order->cancelled_by));
+        }
     }
 }

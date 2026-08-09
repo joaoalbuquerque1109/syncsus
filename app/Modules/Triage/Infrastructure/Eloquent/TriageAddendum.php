@@ -6,10 +6,10 @@ namespace App\Modules\Triage\Infrastructure\Eloquent;
 
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class TriageAddendum extends Model
+final class TriageAddendum extends TenantModel
 {
     use HasPublicId;
 
@@ -23,10 +23,16 @@ final class TriageAddendum extends Model
         return $this->belongsTo(TriageAssessment::class, 'triage_assessment_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function author(): BelongsTo
+    public function resolveAuthor(): ?User
     {
-        return $this->belongsTo(User::class, 'author_id');
+        return User::query()->find($this->author_id);
+    }
+
+    public function getAuthorAttribute(): ?User
+    {
+        return $this->relationLoaded('author')
+            ? $this->getRelation('author')
+            : $this->resolveAuthor();
     }
 
     protected function casts(): array

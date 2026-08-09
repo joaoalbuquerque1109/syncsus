@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Laboratory\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class LaboratoryTransmissionAttempt extends Model
+final class LaboratoryTransmissionAttempt extends TenantModel
 {
     protected $guarded = [];
 

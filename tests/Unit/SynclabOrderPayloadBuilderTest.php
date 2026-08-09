@@ -124,6 +124,7 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
         ]);
         $patient->setRelation('identifiers', new Collection($identifiers));
         $unit = new HealthUnit(['code' => 'CENTRAL', 'name' => 'Unidade Central', 'cnes_code' => '1234567']);
+        $this->activateTenant($unit);
         $encounter = new Encounter;
         $encounter->setRelation('patient', $patient);
         $encounter->setRelation('healthUnit', $unit);

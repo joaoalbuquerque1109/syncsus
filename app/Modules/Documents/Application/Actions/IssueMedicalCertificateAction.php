@@ -10,6 +10,7 @@ use App\Modules\Documents\Domain\Enums\ClinicalDocumentType;
 use App\Modules\Documents\Infrastructure\Eloquent\MedicalCertificate;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -30,12 +31,14 @@ final readonly class IssueMedicalCertificateAction
         Request $request,
     ): MedicalCertificate {
         return DB::transaction(function () use ($consultation, $data, $user, $unit, $request): MedicalCertificate {
-            $consultation->loadMissing('encounter.patient');
+            $consultation->loadMissing('encounter');
+            $patient = Patient::query()->findOrFail($consultation->encounter->patient_id);
             $includeCid = (bool) ($data['include_cid'] ?? false);
             $certificate = MedicalCertificate::query()->create([
                 'health_unit_id' => $unit->getKey(),
                 'encounter_id' => $consultation->encounter_id,
                 'patient_id' => $consultation->encounter->patient_id,
+                'patient_public_id' => $patient->public_id,
                 'medical_consultation_id' => $consultation->getKey(),
                 'issued_by' => $user->getKey(),
                 'starts_at' => $data['starts_at'],
@@ -78,7 +81,10 @@ final readonly class IssueMedicalCertificateAction
                 (int) $certificate->encounter_id,
             );
 
-            return $certificate->fresh(['document.currentVersion', 'diagnosisCode']) ?? $certificate;
+            $certificate = $certificate->fresh('document.currentVersion') ?? $certificate;
+            $certificate->setRelation('diagnosisCode', $certificate->resolveDiagnosisCode());
+
+            return $certificate;
         });
     }
 }
