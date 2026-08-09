@@ -96,6 +96,26 @@ final class SynclabOrderSubmissionTest extends TestCase
         });
     }
 
+    public function test_approved_transition_adds_ulids_and_preserves_legacy_identifiers(): void
+    {
+        config()->set('sync_sus.synclab.public_identifiers_enabled', true);
+        [$order, $transmission] = $this->outboundOrder('PUBLIC-IDS');
+        Http::fake(['*' => Http::response(['message' => 'ok'], 200)]);
+
+        app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $transmission->getKey());
+
+        Http::assertSent(function (Request $request) use ($order): bool {
+            $payload = $request->data();
+
+            return data_get($payload, 'pedido_lab.ordem_servico') === (string) $order->getKey()
+                && data_get($payload, 'pedido_lab.codigo_pedido') === (string) $order->getKey()
+                && data_get($payload, 'pedido_lab.pedido.codigo') === (string) $order->getKey()
+                && data_get($payload, 'pedido_lab.paciente.codigo') === (string) $order->encounter->patient_id
+                && data_get($payload, 'pedido_lab.pedido.identificador_externo') === $order->public_id
+                && data_get($payload, 'pedido_lab.paciente.identificador_externo') === $order->encounter->patient->public_id;
+        });
+    }
+
     public function test_only_http_200_is_success_and_server_failures_are_retried(): void
     {
         Http::fake(['*' => Http::sequence()->push([], 201)->push([], 503)]);
@@ -164,12 +184,15 @@ final class SynclabOrderSubmissionTest extends TestCase
         }
 
         $order->requestedBy()->update(['name' => 'Nome alterado depois da solicitacao']);
+        config()->set('sync_sus.synclab.public_identifiers_enabled', true);
         app(SubmitLaboratoryOrderTransmissionAction::class)->execute((int) $transmission->getKey());
 
         $requests = Http::recorded();
         $this->assertCount(2, $requests);
         $this->assertSame($requests[0][0]->data(), $requests[1][0]->data());
         $this->assertSame('Dra. Solicitante', data_get($requests[1][0]->data(), 'pedido_lab.pedido.profissional'));
+        $this->assertArrayNotHasKey('identificador_externo', $requests[1][0]->data()['pedido_lab']['pedido']);
+        $this->assertArrayNotHasKey('identificador_externo', $requests[1][0]->data()['pedido_lab']['paciente']);
         $this->assertSame('accepted', $transmission->fresh()?->statusEnum()->value);
     }
 

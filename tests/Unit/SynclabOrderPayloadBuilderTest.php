@@ -19,6 +19,7 @@ use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Professionals\Infrastructure\Eloquent\ProfessionalRegistration;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class SynclabOrderPayloadBuilderTest extends TestCase
@@ -50,6 +51,50 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
         $this->assertArrayNotHasKey('cbarra', $payload['pedido_lab']['exames'][0]);
         $this->assertSame([], $payload['pedido_lab']['exames'][0]['itens']);
         $this->assertArrayNotHasKey('sigla', $payload['pedido_lab']['exames'][0]);
+        $this->assertArrayNotHasKey('identificador_externo', $payload['pedido_lab']['pedido']);
+        $this->assertArrayNotHasKey('identificador_externo', $payload['pedido_lab']['paciente']);
+    }
+
+    public function test_transition_contract_adds_public_identifiers_without_replacing_numeric_fields(): void
+    {
+        config()->set('sync_sus.synclab.public_identifiers_enabled', true);
+        [$order, $integration] = $this->orderWithIdentifiers([
+            new PatientIdentifier([
+                'type' => PatientIdentifierType::Cpf,
+                'normalized_value' => '12345678901',
+            ]),
+        ]);
+
+        $payload = app(SynclabOrderPayloadBuilder::class)
+            ->build($order, $integration, '0000000000123')
+            ->toArray();
+
+        $this->assertSame('0000000000123', data_get($payload, 'pedido_lab.ordem_servico'));
+        $this->assertSame('0000000000123', data_get($payload, 'pedido_lab.codigo_pedido'));
+        $this->assertSame('0000000000123', data_get($payload, 'pedido_lab.pedido.codigo'));
+        $this->assertSame('987654', data_get($payload, 'pedido_lab.paciente.codigo'));
+        $this->assertSame($order->public_id, data_get($payload, 'pedido_lab.pedido.identificador_externo'));
+        $this->assertSame(
+            $order->encounter->patient->public_id,
+            data_get($payload, 'pedido_lab.paciente.identificador_externo'),
+        );
+    }
+
+    public function test_transition_contract_rejects_missing_public_identifiers(): void
+    {
+        config()->set('sync_sus.synclab.public_identifiers_enabled', true);
+        [$order, $integration] = $this->orderWithIdentifiers([
+            new PatientIdentifier([
+                'type' => PatientIdentifierType::Cpf,
+                'normalized_value' => '12345678901',
+            ]),
+        ]);
+        $order->encounter->patient->public_id = null;
+
+        $this->expectException(InvalidLaboratoryOrder::class);
+        $this->expectExceptionMessage('ULIDs validos');
+
+        app(SynclabOrderPayloadBuilder::class)->build($order, $integration, '123');
     }
 
     public function test_request_requires_cpf_or_cns(): void
@@ -71,6 +116,7 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
         $integration = new LaboratoryIntegration(['id' => 10, 'settings' => ['agreement' => 'SUS']]);
         $patient = new Patient([
             'id' => 987654,
+            'public_id' => (string) Str::ulid(),
             'medical_record_number' => 'P00000001',
             'full_name' => 'Paciente Teste',
             'birth_date' => '1985-01-23',
@@ -88,6 +134,7 @@ final class SynclabOrderPayloadBuilderTest extends TestCase
         ]);
         $item->setRelation('laboratoryExam', null);
         $order = new ExamOrder([
+            'public_id' => (string) Str::ulid(),
             'requested_by' => 15,
             'created_by' => 27,
             'origin' => 'reception',

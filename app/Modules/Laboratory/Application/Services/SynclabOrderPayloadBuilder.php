@@ -14,9 +14,12 @@ use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use DateTimeInterface;
+use Illuminate\Support\Str;
 
 final class SynclabOrderPayloadBuilder
 {
+    public function __construct(private readonly SynclabOutboundContract $contract) {}
+
     public function build(
         ExamOrder $order,
         LaboratoryIntegration $integration,
@@ -46,6 +49,12 @@ final class SynclabOrderPayloadBuilder
         $patientId = (string) $patient->getKey();
         if ($patientId === '' || ! ctype_digit($patientId)) {
             throw new InvalidLaboratoryOrder('O paciente precisa possuir um ID numerico para o Synclab.');
+        }
+        $includePublicIdentifiers = $this->contract->includesPublicIdentifiers();
+        $patientPublicId = (string) $patient->public_id;
+        $orderPublicId = (string) $order->public_id;
+        if ($includePublicIdentifiers && (! Str::isUlid($patientPublicId) || ! Str::isUlid($orderPublicId))) {
+            throw new InvalidLaboratoryOrder('Paciente e pedido precisam possuir ULIDs validos no contrato Synclab transitório.');
         }
 
         $items = $order->items
@@ -93,6 +102,7 @@ final class SynclabOrderPayloadBuilder
         $requestedAt = $order->getAttribute('requested_at');
         $patientData = array_filter([
             'codigo' => $patientId,
+            ...($includePublicIdentifiers ? ['identificador_externo' => $patientPublicId] : []),
             'nome' => (string) $patient->full_name,
             'sexo' => $this->synclabSex($patient),
             'dt_nascimento' => $birthDate instanceof DateTimeInterface ? $birthDate->format('Y-m-d') : null,
@@ -111,6 +121,7 @@ final class SynclabOrderPayloadBuilder
             'pedido' => array_filter([
                 'codigo' => $externalOrderNumber,
                 'ordem_servico' => $externalOrderNumber,
+                ...($includePublicIdentifiers ? ['identificador_externo' => $orderPublicId] : []),
                 'origem' => (string) $unit->name,
                 'profissional' => $professionalName,
                 'ufconselho' => $registration?->state,
