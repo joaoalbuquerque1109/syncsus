@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Documents\Application\Actions;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Documents\Application\Services\ClinicalDocumentVersionService;
 use App\Modules\Documents\Domain\Enums\ClinicalDocumentType;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
@@ -18,7 +19,9 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use LogicException;
+use Throwable;
 
+/** @phpstan-import-type RenderedVersion from ClinicalDocumentVersionService */
 final readonly class GenerateSourceClinicalDocumentAction
 {
     public function __construct(private IssueClinicalDocumentAction $documents) {}
@@ -45,34 +48,68 @@ final readonly class GenerateSourceClinicalDocumentAction
         HealthUnit $unit,
         Request $request,
     ): ClinicalDocument {
-        return DB::transaction(function () use ($consultation, $source, $user, $unit, $request): ClinicalDocument {
-            $locked = $source->newQuery()->whereKey($source->getKey())->lockForUpdate()->firstOrFail();
-            abort_unless((int) $locked->getAttribute('medical_consultation_id') === (int) $consultation->getKey(), 404);
+        $current = $source->newQuery()->whereKey($source->getKey())->firstOrFail();
+        abort_unless((int) $current->getAttribute('medical_consultation_id') === (int) $consultation->getKey(), 404);
+        $documentId = $current->getAttribute('document_id');
+        if (filled($documentId)) {
+            return ClinicalDocument::query()->findOrFail($documentId);
+        }
 
-            $documentId = $locked->getAttribute('document_id');
-            if (filled($documentId)) {
-                return ClinicalDocument::query()->findOrFail($documentId);
-            }
+        [$type, $content] = $this->sourceContent($current);
+        $prepared = $this->documents->render($consultation, $type, $content, $user, $unit);
 
-            [$type, $content] = match (true) {
-                $locked instanceof Prescription => [ClinicalDocumentType::Prescription, $this->prescriptionContent($locked)],
-                $locked instanceof ExamOrder => [ClinicalDocumentType::ExamRequest, $this->examOrderContent($locked)],
-                $locked instanceof Referral => [ClinicalDocumentType::Referral, $this->referralContent($locked)],
-                default => throw new LogicException('Tipo de origem documental não suportado.'),
-            };
-            $document = $this->documents->executeStructured($consultation, $type, $content, $user, $unit, $request);
-            $locked->update(['document_id' => $document->getKey()]);
+        try {
+            return DB::transaction(function () use ($consultation, $source, $user, $unit, $request, $type, $prepared): ClinicalDocument {
+                $locked = $source->newQuery()->whereKey($source->getKey())->lockForUpdate()->firstOrFail();
+                abort_unless((int) $locked->getAttribute('medical_consultation_id') === (int) $consultation->getKey(), 404);
+                $documentId = $locked->getAttribute('document_id');
+                if (filled($documentId)) {
+                    return ClinicalDocument::query()->findOrFail($documentId);
+                }
+                $this->validateSource($locked);
 
-            return $document;
-        });
+                $document = $this->documents->persist(
+                    $prepared['document'],
+                    $prepared['version'],
+                    $consultation,
+                    $type,
+                    $user,
+                    $unit,
+                    $request,
+                );
+                $locked->update(['document_id' => $document->getKey()]);
+
+                return $document;
+            });
+        } catch (Throwable $exception) {
+            $this->documents->discardRenderedVersion($prepared['version']);
+
+            throw $exception;
+        }
+    }
+
+    /** @return array{ClinicalDocumentType, array<string, mixed>} */
+    private function sourceContent(Model $source): array
+    {
+        return match (true) {
+            $source instanceof Prescription => [ClinicalDocumentType::Prescription, $this->prescriptionContent($source)],
+            $source instanceof ExamOrder => [ClinicalDocumentType::ExamRequest, $this->examOrderContent($source)],
+            $source instanceof Referral => [ClinicalDocumentType::Referral, $this->referralContent($source)],
+            default => throw new LogicException('Tipo de origem documental não suportado.'),
+        };
+    }
+
+    private function validateSource(Model $source): void
+    {
+        if ($source instanceof Prescription && $source->status !== 'finalized') {
+            throw ValidationException::withMessages(['prescription' => 'Somente uma prescrição vigente pode gerar PDF.']);
+        }
     }
 
     /** @return array<string, mixed> */
     private function prescriptionContent(Prescription $prescription): array
     {
-        if ($prescription->status !== 'finalized') {
-            throw ValidationException::withMessages(['prescription' => 'Somente uma prescrição vigente pode gerar PDF.']);
-        }
+        $this->validateSource($prescription);
         $prescription->loadMissing('items');
 
         return [

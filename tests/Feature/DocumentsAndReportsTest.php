@@ -8,6 +8,11 @@ use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
 use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
+use App\Modules\Documents\Application\Actions\CreateDocumentVersionAction;
+use App\Modules\Documents\Application\Actions\GenerateSourceClinicalDocumentAction;
+use App\Modules\Documents\Application\Actions\IssueClinicalDocumentAction;
+use App\Modules\Documents\Application\Contracts\PdfRenderer;
+use App\Modules\Documents\Domain\Enums\ClinicalDocumentType;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Documents\Infrastructure\Eloquent\MedicalCertificate;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
@@ -32,9 +37,12 @@ use App\Modules\Reports\Application\Queries\OperationalDashboardQuery;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 use Tests\TestCase;
 
 final class DocumentsAndReportsTest extends TestCase
@@ -359,6 +367,207 @@ final class DocumentsAndReportsTest extends TestCase
                 'body' => 'Tentativa de duplicar receita pelo formulário genérico.',
             ])
             ->assertSessionHasErrors('document_type');
+    }
+
+    public function test_pdf_render_failure_occurs_without_transaction_and_leaves_no_persisted_state(): void
+    {
+        Storage::fake('local_private');
+        [$unit, $doctor, , , $consultation] = $this->context();
+        $initialAuditCount = DB::table('audit_logs')->count();
+        $baselineTransactionLevel = DB::transactionLevel();
+        $renderer = new class implements PdfRenderer
+        {
+            /** @var list<int> */
+            public array $transactionLevels = [];
+
+            public function render(string $html): string
+            {
+                $this->transactionLevels[] = DB::transactionLevel();
+
+                throw new RuntimeException('Falha controlada ao renderizar PDF.');
+            }
+        };
+        $this->app->instance(PdfRenderer::class, $renderer);
+        $request = Request::create('/documents', 'POST');
+
+        try {
+            app(IssueClinicalDocumentAction::class)->executeStructured(
+                $consultation,
+                ClinicalDocumentType::MedicalReport,
+                ['body' => 'Conteúdo que não deve ser persistido.'],
+                $doctor,
+                $unit,
+                $request,
+            );
+            $this->fail('A falha controlada do renderizador deveria ter sido propagada.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Falha controlada ao renderizar PDF.', $exception->getMessage());
+        }
+
+        $this->assertSame([$baselineTransactionLevel], $renderer->transactionLevels);
+        $this->assertDatabaseCount('documents', 0);
+        $this->assertDatabaseCount('document_versions', 0);
+        $this->assertSame($initialAuditCount, DB::table('audit_logs')->count());
+        $this->assertSame([], Storage::disk('local_private')->allFiles());
+    }
+
+    public function test_concurrent_document_version_is_rejected_without_overwriting_the_winner(): void
+    {
+        Storage::fake('local_private');
+        [$unit, $doctor, , , $consultation] = $this->context();
+        $request = Request::create('/documents', 'POST');
+        $document = app(IssueClinicalDocumentAction::class)->executeStructured(
+            $consultation,
+            ClinicalDocumentType::MedicalReport,
+            ['body' => 'Versão inicial.'],
+            $doctor,
+            $unit,
+            $request,
+        );
+        $baselineTransactionLevel = DB::transactionLevel();
+        $winnerPdf = '%PDF-versao-concorrente';
+        $renderer = new class($document, $doctor, $winnerPdf) implements PdfRenderer
+        {
+            public int $transactionLevel = -1;
+
+            public function __construct(
+                private readonly ClinicalDocument $document,
+                private readonly User $user,
+                private readonly string $winnerPdf,
+            ) {}
+
+            public function render(string $html): string
+            {
+                $this->transactionLevel = DB::transactionLevel();
+                $directory = "documents/{$this->document->healthUnit->public_id}/{$this->document->public_id}";
+                $htmlPath = "{$directory}/v2.html";
+                $pdfPath = "{$directory}/v2.pdf";
+                Storage::disk('local_private')->put($htmlPath, 'HTML DO VENCEDOR');
+                Storage::disk('local_private')->put($pdfPath, $this->winnerPdf);
+                $winner = $this->document->versions()->create([
+                    'version_number' => 2,
+                    'structured_content' => ['body' => 'Versão concorrente vencedora.'],
+                    'rendered_html_path' => $htmlPath,
+                    'pdf_path' => $pdfPath,
+                    'file_hash' => hash('sha256', $this->winnerPdf),
+                    'size_bytes' => strlen($this->winnerPdf),
+                    'created_by' => $this->user->getKey(),
+                    'reason' => 'Processo concorrente',
+                ]);
+                $this->document->update(['current_version_id' => $winner->getKey()]);
+
+                return '%PDF-versao-perdedora';
+            }
+        };
+        $this->app->instance(PdfRenderer::class, $renderer);
+
+        try {
+            app(CreateDocumentVersionAction::class)->execute(
+                $document,
+                ['body' => 'Versão que perdeu a corrida.', 'reason' => 'Correção concorrente'],
+                $doctor,
+                $unit,
+                $request,
+            );
+            $this->fail('A versão com estado otimista desatualizado deveria ser rejeitada.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('version', $exception->errors());
+        }
+
+        $document->refresh()->load(['currentVersion', 'versions']);
+        $this->assertSame($baselineTransactionLevel, $renderer->transactionLevel);
+        $this->assertCount(2, $document->versions);
+        $currentVersion = $document->currentVersion;
+        $this->assertNotNull($currentVersion);
+        $structuredContent = $currentVersion->structured_content;
+        $this->assertIsArray($structuredContent);
+        $this->assertSame('Versão concorrente vencedora.', $structuredContent['body'] ?? null);
+        $this->assertSame(
+            $winnerPdf,
+            Storage::disk('local_private')->get($currentVersion->pdf_path),
+        );
+    }
+
+    public function test_concurrent_source_document_generation_returns_the_winner_without_duplicate(): void
+    {
+        Storage::fake('local_private');
+        [$unit, $doctor, , , $consultation] = $this->context();
+        $prescription = Prescription::query()->create([
+            'encounter_id' => $consultation->encounter_id,
+            'medical_consultation_id' => $consultation->getKey(),
+            'professional_id' => $doctor->getKey(),
+            'prescription_type' => 'home',
+            'status' => 'finalized',
+            'general_instructions' => 'Usar conforme orientação.',
+            'version' => 1,
+            'finalized_at' => now(),
+        ]);
+        $prescription->items()->create([
+            'medication_name' => 'Paracetamol',
+            'presentation' => 'Comprimido',
+            'dose' => 500,
+            'dose_unit' => 'mg',
+            'route' => 'Oral',
+            'frequency' => 'A cada 8 horas',
+            'display_order' => 1,
+        ]);
+        $request = Request::create('/documents/source', 'POST');
+        $baselineTransactionLevel = DB::transactionLevel();
+        $renderer = new class($consultation, $prescription, $doctor, $unit, $request) implements PdfRenderer
+        {
+            /** @var list<int> */
+            public array $transactionLevels = [];
+
+            public ?ClinicalDocument $winner = null;
+
+            private bool $competing = false;
+
+            public function __construct(
+                private readonly MedicalConsultation $consultation,
+                private readonly Prescription $prescription,
+                private readonly User $user,
+                private readonly HealthUnit $unit,
+                private readonly Request $request,
+            ) {}
+
+            public function render(string $html): string
+            {
+                $this->transactionLevels[] = DB::transactionLevel();
+                if (! $this->competing) {
+                    $this->competing = true;
+                    $this->winner = app(GenerateSourceClinicalDocumentAction::class)->prescription(
+                        $this->consultation,
+                        $this->prescription,
+                        $this->user,
+                        $this->unit,
+                        $this->request,
+                    );
+                }
+
+                return '%PDF-documento-estruturado';
+            }
+        };
+        $this->app->instance(PdfRenderer::class, $renderer);
+
+        $result = app(GenerateSourceClinicalDocumentAction::class)->prescription(
+            $consultation,
+            $prescription,
+            $doctor,
+            $unit,
+            $request,
+        );
+
+        $this->assertSame(
+            [$baselineTransactionLevel, $baselineTransactionLevel],
+            $renderer->transactionLevels,
+        );
+        $winner = $renderer->winner;
+        $this->assertInstanceOf(ClinicalDocument::class, $winner);
+        $this->assertSame($winner->getKey(), $result->getKey());
+        $this->assertSame($result->getKey(), $prescription->fresh()?->document_id);
+        $this->assertDatabaseCount('documents', 1);
+        $this->assertDatabaseCount('document_versions', 1);
+        $this->assertSame(2, count(Storage::disk('local_private')->allFiles()));
     }
 
     public function test_dashboard_and_reports_filter_mask_export_audit_and_isolate_units(): void

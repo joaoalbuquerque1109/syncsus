@@ -15,7 +15,9 @@ use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
 
+/** @phpstan-import-type RenderedVersion from ClinicalDocumentVersionService */
 final readonly class IssueClinicalDocumentAction
 {
     public function __construct(
@@ -53,38 +55,94 @@ final readonly class IssueClinicalDocumentAction
         HealthUnit $unit,
         Request $request,
     ): ClinicalDocument {
-        return DB::transaction(function () use ($consultation, $type, $content, $user, $unit, $request): ClinicalDocument {
-            $consultation->loadMissing('encounter.patient');
-            $document = ClinicalDocument::query()->create([
-                'verification_code' => Str::upper(Str::random(20)),
-                'health_unit_id' => $unit->getKey(),
-                'encounter_id' => $consultation->encounter_id,
-                'patient_id' => $consultation->encounter->patient_id,
-                'medical_consultation_id' => $consultation->getKey(),
-                'document_type' => $type,
-                'title' => $type->label(),
-                'status' => 'active',
-                'created_by' => $user->getKey(),
-            ]);
-            $version = $this->versions->create(
-                $document,
-                $this->cid->normalize($content),
-                $user,
-                1,
-                'Emissão inicial',
-            );
-            $document->update(['current_version_id' => $version->getKey()]);
-            $this->audit->execute(
-                'document.issued',
-                $request,
-                $user,
-                ['document' => $document->public_id, 'document_type' => $type->value, 'version' => 1],
-                (int) $unit->getKey(),
-                (int) $consultation->encounter->patient_id,
-                (int) $consultation->encounter_id,
-            );
+        $prepared = $this->render($consultation, $type, $content, $user, $unit);
 
-            return $document->fresh(['currentVersion']) ?? $document;
-        });
+        try {
+            return DB::transaction(fn (): ClinicalDocument => $this->persist(
+                $prepared['document'],
+                $prepared['version'],
+                $consultation,
+                $type,
+                $user,
+                $unit,
+                $request,
+            ));
+        } catch (Throwable $exception) {
+            $this->discardRenderedVersion($prepared['version']);
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $content
+     * @return array{document: ClinicalDocument, version: RenderedVersion}
+     */
+    public function render(
+        MedicalConsultation $consultation,
+        ClinicalDocumentType $type,
+        array $content,
+        User $user,
+        HealthUnit $unit,
+    ): array {
+        $consultation->loadMissing('encounter.patient');
+        $document = new ClinicalDocument;
+        $document->forceFill([
+            'public_id' => (string) Str::ulid(),
+            'verification_code' => Str::upper(Str::random(20)),
+            'health_unit_id' => $unit->getKey(),
+            'encounter_id' => $consultation->encounter_id,
+            'patient_id' => $consultation->encounter->patient_id,
+            'medical_consultation_id' => $consultation->getKey(),
+            'document_type' => $type,
+            'title' => $type->label(),
+            'status' => 'active',
+            'created_by' => $user->getKey(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $normalizedContent = $this->cid->normalize($content);
+
+        return [
+            'document' => $document,
+            'version' => $this->versions->render($document, $normalizedContent, 1),
+        ];
+    }
+
+    /** @param RenderedVersion $rendered */
+    public function persist(
+        ClinicalDocument $document,
+        array $rendered,
+        MedicalConsultation $consultation,
+        ClinicalDocumentType $type,
+        User $user,
+        HealthUnit $unit,
+        Request $request,
+    ): ClinicalDocument {
+        $document->save();
+        $version = $this->versions->persist(
+            $document,
+            $rendered,
+            $user,
+            'Emissão inicial',
+        );
+        $document->update(['current_version_id' => $version->getKey()]);
+        $this->audit->execute(
+            'document.issued',
+            $request,
+            $user,
+            ['document' => $document->public_id, 'document_type' => $type->value, 'version' => 1],
+            (int) $unit->getKey(),
+            (int) $consultation->encounter->patient_id,
+            (int) $consultation->encounter_id,
+        );
+
+        return $document->fresh(['currentVersion']) ?? $document;
+    }
+
+    /** @param RenderedVersion $rendered */
+    public function discardRenderedVersion(array $rendered): void
+    {
+        $this->versions->discardIfUnpersisted($rendered);
     }
 }
