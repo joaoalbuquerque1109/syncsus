@@ -15,6 +15,7 @@ final class DatabaseSeeder extends Seeder
         }
 
         $this->call([
+            SusProcedureCatalogSeeder::class,
             SynclabExamCatalogSeeder::class,
             CanonicalExamCatalogBackfillSeeder::class,
             OperationalCatalogSeeder::class,
