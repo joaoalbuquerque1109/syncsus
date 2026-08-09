@@ -54,6 +54,12 @@ final class LaboratoryOrderTransmission extends Model
         return $this->hasMany(LaboratoryTransmissionAttempt::class)->orderByDesc('attempt_number');
     }
 
+    /** @return HasMany<LaboratoryResultIngestion, $this> */
+    public function resultIngestions(): HasMany
+    {
+        return $this->hasMany(LaboratoryResultIngestion::class);
+    }
+
     public function statusEnum(): LaboratoryTransmissionStatus
     {
         $status = $this->getAttribute('status');

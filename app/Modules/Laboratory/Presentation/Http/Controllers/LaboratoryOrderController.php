@@ -66,7 +66,7 @@ final class LaboratoryOrderController extends Controller
         return view('laboratory.orders.show', [
             'order' => $order->load([
                 'encounter.patient.identifiers', 'requestedBy.professionalProfile.registrations',
-                'createdBy', 'cancelledBy', 'items.laboratoryExam',
+                'createdBy', 'cancelledBy', 'items.laboratoryExam', 'items.result',
                 'laboratoryTransmissions.integration', 'laboratoryTransmissions.attempts',
             ]),
             'backUrl' => $this->contextualReturnUrl($order, $user),

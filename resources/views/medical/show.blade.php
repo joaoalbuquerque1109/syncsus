@@ -394,9 +394,19 @@
                             @foreach($order->items as $item)
                                 <div class="mt-3 rounded-lg bg-slate-50 p-4">
                                     <div class="flex flex-wrap justify-between gap-2"><strong>{{ $item->exam_name }}</strong><span class="text-xs font-bold uppercase">{{ $item->status }}</span></div>
-                                    <p class="mt-2 text-xs text-slate-500">
-                                        Resultados não são registrados manualmente no SYNC HOSP nesta versão.
-                                    </p>
+                                    @if($item->result)
+                                        <div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                                            <div class="flex flex-wrap justify-between gap-2">
+                                                <strong>Resultado {{ $item->result->source === 'synclab' ? 'recebido do Synclab' : 'registrado' }}</strong>
+                                                <span>{{ $item->result->resulted_at->format('d/m/Y H:i') }}</span>
+                                            </div>
+                                            <p class="mt-2 whitespace-pre-line">{{ $item->result->result_text }}</p>
+                                            @if($item->result->conclusion)<p class="mt-2 whitespace-pre-line"><strong>Conclusão:</strong> {{ $item->result->conclusion }}</p>@endif
+                                            @if($item->result->notes)<p class="mt-2 whitespace-pre-line"><strong>Observações:</strong> {{ $item->result->notes }}</p>@endif
+                                        </div>
+                                    @else
+                                        <p class="mt-2 text-xs text-slate-500">Resultado ainda não recebido.</p>
+                                    @endif
                                 </div>
                             @endforeach
                         </article>

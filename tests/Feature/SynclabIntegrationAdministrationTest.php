@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -72,5 +73,46 @@ final class SynclabIntegrationAdministrationTest extends TestCase
             ->assertSessionHasErrors('username');
 
         $this->assertDatabaseCount('laboratory_integrations', 0);
+    }
+
+    public function test_manager_rotates_result_token_without_persisting_plaintext_and_enables_reception(): void
+    {
+        $unit = $this->createHealthUnit('RESULTS');
+        $this->seed(RolePermissionSeeder::class);
+        $manager = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $manager->assignRole('manager');
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $response = $this->actingAs($manager)->withSession($session)
+            ->post(route('administration.synclab.result-token.rotate'))
+            ->assertRedirect(route('administration.synclab.edit'))
+            ->assertSessionHas('synclab_result_token');
+        $token = (string) $response->getSession()->get('synclab_result_token');
+
+        $integration->refresh();
+        $this->assertNotSame($token, $integration->result_api_token_hash);
+        $this->assertSame(hash('sha256', $token), $integration->result_api_token_hash);
+        $this->assertNotNull($integration->result_api_token_rotated_at);
+        $this->assertStringNotContainsString($token, LaboratoryIntegration::query()->get()->toJson());
+        $this->assertStringNotContainsString($token, (string) json_encode(
+            AuditLog::query()->get()->toArray(),
+        ));
+
+        $this->actingAs($manager)->withSession($session)
+            ->put(route('administration.synclab.update'), [
+                'base_url' => 'https://synclabweb.unisync.com.br',
+                'cnes_code' => $unit->cnes_code,
+                'result_sync_enabled' => '1',
+            ])
+            ->assertRedirect(route('administration.synclab.edit'));
+
+        $this->assertTrue($integration->fresh()?->result_sync_enabled);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.result_token_rotated']);
     }
 }

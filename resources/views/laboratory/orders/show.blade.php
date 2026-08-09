@@ -22,7 +22,21 @@
         <section class="app-card p-5 lg:col-span-2">
             <h2 class="text-lg font-extrabold">Exames solicitados</h2>
             <div class="mt-4 divide-y divide-slate-100 rounded-lg border border-slate-200">
-                @foreach($order->items as $item)<div class="p-4"><div class="flex flex-wrap justify-between gap-2"><strong class="safe-wrap">{{ $item->external_exam_code }} · {{ $item->exam_name }}</strong><span class="text-xs font-bold uppercase text-slate-500">{{ $item->status }}</span></div>@if($item->preparation)<p class="mt-2 safe-wrap text-sm text-slate-600"><strong>Preparo:</strong> {{ $item->preparation }}</p>@endif</div>@endforeach
+                @foreach($order->items as $item)
+                    <div class="p-4">
+                        <div class="flex flex-wrap justify-between gap-2"><strong class="safe-wrap">{{ $item->external_exam_code }} · {{ $item->exam_name }}</strong><span class="text-xs font-bold uppercase text-slate-500">{{ $item->status }}</span></div>
+                        @if($item->preparation)<p class="mt-2 safe-wrap text-sm text-slate-600"><strong>Preparo:</strong> {{ $item->preparation }}</p>@endif
+                        @if($item->result && $canViewClinicalDetails)
+                            <div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                                <div class="flex flex-wrap justify-between gap-2"><strong>Resultado</strong><span>{{ $item->result->resulted_at->format('d/m/Y H:i') }}</span></div>
+                                <p class="safe-wrap mt-2 whitespace-pre-line">{{ $item->result->result_text }}</p>
+                                @if($item->result->conclusion)<p class="safe-wrap mt-2 whitespace-pre-line"><strong>Conclusão:</strong> {{ $item->result->conclusion }}</p>@endif
+                            </div>
+                        @elseif($item->result)
+                            <p class="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">Resultado disponível no prontuário clínico.</p>
+                        @endif
+                    </div>
+                @endforeach
             </div>
             <dl class="mt-5 grid gap-4 md:grid-cols-2"><div><dt class="text-xs font-bold uppercase text-slate-500">Prioridade</dt><dd class="mt-1 font-semibold">{{ ucfirst($order->priority) }}</dd></div><div><dt class="text-xs font-bold uppercase text-slate-500">Criada por</dt><dd class="mt-1 font-semibold">{{ $order->createdBy?->name }}</dd></div>@if($canViewClinicalDetails)<div class="md:col-span-2"><dt class="text-xs font-bold uppercase text-slate-500">Indicação clínica</dt><dd class="mt-1 safe-wrap whitespace-pre-line">{{ $order->clinical_indication }}</dd></div>@if($order->notes)<div class="md:col-span-2"><dt class="text-xs font-bold uppercase text-slate-500">Observações</dt><dd class="mt-1 safe-wrap whitespace-pre-line">{{ $order->notes }}</dd></div>@endif @else <div class="md:col-span-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">Conteúdo clínico restrito ao fluxo assistencial.</div>@endif</dl>
         </section>

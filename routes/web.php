@@ -138,6 +138,8 @@ Route::middleware(['auth', 'active'])->group(function (): void {
             ->group(function (): void {
                 Route::get('/', [SynclabIntegrationController::class, 'edit'])->name('edit');
                 Route::put('/', [SynclabIntegrationController::class, 'update'])->name('update');
+                Route::post('/result-token', [SynclabIntegrationController::class, 'rotateResultToken'])
+                    ->name('result-token.rotate');
             });
         Route::prefix('administration/professionals')
             ->name('administration.professionals.')

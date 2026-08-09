@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Actions\RotateSynclabResultTokenAction;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Modules\Laboratory\Presentation\Http\Requests\UpdateSynclabIntegrationRequest;
 use Illuminate\Http\RedirectResponse;
@@ -42,14 +43,26 @@ final class SynclabIntegrationController extends Controller
         $catalogMapped = $integration->exists
             ? $integration->exams()->where('is_active', true)->whereNotNull('sus_procedure_code')->count()
             : 0;
+        $resultStatusCounts = $integration->exists
+            ? $integration->resultIngestions()
+                ->selectRaw('status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status')
+            : collect();
+        $recentResultIngestions = $integration->exists
+            ? $integration->resultIngestions()->latest('received_at')->limit(10)->get()
+            : collect();
 
         return view('laboratory.integrations.synclab', [
             'integration' => $integration,
             'statusCounts' => $statusCounts,
             'recentTransmissions' => $recentTransmissions,
             'globalEnabled' => (bool) config('sync_sus.synclab.enabled'),
+            'resultsGlobalEnabled' => (bool) config('sync_sus.synclab.results_enabled'),
             'catalogTotal' => $catalogTotal,
             'catalogMapped' => $catalogMapped,
+            'resultStatusCounts' => $resultStatusCounts,
+            'recentResultIngestions' => $recentResultIngestions,
         ]);
     }
 
@@ -70,9 +83,15 @@ final class SynclabIntegrationController extends Controller
             $username = trim((string) ($data['username'] ?? '')) ?: (string) $integration->username;
             $password = (string) ($data['password'] ?? '') ?: (string) $integration->password;
             $enabled = $request->boolean('transmission_enabled');
+            $resultsEnabled = $request->boolean('result_sync_enabled');
             if ($enabled && ($username === '' || $password === '')) {
                 throw ValidationException::withMessages([
                     'username' => 'Usuário e senha do Synclab são obrigatórios para habilitar o envio.',
+                ]);
+            }
+            if ($resultsEnabled && blank($integration->result_api_token_hash)) {
+                throw ValidationException::withMessages([
+                    'result_sync_enabled' => 'Gere o token do webhook antes de habilitar a recepção de resultados.',
                 ]);
             }
 
@@ -87,7 +106,7 @@ final class SynclabIntegrationController extends Controller
                 'password' => $password !== '' ? $password : null,
                 'is_active' => true,
                 'transmission_enabled' => $enabled,
-                'result_sync_enabled' => false,
+                'result_sync_enabled' => $resultsEnabled,
                 'connection_status' => $enabled ? 'configured' : 'disabled',
                 'last_error' => null,
             ])->save();
@@ -100,6 +119,7 @@ final class SynclabIntegrationController extends Controller
                     'provider' => 'synclab',
                     'cnes' => $cnes,
                     'transmission_enabled' => $enabled,
+                    'result_sync_enabled' => $resultsEnabled,
                     'credentials_present' => $integration->hasCredentials(),
                 ],
                 (int) $unit->getKey(),
@@ -110,6 +130,32 @@ final class SynclabIntegrationController extends Controller
             'success',
             'Configuração Synclab atualizada. Pedidos antigos aguardam revisão manual.',
         );
+    }
+
+    public function rotateResultToken(
+        Request $request,
+        RotateSynclabResultTokenAction $rotateToken,
+        RecordAuditEventAction $audit,
+    ): RedirectResponse {
+        $unit = $this->unit($request);
+        $user = $request->user();
+        abort_unless($user instanceof User, 403);
+        $integration = LaboratoryIntegration::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('provider', 'synclab')
+            ->firstOrFail();
+        $token = $rotateToken->execute($integration);
+        $audit->execute(
+            'laboratory.result_token_rotated',
+            $request,
+            $user,
+            ['provider' => 'synclab'],
+            (int) $unit->getKey(),
+        );
+
+        return redirect()->route('administration.synclab.edit')
+            ->with('success', 'Token de recepção rotacionado. Copie-o agora; ele não será exibido novamente.')
+            ->with('synclab_result_token', $token);
     }
 
     private function unit(Request $request): HealthUnit

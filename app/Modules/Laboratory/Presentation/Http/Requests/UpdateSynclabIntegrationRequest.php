@@ -33,6 +33,7 @@ final class UpdateSynclabIntegrationRequest extends FormRequest
             'username' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'max:500'],
             'transmission_enabled' => ['nullable', 'boolean'],
+            'result_sync_enabled' => ['nullable', 'boolean'],
         ];
     }
 }
