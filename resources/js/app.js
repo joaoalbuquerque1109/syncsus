@@ -8,6 +8,7 @@ import cidSearch from "./cid-search";
 import prescriptionItems from "./prescription-items";
 import examOrderItems from "./exam-order-items";
 import laboratoryExamSelector from "./laboratory-exam-selector";
+import examGroupItems from "./exam-group-items";
 
 window.Alpine = Alpine;
 
@@ -19,4 +20,5 @@ Alpine.data("cidSearch", cidSearch);
 Alpine.data("prescriptionItems", prescriptionItems);
 Alpine.data("examOrderItems", examOrderItems);
 Alpine.data("laboratoryExamSelector", laboratoryExamSelector);
+Alpine.data("examGroupItems", examGroupItems);
 Alpine.start();

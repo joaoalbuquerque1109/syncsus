@@ -14,6 +14,7 @@ use App\Modules\Documents\Presentation\Http\Controllers\SourceClinicalDocumentCo
 use App\Modules\Identity\Presentation\Http\Controllers\ActiveHealthUnitController;
 use App\Modules\Identity\Presentation\Http\Controllers\AuthenticatedSessionController;
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
+use App\Modules\Laboratory\Presentation\Http\Controllers\ExamGroupManagementController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\SynclabIntegrationController;
 use App\Modules\Medical\Presentation\Http\Controllers\DiagnosisCodeSearchController;
@@ -167,6 +168,16 @@ Route::middleware(['auth', 'active'])->group(function (): void {
                 Route::get('/', [CatalogManagementController::class, 'index'])->name('index');
                 Route::post('/{catalog}', [CatalogManagementController::class, 'store'])->name('store');
                 Route::put('/{catalog}/{record}', [CatalogManagementController::class, 'update'])->name('update');
+            });
+        Route::prefix('administration/exam-groups')
+            ->name('administration.exam-groups.')
+            ->middleware('permission:administration.manage')
+            ->group(function (): void {
+                Route::get('/search-exams', [ExamGroupManagementController::class, 'searchExams'])
+                    ->name('search-exams');
+                Route::get('/', [ExamGroupManagementController::class, 'index'])->name('index');
+                Route::post('/', [ExamGroupManagementController::class, 'store'])->name('store');
+                Route::put('/{examGroup}', [ExamGroupManagementController::class, 'update'])->name('update');
             });
 
         Route::prefix('triage')->name('triage.')->group(function (): void {

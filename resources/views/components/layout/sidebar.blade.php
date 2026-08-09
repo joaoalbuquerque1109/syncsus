@@ -83,6 +83,11 @@
                 'bg-brand-600 text-white' => request()->routeIs('administration.catalogs.*'),
                 'hover:bg-white/8 hover:text-white' => !request()->routeIs('administration.catalogs.*'),
             ])><span aria-hidden="true">C</span> Cadastros</a>
+            <a href="{{ route('administration.exam-groups.index') }}" @class([
+                'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
+                'bg-brand-600 text-white' => request()->routeIs('administration.exam-groups.*'),
+                'hover:bg-white/8 hover:text-white' => !request()->routeIs('administration.exam-groups.*'),
+            ])><span aria-hidden="true">G</span> Grupos de exames</a>
             <a href="{{ route('administration.flow.index') }}" @class([
                 'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
                 'bg-brand-600 text-white' => request()->routeIs('administration.flow.*'),

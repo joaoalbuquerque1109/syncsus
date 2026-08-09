@@ -15,7 +15,10 @@ use LogicException;
 
 final readonly class ResolveExamGroupImportConflictAction
 {
-    public function __construct(private RecordLaboratoryCatalogAuditAction $audit) {}
+    public function __construct(
+        private RecordLaboratoryCatalogAuditAction $audit,
+        private SyncExamGroupItemsAction $syncItems,
+    ) {}
 
     public function execute(
         ExamGroupImportConflict $conflict,
@@ -50,7 +53,7 @@ final readonly class ResolveExamGroupImportConflictAction
                 if ($decision === 'merge') {
                     $examIds = collect($group->items()->pluck('exam_id'))->merge($examIds)->unique()->values()->all();
                 }
-                $this->replaceItems($group, $examIds, $displayOrders, $decision === 'merge');
+                $this->syncItems->execute($group, $examIds, $displayOrders, $decision === 'merge');
             }
 
             $conflict->forceFill([
@@ -115,24 +118,5 @@ final readonly class ResolveExamGroupImportConflictAction
         }
 
         return [$examIds, $displayOrders];
-    }
-
-    /** @param list<int> $examIds
-     * @param  array<int, int>  $displayOrders
-     */
-    private function replaceItems(
-        ExamGroup $group,
-        array $examIds,
-        array $displayOrders,
-        bool $preserveExisting,
-    ): void {
-        if (! $preserveExisting) {
-            $group->items()->whereNotIn('exam_id', $examIds)->delete();
-        }
-        foreach ($examIds as $index => $examId) {
-            $group->items()->updateOrCreate(['exam_id' => $examId], [
-                'display_order' => $displayOrders[$examId] ?? $index,
-            ]);
-        }
     }
 }
