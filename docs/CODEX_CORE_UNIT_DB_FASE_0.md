@@ -99,14 +99,19 @@ novos confirmados nesta rodada:
 E os já mapeados como efetivamente quebrados na matriz do master plan (seção 6):
 `QueueController.php:87-91`, `PublicPanelController` (`entry.encounter.patient`),
 `ClinicalDocumentController.php` (`with(['patient', 'healthUnit.organization', ...])`),
-`IssueClinicalDocumentAction.php` (`forceFill` de `patient_id`/gravação FK direta).
+`IssueClinicalDocumentAction.php` (`forceFill` de `patient_id`/gravação FK direta), **e
+`AuditTrailQuery.php:104,110`** (`whereHas('patient', ...)`/`whereHas('encounter', ...)`).
 
-**Não incluído aqui, de propósito**: `AuditTrailQuery.php:104,110`
-(`whereHas('patient', ...)`/`whereHas('encounter', ...)`). Essa query só se torna
-cross-boundary depois que `AuditLog` for dividido em `security_audit_logs`/`audit_logs`
-(master plan, seção 9) — e esse split é Fase 4, explicitamente fora do escopo desta fase
-(ver "Fora de escopo" abaixo). Enquanto `AuditLog` permanecer uma tabela única, como está
-hoje, essa query não atravessa fronteira nenhuma e não deve ser tocada agora.
+**Correção a este documento (autoauditoria pós-implementação)**: a versão anterior deste
+documento excluía `AuditTrailQuery.php` do escopo da Fase 0, com o argumento de que a
+query só quebraria depois do split de `AuditLog` (Fase 4). Esse argumento estava errado —
+o conserto (`whereHas('patient', ...)` → resolver `Patient` primeiro, filtrar por
+`patient_id IN (...)` depois) corrige a relação `AuditLog → Patient`, que já é
+cross-boundary desde a Fase 0 porque `Patient` já é `CoreModel` desde já, **independente**
+de `AuditLog` continuar sendo uma tabela única ou não. O split de `AuditLog` em
+`security_audit_logs`/`audit_logs` continua sendo Fase 4 (não mexe na tabela nem na
+classificação do model `AuditLog` em si) — mas a correção da *query* contra `Patient` é
+ortogonal a isso e pertence à Fase 0, junto com todas as outras.
 
 Padrão de correção uniforme: FK direta vira coluna `*_public_id` (string); relação
 Eloquent nativa (`belongsTo`/`whereHas`) é substituída por um método explícito
@@ -164,8 +169,9 @@ matriz do master plan.
 - Entidade `tenant_databases` e seu ciclo de vida (Fase 3) — Fase 0 não precisa dela, ver
   seção 1.
 - Qualquer migração de dado de paciente (Fase 2).
-- Split de `AuditLog` em duas tabelas, incluindo a correção de `AuditTrailQuery.php`
-  (Fase 4, depende de Fase 0 estar validada) — ver seção 3.
+- Split de `AuditLog` em duas tabelas (`security_audit_logs`/`audit_logs`), Fase 4 —
+  depende de Fase 0 estar validada. Não inclui a correção da query de
+  `AuditTrailQuery.php` contra `Patient`/`Encounter`, que É escopo da Fase 0 (ver seção 3).
 - Criptografia/fingerprint de `PatientIdentifier` (decisão 22.5, não bloqueante, não
   incluída aqui).
 - Reporting assíncrono (Fase 5).
@@ -176,8 +182,8 @@ matriz do master plan.
   explícito, com teste de regressão de comportamento (mesmo resultado, mecanismo novo).
 - Nenhum `whereHas`/`with()` remanescente que atravesse a fronteira Core/Unidade conforme
   a matriz do master plan (seção 6) — confirmável por uma varredura final repetindo as
-  buscas usadas para produzir essa matriz — **exceto** `AuditTrailQuery.php:104,110`,
-  deliberadamente fora de escopo (ver seção 3, "Não incluído aqui, de propósito").
+  buscas usadas para produzir essa matriz. Inclui `AuditTrailQuery.php:104,110` (ver
+  correção na seção 3).
 - Backfill do índice de descoberta pública executado e confirmado: todo `Panel` e
   `ClinicalDocument` existente antes da Fase 0 tem entrada correspondente — verificação
   pública de documentos já emitidos e painéis já cadastrados continua funcionando sem
@@ -208,8 +214,8 @@ escopo da seção "Escopo" de docs/CODEX_CORE_UNIT_DB_FASE_0.md, nesta ordem:
    os 2 endpoints públicos existentes. O backfill é pré-requisito de deploy, não opcional.
 3. Classificação definitiva de catálogos (CoreModel vs TenantModel, seção 3-bis).
 4. Correção de cada relacionamento cross-boundary da matriz (master plan, seção 6) e da
-   lista da seção 3 deste documento — um commit por módulo, não um commit único gigante.
-   NÃO inclui AuditTrailQuery.php:104,110 — essa fica para a Fase 4 (split de AuditLog).
+   lista da seção 3 deste documento, incluindo AuditTrailQuery.php:104,110 — um commit
+   por módulo, não um commit único gigante.
 5. Jobs e scheduler tenant-aware.
 6. Auditoria de ordem de middleware/binding.
 7. Fixtures mínimas de teste + um teste de regressão por relacionamento corrigido.
