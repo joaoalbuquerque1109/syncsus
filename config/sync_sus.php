@@ -41,6 +41,10 @@ return [
     'max_concurrent_sessions' => max(1, (int) env('SYNC_SUS_MAX_CONCURRENT_SESSIONS', 1)),
     'synclab' => [
         'enabled' => (bool) env('SYNC_SUS_SYNCLAB_ENABLED', false),
+        // Enable only after the Synclab operator has approved the additive
+        // public identifier fields documented in synclab_contract.php.
+        'public_identifiers_enabled' => (bool) env('SYNC_SUS_SYNCLAB_PUBLIC_IDENTIFIERS_ENABLED', false),
+        'catalog_path' => env('SYNC_SUS_SYNCLAB_CATALOG_PATH', database_path('data/synclab_exams.csv')),
         'base_url' => env('SYNC_SUS_SYNCLAB_BASE_URL', 'https://synclabweb.unisync.com.br'),
         'unit_code' => env('SYNC_SUS_SYNCLAB_UNIT_CODE'),
         'cnes' => env('SYNC_SUS_SYNCLAB_CNES'),
@@ -49,10 +53,11 @@ return [
         'queue' => env('SYNC_SUS_SYNCLAB_QUEUE', 'integrations'),
         'connect_timeout_seconds' => max(1, (int) env('SYNC_SUS_SYNCLAB_CONNECT_TIMEOUT', 5)),
         'timeout_seconds' => max(5, (int) env('SYNC_SUS_SYNCLAB_TIMEOUT', 30)),
-        // Future phases remain explicitly disabled. They are not part of the
-        // outbound request payload and must not be enabled without a new review.
+        // Inbound result reception remains disabled until the Synclab operator
+        // has configured the authenticated webhook for this installation.
+        'results_enabled' => (bool) env('SYNC_SUS_SYNCLAB_RESULTS_ENABLED', false),
+        // Future outbound phases remain explicitly disabled.
         'samples_enabled' => false,
         'barcodes_enabled' => false,
-        'results_enabled' => false,
     ],
 ];

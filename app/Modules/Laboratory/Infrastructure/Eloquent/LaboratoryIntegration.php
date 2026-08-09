@@ -25,6 +25,12 @@ final class LaboratoryIntegration extends Model
         'connection_status' => 'not_tested',
     ];
 
+    protected $hidden = [
+        'username',
+        'password',
+        'result_api_token_hash',
+    ];
+
     /** @return BelongsTo<Organization, $this> */
     public function organization(): BelongsTo
     {
@@ -49,10 +55,34 @@ final class LaboratoryIntegration extends Model
         return $this->hasMany(LaboratoryExam::class);
     }
 
+    /** @return HasMany<ExamMapping, $this> */
+    public function examMappings(): HasMany
+    {
+        return $this->hasMany(ExamMapping::class);
+    }
+
+    /** @return HasMany<ExamCatalogImportCandidate, $this> */
+    public function examCatalogImportCandidates(): HasMany
+    {
+        return $this->hasMany(ExamCatalogImportCandidate::class);
+    }
+
+    /** @return HasMany<ExamGroupImportConflict, $this> */
+    public function examGroupImportConflicts(): HasMany
+    {
+        return $this->hasMany(ExamGroupImportConflict::class);
+    }
+
     /** @return HasMany<LaboratoryOrderTransmission, $this> */
     public function transmissions(): HasMany
     {
         return $this->hasMany(LaboratoryOrderTransmission::class);
+    }
+
+    /** @return HasMany<LaboratoryResultIngestion, $this> */
+    public function resultIngestions(): HasMany
+    {
+        return $this->hasMany(LaboratoryResultIngestion::class);
     }
 
     public function hasCredentials(): bool
@@ -69,6 +99,7 @@ final class LaboratoryIntegration extends Model
             'is_active' => 'boolean',
             'transmission_enabled' => 'boolean',
             'result_sync_enabled' => 'boolean',
+            'result_api_token_rotated_at' => 'immutable_datetime',
             'last_connection_test_at' => 'immutable_datetime',
             'last_catalog_sync_at' => 'immutable_datetime',
         ];

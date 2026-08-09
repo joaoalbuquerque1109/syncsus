@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Laboratory\Domain\Enums\ExamCatalogMatchStatus;
+use App\Modules\Laboratory\Infrastructure\Eloquent\ExamCatalogImportCandidate;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\SynclabExamCatalogSeeder;
@@ -63,6 +65,7 @@ final class SynclabExamCatalogSeederTest extends TestCase
             'is_active' => true,
             'source_version' => null,
         ]);
+        $integration->update(['result_sync_enabled' => true]);
 
         $this->seed(SynclabExamCatalogSeeder::class);
 
@@ -80,5 +83,24 @@ final class SynclabExamCatalogSeederTest extends TestCase
         ]);
         $this->assertSame(124, $integration->exams()->count());
         $this->assertSame($unit->getKey(), $integration->health_unit_id);
+        $this->assertTrue($integration->fresh()?->result_sync_enabled);
+        $this->assertDatabaseMissing('exam_catalog_import_candidates', [
+            'laboratory_exam_id' => $overridden->getKey(),
+        ]);
+    }
+
+    public function test_catalog_accepts_a_changed_number_of_parent_rows_and_creates_review_candidates(): void
+    {
+        config()->set('sync_sus.synclab.catalog_path', base_path('tests/Fixtures/synclab_exam_catalog_small.csv'));
+        $this->createHealthUnit('SMALL-CATALOG');
+
+        $this->seed(SynclabExamCatalogSeeder::class);
+
+        $this->assertDatabaseCount('laboratory_exams', 2);
+        $this->assertDatabaseCount('exam_catalog_import_candidates', 2);
+        $this->assertSame(
+            [ExamCatalogMatchStatus::Unmatched],
+            ExamCatalogImportCandidate::query()->pluck('match_status')->unique()->values()->all(),
+        );
     }
 }

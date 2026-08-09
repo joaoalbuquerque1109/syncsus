@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Laboratory\Application\Actions\MatchSynclabExamCatalogAction;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Illuminate\Database\Seeder;
@@ -16,7 +17,7 @@ final class SynclabExamCatalogSeeder extends Seeder
 {
     public function run(): void
     {
-        $catalogPath = database_path('data/synclab_exams.csv');
+        $catalogPath = (string) config('sync_sus.synclab.catalog_path');
         if (! is_file($catalogPath)) {
             throw new RuntimeException('Catalogo de exames Synclab nao encontrado.');
         }
@@ -57,6 +58,8 @@ final class SynclabExamCatalogSeeder extends Seeder
                 ->whereNotNull('source_version')
                 ->whereNotIn('external_code', $activeCodes)
                 ->update(['is_active' => false]);
+
+            app(MatchSynclabExamCatalogAction::class)->execute($integration);
         }
     }
 
@@ -89,7 +92,6 @@ final class SynclabExamCatalogSeeder extends Seeder
             'password' => $password !== '' ? $password : null,
             'is_active' => true,
             'transmission_enabled' => $ready,
-            'result_sync_enabled' => false,
             'connection_status' => $ready ? 'configured' : 'not_configured',
         ])->save();
 
@@ -118,10 +120,6 @@ final class SynclabExamCatalogSeeder extends Seeder
             }
             /** @var array{codigo: string, nome: string, descricao: string, mnemonico: string, tipo: string, itemexame: string, sr_recno: string} $row */
             $rows[] = $row;
-        }
-
-        if (count($rows) !== 123) {
-            throw new RuntimeException('O catalogo Synclab deve conter exatamente 123 exames-pai ativos.');
         }
 
         return $rows;
