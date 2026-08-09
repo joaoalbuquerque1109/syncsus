@@ -10,6 +10,11 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Domain\Enums\ExamMappingMatchType;
+use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
+use App\Modules\Laboratory\Infrastructure\Eloquent\HealthUnitExam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Medical\Infrastructure\Eloquent\DiagnosisCode;
@@ -351,6 +356,7 @@ final class MedicalConsultationFlowTest extends TestCase
             'collection_instructions' => 'Coletar sangue total.',
             'source_version' => 'catalog-v1',
         ]);
+        $this->setLaboratoryExamAvailability($unit, $integration, $exam);
 
         $this->actingAs($doctor)
             ->withSession(['active_health_unit_id' => $unit->getKey()])
@@ -377,6 +383,44 @@ final class MedicalConsultationFlowTest extends TestCase
         $this->assertSame('awaiting_configuration', $transmission->status->value);
         $this->assertSame($unit->getKey(), $transmission->health_unit_id);
         $this->assertNull($transmission->external_order_number);
+    }
+
+    public function test_disabled_catalog_exam_cannot_be_requested_by_direct_medical_post(): void
+    {
+        [$unit, $doctor, $entry] = $this->context();
+        $consultation = $this->start($unit, $doctor, $entry);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $exam = $integration->exams()->create([
+            'external_code' => 'DISABLED-127',
+            'name' => 'Exame desabilitado',
+            'source_version' => 'catalog-v1',
+        ]);
+        $this->setLaboratoryExamAvailability($unit, $integration, $exam, false);
+
+        $this->actingAs($doctor)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->post(route('medical.exam-orders', $consultation), [
+                'version' => 1,
+                'priority' => 'routine',
+                'clinical_indication' => 'Tentativa direta com exame desabilitado.',
+                'items' => [[
+                    'laboratory_exam_id' => $exam->getKey(),
+                    'exam_name' => 'Exame desabilitado',
+                    'group' => 'laboratory',
+                    'laterality' => 'not_applicable',
+                ]],
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('exam_orders', 0);
+        $this->assertDatabaseCount('exam_order_items', 0);
+        $this->assertDatabaseCount('laboratory_order_transmissions', 0);
+        $this->assertSame(1, $consultation->fresh()?->version());
     }
 
     /**
@@ -483,6 +527,33 @@ final class MedicalConsultationFlowTest extends TestCase
                 'death_cause' => 'Causa clínica registrada para posterior homologação documental.',
             ]],
         ];
+    }
+
+    private function setLaboratoryExamAvailability(
+        HealthUnit $unit,
+        LaboratoryIntegration $integration,
+        LaboratoryExam $laboratoryExam,
+        bool $enabled = true,
+    ): void {
+        $exam = Exam::query()->create([
+            'organization_id' => $unit->organization_id,
+            'name' => $laboratoryExam->name,
+            'sus_procedure_code' => $laboratoryExam->sus_procedure_code,
+        ]);
+        ExamMapping::query()->create([
+            'exam_id' => $exam->getKey(),
+            'laboratory_integration_id' => $integration->getKey(),
+            'external_code' => $laboratoryExam->external_code,
+            'external_name_snapshot' => $laboratoryExam->name,
+            'match_type' => ExamMappingMatchType::Exact,
+            'mapped_at' => now(),
+        ]);
+        HealthUnitExam::query()->create([
+            'exam_id' => $exam->getKey(),
+            'health_unit_id' => $unit->getKey(),
+            'is_enabled' => $enabled,
+            'enabled_at' => $enabled ? now() : null,
+        ]);
     }
 
     private function start(HealthUnit $unit, User $doctor, QueueEntry $entry): MedicalConsultation

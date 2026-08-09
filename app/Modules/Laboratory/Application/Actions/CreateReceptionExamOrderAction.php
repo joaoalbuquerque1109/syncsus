@@ -136,11 +136,7 @@ final readonly class CreateReceptionExamOrderAction
         $uniqueIds = collect($ids)->map(fn (mixed $id): int => (int) $id)->unique()->values();
         $exams = LaboratoryExam::query()
             ->whereIn('id', $uniqueIds)
-            ->where('is_active', true)
-            ->whereHas('integration', fn ($query) => $query
-                ->where('organization_id', $unit->organization_id)
-                ->where('health_unit_id', $unit->getKey())
-                ->where('is_active', true))
+            ->availableForHealthUnit($unit)
             ->get()
             ->keyBy(fn (LaboratoryExam $exam): int => (int) $exam->getKey());
         if ($exams->count() !== $uniqueIds->count()) {

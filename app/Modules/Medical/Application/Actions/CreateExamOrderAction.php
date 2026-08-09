@@ -98,11 +98,7 @@ final readonly class CreateExamOrderAction
         return LaboratoryExam::query()
             ->with('material')
             ->whereKey($catalogId)
-            ->where('is_active', true)
-            ->whereHas('integration', fn ($query) => $query
-                ->where('organization_id', $unit->organization_id)
-                ->where('health_unit_id', $unit->getKey())
-                ->where('is_active', true))
+            ->availableForHealthUnit($unit)
             ->firstOrFail();
     }
 }

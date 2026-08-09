@@ -32,11 +32,7 @@ final class LaboratoryExamSearchController extends Controller
                 'laboratory_exams.acronym', 'laboratory_exams.name', 'laboratory_exams.short_name',
                 'laboratory_exams.sus_procedure_code', 'laboratory_exams.collection_instructions',
             ])
-            ->where('laboratory_exams.is_active', true)
-            ->whereHas('integration', fn ($query) => $query
-                ->where('organization_id', $unit->organization_id)
-                ->where('health_unit_id', $unit->getKey())
-                ->where('is_active', true))
+            ->availableForHealthUnit($unit)
             ->where(function ($query) use ($normalized, $term): void {
                 $query->where('external_code', 'like', $normalized.'%')
                     ->orWhere('acronym', 'like', $normalized.'%')
