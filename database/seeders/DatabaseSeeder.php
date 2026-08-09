@@ -16,6 +16,7 @@ final class DatabaseSeeder extends Seeder
 
         $this->call([
             SynclabExamCatalogSeeder::class,
+            CanonicalExamCatalogBackfillSeeder::class,
             OperationalCatalogSeeder::class,
             TriageCatalogSeeder::class,
             MedicalCatalogSeeder::class,
