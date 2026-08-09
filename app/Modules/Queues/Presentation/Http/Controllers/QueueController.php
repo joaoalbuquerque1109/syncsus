@@ -25,14 +25,14 @@ final class QueueController extends Controller
         $user = $request->user();
         abort_unless($unit instanceof HealthUnit && $user instanceof User, 403);
         $queues = $visibility->apply(Queue::query(), $user)
-            ->with('department')
+            ->with([
+                'department',
+                'servicePoints' => $visibility->servicePointsEagerLoadConstraint($user),
+            ])
             ->where('health_unit_id', $unit->getKey())
             ->where('is_active', true)
             ->orderBy('display_order')
             ->get();
-        $queues->each(function (Queue $queue) use ($user, $visibility): void {
-            $queue->setRelation('servicePoints', $visibility->servicePointsFor($queue, $user));
-        });
         $selected = $request->filled('queue')
             ? $queues->firstWhere('public_id', $request->query('queue'))
             : $queues->first();

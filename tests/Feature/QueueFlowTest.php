@@ -5,8 +5,13 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
+use App\Modules\Administration\Infrastructure\Eloquent\Department;
 use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
+use App\Modules\Administration\Infrastructure\Eloquent\Room;
+use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
+use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
@@ -20,9 +25,11 @@ use App\Modules\Reception\Domain\Enums\EncounterStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 final class QueueFlowTest extends TestCase
@@ -259,6 +266,170 @@ final class QueueFlowTest extends TestCase
             'queue_entries_queue_id_status_priority_weight_entered_at_index',
             $details,
         );
+    }
+
+    public function test_queue_index_query_count_is_constant_for_broad_access(): void
+    {
+        [$unit] = $this->context();
+        Queue::query()->where('health_unit_id', $unit->getKey())->update(['is_active' => false]);
+        $fixture = $this->performanceQueues($unit);
+        $manager = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $manager->assignRole('manager');
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($manager)->withSession($session)->get(route('queues.index'))->assertOk();
+
+        $this->activateQueues($fixture['queues'], 3);
+        [$threeQueues, $threeQueryCount] = $this->measuredQueueIndex($manager, $unit);
+        $threeQueues->assertOk()
+            ->assertSee('Fila de desempenho 01')
+            ->assertSee('Ponto de desempenho 01 A')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->count() === 3
+                && $queues->every(fn (Queue $queue): bool => $queue->relationLoaded('servicePoints')
+                    && $queue->servicePoints->count() === 2
+                    && $queue->servicePoints->every(fn (ServicePoint $point): bool => $point->relationLoaded('room'))));
+
+        $this->activateQueues($fixture['queues'], 8);
+        [$eightQueues, $eightQueryCount] = $this->measuredQueueIndex($manager, $unit);
+        $eightQueues->assertOk()
+            ->assertSee('Fila de desempenho 08')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->count() === 8
+                && $queues->every(fn (Queue $queue): bool => $queue->servicePoints->count() === 2));
+
+        $this->assertLessThanOrEqual(8, $threeQueryCount);
+        $this->assertSame($threeQueryCount, $eightQueryCount);
+    }
+
+    public function test_queue_index_eager_load_preserves_restricted_professional_visibility(): void
+    {
+        [$unit, $professionalUser] = $this->context();
+        Queue::query()->where('health_unit_id', $unit->getKey())->update(['is_active' => false]);
+        $fixture = $this->performanceQueues($unit);
+        $profile = $professionalUser->professionalProfile()->sole();
+        $allowedIndexes = [0, 2, 7];
+        $profile->queues()->sync(collect($allowedIndexes)
+            ->map(fn (int $index): int => (int) $fixture['queues'][$index]->getKey())
+            ->all());
+        $profile->servicePoints()->sync(collect($allowedIndexes)
+            ->map(fn (int $index): int => (int) $fixture['primaryPoints'][$index]->getKey())
+            ->all());
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($professionalUser)->withSession($session)->get(route('queues.index'))->assertOk();
+
+        $this->activateQueues($fixture['queues'], 3);
+        [$threeQueues, $threeQueryCount] = $this->measuredQueueIndex($professionalUser, $unit);
+        $threeQueues->assertOk()
+            ->assertSee('Fila de desempenho 01')
+            ->assertSee('Fila de desempenho 03')
+            ->assertDontSee('Fila de desempenho 02')
+            ->assertSee('Ponto de desempenho 01 A')
+            ->assertDontSee('Ponto de desempenho 01 B')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->pluck('code')->all() === [
+                'PERF-QUEUE-01',
+                'PERF-QUEUE-03',
+            ] && $queues->every(fn (Queue $queue): bool => $queue->servicePoints->count() === 1
+                && $queue->servicePoints->first()?->name === sprintf(
+                    'Ponto de desempenho %02d A',
+                    (int) str_replace('PERF-QUEUE-', '', $queue->code),
+                )));
+
+        $this->activateQueues($fixture['queues'], 8);
+        [$eightQueues, $eightQueryCount] = $this->measuredQueueIndex($professionalUser, $unit);
+        $eightQueues->assertOk()
+            ->assertSee('Fila de desempenho 08')
+            ->assertDontSee('Fila de desempenho 07')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->pluck('code')->all() === [
+                'PERF-QUEUE-01',
+                'PERF-QUEUE-03',
+                'PERF-QUEUE-08',
+            ] && $queues->every(fn (Queue $queue): bool => $queue->servicePoints->count() === 1));
+
+        $this->assertLessThanOrEqual(8, $threeQueryCount);
+        $this->assertSame($threeQueryCount, $eightQueryCount);
+    }
+
+    /**
+     * @return array{
+     *     queues: Collection<int, Queue>,
+     *     primaryPoints: Collection<int, ServicePoint>
+     * }
+     */
+    private function performanceQueues(HealthUnit $unit): array
+    {
+        $department = Department::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('code', 'TRIAGE')
+            ->sole();
+        $queues = new Collection;
+        $primaryPoints = new Collection;
+
+        foreach (range(1, 8) as $index) {
+            $room = Room::query()->create([
+                'department_id' => $department->getKey(),
+                'code' => sprintf('PERF-ROOM-%02d', $index),
+                'name' => sprintf('Sala de desempenho %02d', $index),
+                'room_type' => 'triage',
+                'is_active' => true,
+            ]);
+            $primaryPoint = ServicePoint::query()->create([
+                'room_id' => $room->getKey(),
+                'code' => 'PERF-A',
+                'name' => sprintf('Ponto de desempenho %02d A', $index),
+                'type' => 'triage',
+                'is_active' => true,
+            ]);
+            $secondaryPoint = ServicePoint::query()->create([
+                'room_id' => $room->getKey(),
+                'code' => 'PERF-B',
+                'name' => sprintf('Ponto de desempenho %02d B', $index),
+                'type' => 'triage',
+                'is_active' => true,
+            ]);
+            $queue = Queue::query()->create([
+                'health_unit_id' => $unit->getKey(),
+                'department_id' => $department->getKey(),
+                'code' => sprintf('PERF-QUEUE-%02d', $index),
+                'name' => sprintf('Fila de desempenho %02d', $index),
+                'prefix' => 'P',
+                'sequence_reset_policy' => 'daily',
+                'priority_strategy' => 'priority_fifo',
+                'minimum_calls_before_absent' => 1,
+                'ticket_length' => 3,
+                'is_active' => false,
+                'display_order' => 100 + $index,
+            ]);
+            $queue->servicePoints()->attach([$primaryPoint->getKey(), $secondaryPoint->getKey()]);
+            $queues->push($queue);
+            $primaryPoints->push($primaryPoint);
+        }
+
+        return ['queues' => $queues, 'primaryPoints' => $primaryPoints];
+    }
+
+    /** @param Collection<int, Queue> $queues */
+    private function activateQueues(Collection $queues, int $activeCount): void
+    {
+        $queues->each(function (Queue $queue, int $index) use ($activeCount): void {
+            $queue->update(['is_active' => $index < $activeCount]);
+        });
+    }
+
+    /** @return array{0: TestResponse, 1: int} */
+    private function measuredQueueIndex(User $user, HealthUnit $unit): array
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $response = $this->actingAs($user)
+                ->withSession(['active_health_unit_id' => $unit->getKey()])
+                ->get(route('queues.index'));
+            $queryCount = count(DB::getQueryLog());
+        } finally {
+            DB::disableQueryLog();
+        }
+
+        return [$response, $queryCount];
     }
 
     /** @return array{0: mixed, 1: mixed, 2: QueueEntry, 3: mixed, 4: Patient} */

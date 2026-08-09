@@ -9,6 +9,7 @@ use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -62,6 +63,33 @@ final class QueueVisibilityService
             'professionals',
             fn (Builder $professional): Builder => $professional->whereKey($profile->getKey()),
         )->get();
+    }
+
+    public function servicePointsEagerLoadConstraint(User $user): Closure
+    {
+        $hasBroadAccess = $this->hasBroadAccess($user);
+        $profile = $hasBroadAccess ? null : $this->activeProfile($user);
+
+        return static function ($query) use ($hasBroadAccess, $profile): void {
+            $query->where('service_points.is_active', true)
+                ->with('room')
+                ->orderBy('service_points.name');
+
+            if ($hasBroadAccess) {
+                return;
+            }
+
+            if ($profile === null) {
+                $query->whereRaw('1 = 0');
+
+                return;
+            }
+
+            $query->whereHas(
+                'professionals',
+                fn (Builder $professional): Builder => $professional->whereKey($profile->getKey()),
+            );
+        };
     }
 
     /** @param Builder<QueueEntry> $query
