@@ -7,12 +7,12 @@ namespace Tests\Feature;
 use App\Modules\Medical\Infrastructure\Eloquent\SusProcedure;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\SusProcedureCatalogSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class SusProcedureCatalogTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_catalog_imports_the_versioned_snapshot_idempotently_without_exact_count_assertion(): void
     {

@@ -33,14 +33,14 @@ use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\MedicalCatalogSeeder;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class MedicalConsultationFlowTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_platform_administrator_starts_medical_care_without_professional_registration(): void
     {

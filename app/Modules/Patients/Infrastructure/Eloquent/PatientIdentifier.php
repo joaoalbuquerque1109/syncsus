@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Patients\Infrastructure\Eloquent;
 
+use App\Modules\Patients\Application\Services\PatientIdentifierProtector;
 use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
 use App\Support\Models\CoreModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 final class PatientIdentifier extends CoreModel
 {
     protected $guarded = [];
+
+    protected $hidden = ['normalized_value', 'display_value', 'encrypted_value', 'fingerprint'];
+
+    protected static function booted(): void
+    {
+        self::saving(function (PatientIdentifier $identifier): void {
+            $value = (string) $identifier->normalized_value;
+            if ($value === '') {
+                return;
+            }
+
+            $protected = app(PatientIdentifierProtector::class)->protect(
+                $identifier->typeValue(),
+                $value,
+            );
+            $identifier->forceFill($protected);
+        });
+    }
 
     /** @return BelongsTo<Patient, $this> */
     public function patient(): BelongsTo
@@ -20,7 +39,10 @@ final class PatientIdentifier extends CoreModel
 
     public function maskedValue(): string
     {
-        $value = (string) $this->getAttribute('normalized_value');
+        $encrypted = $this->getAttribute('encrypted_value');
+        $value = is_string($encrypted) && $encrypted !== ''
+            ? app(PatientIdentifierProtector::class)->reveal($encrypted)
+            : (string) $this->getAttribute('normalized_value');
         $visible = min(4, mb_strlen($value));
 
         return str_repeat('*', max(0, mb_strlen($value) - $visible)).mb_substr($value, -$visible);

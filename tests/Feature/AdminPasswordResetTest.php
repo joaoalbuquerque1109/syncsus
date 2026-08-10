@@ -7,14 +7,14 @@ namespace Tests\Feature;
 use App\Modules\Identity\Application\Actions\ResetUserPasswordAction;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class AdminPasswordResetTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_administrator_can_reset_password_without_exposing_it_in_audit(): void
     {

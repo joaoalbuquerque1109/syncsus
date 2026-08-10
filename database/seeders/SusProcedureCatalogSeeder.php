@@ -69,9 +69,9 @@ final class SusProcedureCatalogSeeder extends Seeder
         }
 
         DB::transaction(function () use ($catalog, $now): void {
-            DB::table('sus_procedures')->update(['is_active' => false, 'updated_at' => $now]);
+            DB::connection('core')->table('sus_procedures')->update(['is_active' => false, 'updated_at' => $now]);
             foreach (array_chunk(array_values($catalog), 500) as $chunk) {
-                DB::table('sus_procedures')->upsert(
+                DB::connection('core')->table('sus_procedures')->upsert(
                     $chunk,
                     ['code'],
                     [

@@ -10,12 +10,12 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroup;
 use App\Modules\Medical\Infrastructure\Eloquent\SusProcedure;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class ExamGroupManagementTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_manager_can_search_canonical_exams_and_create_an_audited_group(): void
     {

@@ -36,18 +36,18 @@ use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Modules\Reports\Application\Queries\OperationalDashboardQuery;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class DocumentsAndReportsTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_medical_certificate_uses_an_active_catalog_cid_and_ignores_free_text(): void
     {

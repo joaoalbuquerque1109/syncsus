@@ -7,12 +7,12 @@ namespace Tests\Feature;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class TenantProvisioningTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     protected function setUp(): void
     {

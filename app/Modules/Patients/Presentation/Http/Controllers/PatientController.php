@@ -10,6 +10,7 @@ use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Application\Actions\LogPatientAccessAction;
 use App\Modules\Patients\Application\Actions\SavePatientAction;
+use App\Modules\Patients\Application\Services\PatientIdentifierProtector;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientIdentifier;
 use App\Modules\Patients\Presentation\Http\Requests\SavePatientRequest;
@@ -18,11 +19,12 @@ use App\Support\Text\NormalizesBrazilianData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 final class PatientController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, PatientIdentifierProtector $protector): View
     {
         $organizationId = $this->organizationId($request);
         $query = Patient::query()->where('organization_id', $organizationId)->with('identifiers')->latest();
@@ -30,11 +32,16 @@ final class PatientController extends Controller
         if ($term !== '') {
             $normalized = NormalizesBrazilianData::name($term);
             $digits = NormalizesBrazilianData::digits($term);
-            $query->where(function ($query) use ($normalized, $digits): void {
+            $fingerprints = $digits === null ? [] : $protector->fingerprintsForValue($digits);
+            $query->where(function ($query) use ($normalized, $digits, $fingerprints): void {
                 $query->where('normalized_name', 'like', "%{$normalized}%")
                     ->orWhere('medical_record_number', 'like', "%{$normalized}%");
                 if ($digits !== null) {
-                    $query->orWhereHas('identifiers', fn ($query) => $query->where('normalized_value', 'like', "%{$digits}%"));
+                    $query->orWhereHas('identifiers', fn ($query) => $query
+                        ->whereIn('fingerprint', $fingerprints)
+                        ->orWhere(fn ($query) => $query
+                            ->whereNull('fingerprint')
+                            ->where('normalized_value', $digits)));
                 }
             });
         }
@@ -42,8 +49,11 @@ final class PatientController extends Controller
         return view('patients.index', ['patients' => $query->paginate(15)->withQueryString(), 'term' => $term]);
     }
 
-    public function search(Request $request, RecordAuditEventAction $audit): JsonResponse
-    {
+    public function search(
+        Request $request,
+        RecordAuditEventAction $audit,
+        PatientIdentifierProtector $protector,
+    ): JsonResponse {
         $user = $request->user();
         $unit = $request->attributes->get('active_health_unit');
         abort_unless($user instanceof User && $unit instanceof HealthUnit, 403);
@@ -52,16 +62,21 @@ final class PatientController extends Controller
         $term = trim($data['q']);
         $normalized = NormalizesBrazilianData::name($term);
         $digits = NormalizesBrazilianData::digits($term);
+        $fingerprints = $digits === null ? [] : $protector->fingerprintsForValue($digits);
 
         $patients = Patient::query()
             ->where('organization_id', $organizationId)
             ->with('identifiers')
             ->where('status', 'active')
-            ->where(function ($query) use ($normalized, $digits): void {
+            ->where(function ($query) use ($normalized, $digits, $fingerprints): void {
                 $query->where('normalized_name', 'like', "%{$normalized}%")
                     ->orWhere('medical_record_number', 'like', "%{$normalized}%");
                 if ($digits !== null) {
-                    $query->orWhereHas('identifiers', fn ($query) => $query->where('normalized_value', 'like', "%{$digits}%"));
+                    $query->orWhereHas('identifiers', fn ($query) => $query
+                        ->whereIn('fingerprint', $fingerprints)
+                        ->orWhere(fn ($query) => $query
+                            ->whereNull('fingerprint')
+                            ->where('normalized_value', $digits)));
                 }
             })
             ->limit(10)
@@ -98,7 +113,7 @@ final class PatientController extends Controller
 
     public function create(): View
     {
-        return view('patients.create');
+        return view('patients.create', ['idempotencyKey' => (string) Str::ulid()]);
     }
 
     public function store(

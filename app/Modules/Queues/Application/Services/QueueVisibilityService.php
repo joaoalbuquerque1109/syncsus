@@ -6,6 +6,7 @@ namespace App\Modules\Queues\Application\Services;
 
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
@@ -17,6 +18,8 @@ final class QueueVisibilityService
 {
     /** @var array<int, array{queues: list<int>, service_points: list<int>}> */
     private array $assignmentCache = [];
+
+    public function __construct(private readonly ProfessionalOperationalAssignments $operationalAssignments) {}
 
     public function hasBroadAccess(User $user): bool
     {
@@ -166,21 +169,9 @@ final class QueueVisibilityService
             return $this->assignmentCache[$profileId];
         }
 
-        $connection = $profile->getConnection();
-        $queueAssignments = $connection->table('health_professional_queue')
-            ->selectRaw("'queue' as assignment_type, queue_id as assigned_id")
-            ->where('health_professional_id', $profileId);
-        $rows = $connection->table('health_professional_service_point')
-            ->selectRaw("'service_point' as assignment_type, service_point_id as assigned_id")
-            ->where('health_professional_id', $profileId)
-            ->unionAll($queueAssignments)
-            ->get();
-
         return $this->assignmentCache[$profileId] = [
-            'queues' => $rows->where('assignment_type', 'queue')
-                ->pluck('assigned_id')->map(static fn (mixed $id): int => (int) $id)->values()->all(),
-            'service_points' => $rows->where('assignment_type', 'service_point')
-                ->pluck('assigned_id')->map(static fn (mixed $id): int => (int) $id)->values()->all(),
+            'queues' => $this->operationalAssignments->queueIds($profile),
+            'service_points' => $this->operationalAssignments->servicePointIds($profile),
         ];
     }
 }

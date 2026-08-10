@@ -7,10 +7,14 @@ namespace App\Modules\Professionals\Application\Services;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 final class ProfessionalOperationalAssignments
 {
+    public function __construct(private readonly TenantContext $tenantContext) {}
+
     /** @param list<int> $queueIds
      * @param  list<int>  $servicePointIds
      */
@@ -64,7 +68,7 @@ final class ProfessionalOperationalAssignments
         }
 
         $professionalIds = $professionals->modelKeys();
-        $connection = $professionals->firstOrFail()->getConnection();
+        $connection = DB::connection($this->tenantContext->connectionName());
         $queueLinks = $connection->table('health_professional_queue')
             ->whereIn('health_professional_id', $professionalIds)->get();
         $pointLinks = $connection->table('health_professional_service_point')
@@ -103,7 +107,8 @@ final class ProfessionalOperationalAssignments
         bool $withoutDetaching,
     ): void {
         $ids = array_values(array_unique(array_map(static fn (int $id): int => $id, $ids)));
-        $query = $professional->getConnection()->table($table)
+        $connection = DB::connection($this->tenantContext->connectionName());
+        $query = $connection->table($table)
             ->where('health_professional_id', $professional->getKey());
         if (! $withoutDetaching) {
             $ids === [] ? $query->delete() : $query->whereNotIn($relatedColumn, $ids)->delete();
@@ -111,7 +116,7 @@ final class ProfessionalOperationalAssignments
 
         $now = now();
         foreach ($ids as $id) {
-            $professional->getConnection()->table($table)->insertOrIgnore([
+            $connection->table($table)->insertOrIgnore([
                 'health_professional_id' => $professional->getKey(),
                 $relatedColumn => $id,
                 'created_at' => $now,
@@ -123,7 +128,7 @@ final class ProfessionalOperationalAssignments
     /** @return list<int> */
     private function ids(HealthProfessional $professional, string $table, string $column): array
     {
-        return $professional->getConnection()->table($table)
+        return DB::connection($this->tenantContext->connectionName())->table($table)
             ->where('health_professional_id', $professional->getKey())
             ->pluck($column)
             ->map(static fn (mixed $id): int => (int) $id)

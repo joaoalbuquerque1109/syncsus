@@ -10,12 +10,13 @@ use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class ExpandedRegistrationsTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_administrator_can_register_a_professional_with_council_specialty_and_unit(): void
     {
@@ -109,6 +110,7 @@ final class ExpandedRegistrationsTest extends TestCase
         $session = ['active_health_unit_id' => $unit->getKey()];
 
         $this->actingAs($receptionist)->withSession($session)->post(route('patients.store'), [
+            'idempotency_key' => (string) Str::ulid(),
             'full_name' => 'Maria da Silva',
             'birth_date' => '1987-06-14',
             'sex' => 'female',

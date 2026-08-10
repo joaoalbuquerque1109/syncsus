@@ -20,12 +20,12 @@ use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\MedicalCatalogSeeder;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class ClinicalCorrectionTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_author_can_void_clinical_records_without_deleting_original_content(): void
     {

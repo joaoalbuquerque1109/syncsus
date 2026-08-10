@@ -22,7 +22,7 @@ final class StoreDiagnosisRequest extends FormRequest
             'diagnosis_code_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('diagnosis_codes', 'id')->where(fn ($query) => $query->where('is_active', true)),
+                Rule::exists('core.diagnosis_codes', 'id')->where(fn ($query) => $query->where('is_active', true)),
             ],
             'description' => ['nullable', 'required_without:diagnosis_code_id', 'string', 'min:3', 'max:255'],
             'diagnosis_type' => ['required', Rule::in(['hypothesis', 'confirmed', 'ruled_out'])],

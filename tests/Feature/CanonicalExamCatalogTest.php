@@ -12,13 +12,13 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\HealthUnitExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\CanonicalExamCatalogBackfillSeeder;
 use Database\Seeders\SynclabExamCatalogSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use LogicException;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class CanonicalExamCatalogTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_mappings_and_availability_are_scoped_by_unit_and_organization(): void
     {

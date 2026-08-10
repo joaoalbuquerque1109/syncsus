@@ -10,6 +10,7 @@ use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\CoreModel;
 use App\Support\Models\HasPublicId;
+use App\Support\Tenancy\TenantContext;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -79,7 +80,10 @@ final class Patient extends CoreModel
     /** @return HasMany<Encounter, $this> */
     public function encounters(): HasMany
     {
-        return $this->hasMany(Encounter::class);
+        return $this->hasMany(Encounter::class)->where(
+            'health_unit_public_id',
+            app(TenantContext::class)->healthUnit()->public_id,
+        );
     }
 
     public function displayName(): string

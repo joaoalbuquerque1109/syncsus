@@ -10,12 +10,12 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
 use App\Modules\Laboratory\Infrastructure\Eloquent\HealthUnitExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class LaboratoryExamSearchTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_doctor_searches_only_the_active_units_laboratory_catalog(): void
     {

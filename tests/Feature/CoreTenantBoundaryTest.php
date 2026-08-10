@@ -10,12 +10,12 @@ use App\Support\Tenancy\PublicLookupIndex;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Tenancy\TenantContextNotResolvedException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class CoreTenantBoundaryTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_tenant_models_fail_closed_without_context_but_allow_explicit_resolved_connection(): void
     {
@@ -47,7 +47,7 @@ final class CoreTenantBoundaryTest extends TestCase
         $this->assertDatabaseHas('public_lookup_index', [
             'public_id_or_code' => 'BOUNDARY-PANEL',
             'entity_type' => 'panel',
-        ]);
+        ], 'core');
 
         $panel->touch();
         $this->assertSame(1, PublicLookupIndex::query()->where('public_id_or_code', 'BOUNDARY-PANEL')->count());

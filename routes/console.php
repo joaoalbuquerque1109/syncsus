@@ -15,10 +15,74 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamCatalogImportCandidate;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroupImportConflict;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Patients\Application\Services\BackfillPatientIdentifierProtection;
+use App\Modules\Patients\Application\Services\MigrateLegacyUnitPatientRecords;
+use App\Modules\Patients\Application\Services\ResolveUnitPatientMigrationConflict;
+use App\Modules\Patients\Infrastructure\Eloquent\PatientUnitMigrationConflict;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantContext;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('patients:migrate-unit-records {--connection=} {--apply}', function (
+    MigrateLegacyUnitPatientRecords $migration,
+): void {
+    $connection = trim((string) $this->option('connection')) ?: (string) config('database.default');
+    $result = $migration->execute($connection, (bool) $this->option('apply'));
+    $mode = $this->option('apply') ? 'aplicado' : 'simulado';
+    $this->info(
+        "Modo {$mode}: {$result['unit_patients']} prontuário(s) local(is), "
+        ."{$result['participations']} participação(ões), {$result['migrated_records']} registro(s) "
+        ."inequívoco(s) e {$result['conflicts']} conflito(s).",
+    );
+})->purpose('Migra registros históricos para UnitPatient; sem --apply apenas simula.');
+
+Artisan::command('patients:protect-identifiers {--apply}', function (
+    BackfillPatientIdentifierProtection $backfill,
+): void {
+    $count = $backfill->execute((bool) $this->option('apply'));
+    $mode = $this->option('apply') ? 'protegido(s)' : 'pendente(s)';
+    $this->info("{$count} identificador(es) {$mode}.");
+})->purpose('Preenche criptografia autenticada e fingerprint HMAC; sem --apply apenas conta.');
+
+Artisan::command('patients:list-unit-conflicts {--status=pending}', function (): void {
+    $status = trim((string) $this->option('status'));
+    $conflicts = PatientUnitMigrationConflict::query()
+        ->when($status !== '', fn ($query) => $query->where('status', $status))
+        ->orderBy('created_at')
+        ->get()
+        ->map(fn (PatientUnitMigrationConflict $conflict): array => [
+            $conflict->public_id,
+            $conflict->tenant_connection,
+            $conflict->source_table.':'.$conflict->source_id,
+            $conflict->patient_public_id ?? '-',
+            $conflict->reason,
+            implode(', ', $conflict->candidate_health_unit_public_ids ?? []),
+            $conflict->status,
+        ])->all();
+    $this->table(
+        ['Conflito', 'Conexão', 'Origem', 'Paciente', 'Motivo', 'Unidades candidatas', 'Estado'],
+        $conflicts,
+    );
+})->purpose('Lista conflitos auditáveis da migração de prontuário por unidade.');
+
+Artisan::command('patients:resolve-unit-conflict {conflict} {unit} {actor}', function (
+    ResolveUnitPatientMigrationConflict $resolver,
+): void {
+    $conflict = PatientUnitMigrationConflict::query()
+        ->where('public_id', (string) $this->argument('conflict'))
+        ->firstOrFail();
+    $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+    $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+    $resolved = $resolver->execute(
+        $conflict,
+        $unit,
+        $actor,
+        Request::create('/artisan/patients/resolve-unit-conflict', 'POST'),
+    );
+    $this->info("Conflito {$resolved->public_id} resolvido para a unidade {$unit->public_id}.");
+})->purpose('Resolve manualmente um registro histórico ambíguo sem excluir o legado.');
 
 Artisan::command('synclab:dispatch-pending', function (
     DispatchPendingLaboratoryTransmissionsAction $action,

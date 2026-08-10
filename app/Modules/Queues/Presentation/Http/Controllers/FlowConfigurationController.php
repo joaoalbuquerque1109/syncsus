@@ -114,7 +114,7 @@ final class FlowConfigurationController extends Controller
             'department_id' => ['required', Rule::in($departmentIds->all())],
             'specialty_id' => [
                 'nullable',
-                Rule::exists('specialties', 'id')
+                Rule::exists('core.specialties', 'id')
                     ->where('organization_id', $unit->organization_id)
                     ->where('is_active', true),
             ],

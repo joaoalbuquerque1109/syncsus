@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace App\Modules\Patients\Infrastructure\Eloquent;
 
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Patients\Infrastructure\Eloquent\Concerns\BelongsToUnitPatient;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class PatientMedication extends Model
+final class PatientMedication extends TenantModel
 {
+    use BelongsToUnitPatient;
     use HasPublicId;
 
     protected $guarded = [];

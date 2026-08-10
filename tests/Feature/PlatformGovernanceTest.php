@@ -9,13 +9,14 @@ use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use LogicException;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class PlatformGovernanceTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_platform_administrator_is_an_unrestricted_superuser_in_any_active_unit(): void
     {
@@ -43,6 +44,7 @@ final class PlatformGovernanceTest extends TestCase
         $this->actingAs($administrator)
             ->withSession(['active_health_unit_id' => $firstUnit->getKey()])
             ->post(route('patients.store'), [
+                'idempotency_key' => (string) Str::ulid(),
                 'full_name' => 'Paciente do Administrador',
                 'birth_date' => '1990-05-10',
                 'sex' => 'female',

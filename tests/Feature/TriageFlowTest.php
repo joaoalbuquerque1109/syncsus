@@ -26,12 +26,12 @@ use App\Modules\Triage\Infrastructure\Eloquent\TriageProtocol;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\TriageCatalogSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class TriageFlowTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_only_one_professional_can_start_the_called_triage(): void
     {

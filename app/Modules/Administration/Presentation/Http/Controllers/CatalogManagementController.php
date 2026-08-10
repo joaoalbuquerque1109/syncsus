@@ -139,7 +139,7 @@ final class CatalogManagementController extends Controller
             'specialties' => $request->validate([
                 'code' => [
                     'required', 'string', 'max:32',
-                    Rule::unique('specialties')->where('organization_id', $unit->organization_id)
+                    Rule::unique('core.specialties')->where('organization_id', $unit->organization_id)
                         ->ignore($model->getKey()),
                 ],
                 'name' => ['required', 'string', 'max:255'],

@@ -7,12 +7,12 @@ namespace Tests\Feature;
 use App\Modules\Professionals\Application\Queries\AvailableDoctorQuery;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class AvailableDoctorTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_active_registered_doctor_is_available_without_check_in(): void
     {

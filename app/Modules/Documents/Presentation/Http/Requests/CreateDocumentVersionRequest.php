@@ -29,7 +29,7 @@ final class CreateDocumentVersionRequest extends FormRequest
                 'nullable',
                 Rule::requiredIf(fn (): bool => $this->boolean('include_cid')),
                 'integer',
-                Rule::exists('diagnosis_codes', 'id')->where(fn ($query) => $query->where('is_active', true)),
+                Rule::exists('core.diagnosis_codes', 'id')->where(fn ($query) => $query->where('is_active', true)),
             ],
             'cid_authorization' => [
                 'nullable',

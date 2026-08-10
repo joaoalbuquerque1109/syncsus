@@ -7,12 +7,12 @@ namespace Tests\Feature;
 use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class SynclabIntegrationAdministrationTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_manager_configures_only_active_units_synclab_without_exposing_credentials(): void
     {

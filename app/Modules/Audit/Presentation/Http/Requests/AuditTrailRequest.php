@@ -22,7 +22,7 @@ final class AuditTrailRequest extends FormRequest
             'date_to' => ['required', 'date', 'after_or_equal:date_from'],
             'action' => ['nullable', 'string', 'max:100'],
             'access_type' => ['nullable', 'string', 'max:64'],
-            'user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'user_id' => ['nullable', 'integer', 'exists:core.users,id'],
             'patient' => ['nullable', 'string', 'max:64'],
             'encounter' => ['nullable', 'string', 'max:64'],
         ];

@@ -64,12 +64,12 @@ final class SaveHealthProfessionalRequest extends FormRequest
         return [
             'user_id' => [
                 'nullable', 'integer',
-                Rule::exists('users', 'id')->where('organization_id', $organizationId),
-                Rule::unique('health_professionals', 'user_id')->ignore($professionalId),
+                Rule::exists('core.users', 'id')->where('organization_id', $organizationId),
+                Rule::unique('core.health_professionals', 'user_id')->ignore($professionalId),
             ],
             'institutional_code' => [
                 'required', 'string', 'max:32',
-                Rule::unique('health_professionals', 'institutional_code')
+                Rule::unique('core.health_professionals', 'institutional_code')
                     ->where('organization_id', $organizationId)
                     ->ignore($professionalId),
             ],
@@ -79,7 +79,7 @@ final class SaveHealthProfessionalRequest extends FormRequest
             'social_name' => ['nullable', 'string', 'max:255'],
             'cpf' => [
                 'nullable', new ValidCpf,
-                Rule::unique('health_professionals', 'cpf')
+                Rule::unique('core.health_professionals', 'cpf')
                     ->where('organization_id', $organizationId)
                     ->ignore($professionalId),
             ],
@@ -107,16 +107,16 @@ final class SaveHealthProfessionalRequest extends FormRequest
             'health_unit_ids' => ['required', 'array', 'min:1'],
             'health_unit_ids.*' => [
                 'integer', 'distinct',
-                Rule::exists('health_units', 'id')->where('organization_id', $organizationId),
+                Rule::exists('core.health_units', 'id')->where('organization_id', $organizationId),
             ],
             'specialty_ids' => ['nullable', 'array'],
             'specialty_ids.*' => [
                 'integer', 'distinct',
-                Rule::exists('specialties', 'id')->where('organization_id', $organizationId),
+                Rule::exists('core.specialties', 'id')->where('organization_id', $organizationId),
             ],
             'primary_specialty_id' => [
                 'nullable', 'integer',
-                Rule::exists('specialties', 'id')->where('organization_id', $organizationId),
+                Rule::exists('core.specialties', 'id')->where('organization_id', $organizationId),
             ],
             'specialty_rqe' => ['nullable', 'array'],
             'specialty_rqe.*' => ['nullable', 'string', 'max:32'],

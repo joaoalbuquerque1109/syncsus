@@ -4,15 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Patients\Application\Actions\SavePatientAction;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class PatientManagementTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_receptionist_can_create_search_update_and_access_patient_safely(): void
     {
@@ -25,7 +28,8 @@ final class PatientManagementTest extends TestCase
             ->withSession(['active_health_unit_id' => $unit->getKey()])
             ->get(route('patients.create'))
             ->assertOk()
-            ->assertSee('Novo cadastro');
+            ->assertSee('Novo cadastro')
+            ->assertSee('name="idempotency_key"', false);
 
         $response = $this->actingAs($user)
             ->withSession(['active_health_unit_id' => $unit->getKey()])
@@ -48,7 +52,7 @@ final class PatientManagementTest extends TestCase
 
         $this->actingAs($user)
             ->withSession(['active_health_unit_id' => $unit->getKey()])
-            ->getJson(route('patients.search', ['q' => '529.982']))
+            ->getJson(route('patients.search', ['q' => '529.982.247-25']))
             ->assertOk()
             ->assertJsonPath('data.0.public_id', $patient->public_id)
             ->assertJsonPath('data.0.identifiers.0.value', '*******4725')
@@ -66,10 +70,12 @@ final class PatientManagementTest extends TestCase
             'access_type' => 'record_view',
         ]);
 
+        $updatePayload = $this->patientPayload();
+        unset($updatePayload['idempotency_key']);
         $this->actingAs($user)
             ->withSession(['active_health_unit_id' => $unit->getKey()])
             ->put(route('patients.update', $patient), [
-                ...$this->patientPayload(),
+                ...$updatePayload,
                 'social_name' => 'Maria Vitória',
             ])
             ->assertRedirect(route('patients.show', $patient));
@@ -78,6 +84,51 @@ final class PatientManagementTest extends TestCase
             'id' => $patient->getKey(),
             'social_name' => 'Maria Vitória',
         ]);
+    }
+
+    public function test_patient_creation_reuses_the_same_patient_for_an_idempotent_retry(): void
+    {
+        $unit = $this->createHealthUnit('PATIENT-IDEMPOTENT');
+        $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $payload = $this->patientPayload();
+        $action = app(SavePatientAction::class);
+
+        $first = $action->execute($payload, $user, (int) $unit->getKey());
+        $second = $action->execute($payload, $user, (int) $unit->getKey());
+
+        $this->assertSame($first->public_id, $second->public_id);
+        $this->assertDatabaseCount('patients', 1);
+        $this->assertDatabaseHas('patient_operation_keys', [
+            'user_id' => $user->getKey(),
+            'route_name' => 'patients.store',
+            'idempotency_key' => $payload['idempotency_key'],
+            'patient_public_id' => $first->public_id,
+            'status' => 'completed',
+        ]);
+    }
+
+    public function test_patient_creation_rejects_a_reused_key_with_different_payload(): void
+    {
+        $unit = $this->createHealthUnit('PATIENT-DIVERGENT');
+        $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $payload = $this->patientPayload();
+        $action = app(SavePatientAction::class);
+        $action->execute($payload, $user, (int) $unit->getKey());
+
+        try {
+            $action->execute([
+                ...$payload,
+                'full_name' => 'Outra Pessoa',
+            ], $user, (int) $unit->getKey());
+            $this->fail('O replay divergente deveria ter sido rejeitado.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ['Este formulário já foi usado com dados diferentes. Recarregue a página.'],
+                $exception->errors()['idempotency_key'] ?? [],
+            );
+        }
+
+        $this->assertDatabaseCount('patients', 1);
     }
 
     public function test_duplicate_cpf_is_rejected_and_provisional_patient_can_be_created(): void
@@ -127,7 +178,7 @@ final class PatientManagementTest extends TestCase
             'created_by' => $user->getKey(),
             'updated_by' => $user->getKey(),
         ]);
-        DB::table('number_sequences')->updateOrInsert(
+        DB::connection('core')->table('core_number_sequences')->updateOrInsert(
             ['scope' => 'patient_mrn', 'date_key' => ''],
             ['current_value' => 2, 'created_at' => now(), 'updated_at' => now()],
         );
@@ -146,7 +197,7 @@ final class PatientManagementTest extends TestCase
             'medical_record_number' => 'P00000004',
             'is_provisional' => true,
         ]);
-        $this->assertDatabaseHas('number_sequences', [
+        $this->assertDatabaseHas('core_number_sequences', [
             'scope' => 'patient_mrn',
             'date_key' => '',
             'current_value' => 4,
@@ -157,6 +208,7 @@ final class PatientManagementTest extends TestCase
     private function patientPayload(): array
     {
         return [
+            'idempotency_key' => (string) Str::ulid(),
             'full_name' => 'Maria da Silva',
             'birth_date' => '1987-06-14',
             'sex' => 'female',

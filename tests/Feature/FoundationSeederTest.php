@@ -6,13 +6,13 @@ namespace Tests\Feature;
 
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use Database\Seeders\DatabaseSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class FoundationSeederTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_foundation_seed_is_idempotent_and_creates_configured_administrator(): void
     {

@@ -48,7 +48,7 @@ final class MedicalCatalogSeeder extends Seeder
         }
 
         foreach (array_chunk($catalog, 500) as $chunk) {
-            DB::table('diagnosis_codes')->upsert(
+            DB::connection('core')->table('diagnosis_codes')->upsert(
                 $chunk,
                 ['code'],
                 ['description', 'is_active', 'updated_at'],

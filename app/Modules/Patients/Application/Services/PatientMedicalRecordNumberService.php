@@ -5,28 +5,29 @@ declare(strict_types=1);
 namespace App\Modules\Patients\Application\Services;
 
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
-use App\Modules\Reception\Application\Services\NumberSequenceService;
+use App\Modules\Patients\Infrastructure\Eloquent\PatientNumberSequence;
 
-final readonly class PatientMedicalRecordNumberService
+final class PatientMedicalRecordNumberService
 {
     private const SCOPE = 'patient_mrn';
-
-    public function __construct(private NumberSequenceService $sequences) {}
 
     public function next(): string
     {
         while (true) {
-            $number = $this->sequences->next(self::SCOPE);
+            $sequence = PatientNumberSequence::query()->firstOrCreate([
+                'scope' => self::SCOPE,
+                'date_key' => '',
+            ]);
+            $sequence = PatientNumberSequence::query()->lockForUpdate()->findOrFail($sequence->getKey());
+            $sequence->increment('current_value');
+            $number = (int) $sequence->current_value;
             $medicalRecordNumber = sprintf('P%08d', $number);
 
             if (! Patient::query()->where('medical_record_number', $medicalRecordNumber)->exists()) {
                 return $medicalRecordNumber;
             }
 
-            $this->sequences->advanceToAtLeast(
-                self::SCOPE,
-                max($number, $this->highestAssignedNumber()),
-            );
+            $sequence->update(['current_value' => max($number, $this->highestAssignedNumber())]);
         }
     }
 

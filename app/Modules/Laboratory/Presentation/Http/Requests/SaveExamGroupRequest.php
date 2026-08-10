@@ -28,7 +28,7 @@ final class SaveExamGroupRequest extends FormRequest
                 'required',
                 'integer',
                 'distinct',
-                Rule::exists('exams', 'id')->where('organization_id', $organizationId),
+                Rule::exists('core.exams', 'id')->where('organization_id', $organizationId),
             ],
             'is_active' => ['required', 'boolean'],
         ];

@@ -24,8 +24,8 @@ final class ProvisionTenantRequest extends FormRequest
         return [
             'cnes_code' => [
                 'required', 'digits:7',
-                Rule::unique('organizations', 'cnes_code'),
-                Rule::unique('health_units', 'cnes_code'),
+                Rule::unique('core.organizations', 'cnes_code'),
+                Rule::unique('core.health_units', 'cnes_code'),
             ],
             'legal_name' => ['required', 'string', 'min:3', 'max:255'],
             'trade_name' => ['required', 'string', 'min:3', 'max:255'],

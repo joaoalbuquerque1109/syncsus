@@ -27,8 +27,13 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
+        <env name="DB_CONNECTION" value="tenant_test"/>
         <env name="DB_DATABASE" value=":memory:"/>
+        <env name="CORE_DB_CONNECTION" value="sqlite"/>
+        <env name="CORE_DB_DATABASE" value=":memory:"/>
+        <env name="CORE_DB_FOREIGN_KEYS" value="false"/>
+        <env name="TENANT_TEST_DB_DATABASE" value=":memory:"/>
+        <env name="PATIENT_IDENTIFIER_HMAC_KEY" value="phase-2-test-key-not-for-production"/>
         <env name="SYNC_SUS_SEED_DEMO" value="false" force="true"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>

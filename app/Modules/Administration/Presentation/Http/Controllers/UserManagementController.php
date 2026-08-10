@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Application\Actions\ResetUserPasswordAction;
+use App\Modules\Identity\Infrastructure\Eloquent\Role;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,7 +17,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-use Spatie\Permission\Models\Role;
 
 final class UserManagementController extends Controller
 {
@@ -140,18 +140,18 @@ final class UserManagementController extends Controller
             'name' => ['required', 'string', 'min:3', 'max:255'],
             'email' => [
                 'required', 'email', 'max:255',
-                Rule::unique('users')->where('organization_id', $unit->organization_id)
+                Rule::unique('core.users')->where('organization_id', $unit->organization_id)
                     ->ignore($user?->getKey()),
             ],
             'password' => [$user ? 'nullable' : 'required', 'string', 'min:12', 'max:255'],
             'roles' => ['required', 'array', 'min:1'],
             'roles.*' => [
-                'required', 'string', Rule::notIn(['administrator']), Rule::exists('roles', 'name'),
+                'required', 'string', Rule::notIn(['administrator']), Rule::exists('core.roles', 'name'),
             ],
             'health_unit_ids' => ['required', 'array', 'min:1'],
             'health_unit_ids.*' => [
                 'integer',
-                Rule::exists('health_units', 'id')
+                Rule::exists('core.health_units', 'id')
                     ->where('organization_id', $unit->organization_id)
                     ->where('is_active', true),
             ],

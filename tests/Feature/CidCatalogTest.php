@@ -7,12 +7,12 @@ namespace Tests\Feature;
 use App\Modules\Medical\Infrastructure\Eloquent\DiagnosisCode;
 use Database\Seeders\MedicalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class CidCatalogTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_catalog_imports_every_category_from_the_provided_spreadsheet(): void
     {

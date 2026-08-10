@@ -6,6 +6,7 @@
     </div>
     <form method="POST" action="{{ route('patients.store') }}">
         @csrf
+        <input type="hidden" name="idempotency_key" value="{{ old('idempotency_key', $idempotencyKey) }}">
         @if(request()->boolean('return_to_reception'))<input type="hidden" name="return_to_reception" value="1">@endif
         @include('patients._form')
     </form>

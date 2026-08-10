@@ -27,8 +27,8 @@ final class UpdateSynclabIntegrationRequest extends FormRequest
             'cnes_code' => [
                 'required',
                 'digits:7',
-                Rule::unique('organizations', 'cnes_code')->ignore($organizationId),
-                Rule::unique('health_units', 'cnes_code')->ignore($unitId),
+                Rule::unique('core.organizations', 'cnes_code')->ignore($organizationId),
+                Rule::unique('core.health_units', 'cnes_code')->ignore($unitId),
             ],
             'username' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'max:500'],

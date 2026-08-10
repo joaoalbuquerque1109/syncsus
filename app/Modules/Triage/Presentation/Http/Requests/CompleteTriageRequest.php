@@ -21,7 +21,7 @@ final class CompleteTriageRequest extends FormRequest
             'triage_protocol_id' => ['required', 'integer', 'exists:triage_protocols,id'],
             'triage_flowchart_id' => ['required', 'integer', 'exists:triage_flowcharts,id'],
             'triage_discriminator_id' => ['required', 'integer', 'exists:triage_discriminators,id'],
-            'risk_level_id' => ['required', 'integer', 'exists:risk_levels,id'],
+            'risk_level_id' => ['required', 'integer', 'exists:core.risk_levels,id'],
             'risk_justification' => ['required', 'string', 'min:10', 'max:4000'],
             'destination_queue_id' => ['required', 'integer', 'exists:queues,id'],
             'routing_notes' => ['nullable', 'string', 'max:4000'],

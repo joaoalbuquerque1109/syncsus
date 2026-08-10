@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Patients\Application\Services\PatientIdentifierProtector;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Application\Services\QueueVisibilityService;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
@@ -50,8 +51,12 @@ final class QueueController extends Controller
         ]);
     }
 
-    public function entries(Request $request, Queue $queue, QueueVisibilityService $visibility): JsonResponse
-    {
+    public function entries(
+        Request $request,
+        Queue $queue,
+        QueueVisibilityService $visibility,
+        PatientIdentifierProtector $protector,
+    ): JsonResponse {
         $unit = $request->attributes->get('active_health_unit');
         $user = $request->user();
         abort_unless($unit instanceof HealthUnit && $user instanceof User && $queue->health_unit_id === $unit->getKey(), 404);
@@ -84,14 +89,19 @@ final class QueueController extends Controller
         if ($term !== '') {
             $normalized = NormalizesBrazilianData::name($term);
             $digits = NormalizesBrazilianData::digits($term);
+            $fingerprints = $digits === null ? [] : $protector->fingerprintsForValue($digits);
             $patientIds = Patient::query()
-                ->where(function ($patients) use ($normalized, $digits): void {
+                ->where(function ($patients) use ($normalized, $digits, $fingerprints): void {
                     $patients->where('normalized_name', 'like', "%{$normalized}%")
                         ->orWhere('medical_record_number', 'like', "%{$normalized}%");
                     if ($digits !== null) {
                         $patients->orWhereHas(
                             'identifiers',
-                            fn ($identifiers) => $identifiers->where('normalized_value', 'like', "%{$digits}%"),
+                            fn ($identifiers) => $identifiers
+                                ->whereIn('fingerprint', $fingerprints)
+                                ->orWhere(fn ($query) => $query
+                                    ->whereNull('fingerprint')
+                                    ->where('normalized_value', $digits)),
                         );
                     }
                 })

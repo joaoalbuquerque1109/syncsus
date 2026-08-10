@@ -20,7 +20,7 @@ final class StoreReferralRequest extends FormRequest
         return [
             'version' => ['required', 'integer', 'min:1'],
             'referral_type' => ['required', Rule::in(['internal', 'external'])],
-            'specialty_id' => ['nullable', 'integer', 'exists:specialties,id'],
+            'specialty_id' => ['nullable', 'integer', 'exists:core.specialties,id'],
             'destination' => ['required', 'string', 'max:255'],
             'recipient_professional' => ['nullable', 'string', 'max:255'],
             'reason' => ['required', 'string', 'min:5', 'max:4000'],
