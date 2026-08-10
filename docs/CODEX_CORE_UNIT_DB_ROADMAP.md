@@ -1,8 +1,10 @@
 # Roteiro — Arquitetura Core + Banco por Unidade
 
-> **Estado em 2026-08-09:** Fases 0, 1 e 2 implementadas; detalhes nos documentos
+> **Estado em 2026-08-09:** Fases 0, 1 e 2 implementadas; control plane da Fase 3
+> implementado, com execução do piloto físico dependente da unidade e do perfil de
+> infraestrutura escolhidos. Detalhes nos documentos
 > `docs/CODEX_CORE_UNIT_DB_FASE_0.md`, `docs/CODEX_CORE_UNIT_DB_FASE_1.md` e
-> `docs/CODEX_CORE_UNIT_DB_FASE_2.md`.
+> `docs/CODEX_CORE_UNIT_DB_FASE_2.md`/`docs/CODEX_CORE_UNIT_DB_FASE_3.md`.
 
 > **Superado por `docs/SYNC_HOSP_CORE_UNIT_DB_MASTER_PLAN.md`.** Mantido como registro
 > histórico do primeiro levantamento; o plano mestre reverifica e amplia o conteúdo

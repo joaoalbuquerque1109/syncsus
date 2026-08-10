@@ -1,8 +1,11 @@
 # Plano Mestre — Arquitetura Core + Banco por Unidade
 
 > **Atualização de implementação (2026-08-09):** as Fases 0, 1 e 2 foram autorizadas
-> e implementadas. Consulte `docs/CODEX_CORE_UNIT_DB_FASE_0.md`,
-> `docs/CODEX_CORE_UNIT_DB_FASE_1.md` e `docs/CODEX_CORE_UNIT_DB_FASE_2.md`. As restrições
+> e implementadas. O control plane provider-neutral da Fase 3 também foi implementado;
+> a execução em uma unidade piloto real permanece uma decisão operacional explícita.
+> Consulte `docs/CODEX_CORE_UNIT_DB_FASE_0.md`,
+> `docs/CODEX_CORE_UNIT_DB_FASE_1.md`, `docs/CODEX_CORE_UNIT_DB_FASE_2.md` e
+> `docs/CODEX_CORE_UNIT_DB_FASE_3.md`. As restrições
 > históricas abaixo registram o contexto em que o plano foi escrito, não o estado atual.
 
 > Documento de planejamento. Nenhum código, migration ou configuração foi alterado ao
