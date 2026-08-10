@@ -691,12 +691,28 @@ FASE 7 — Provisionamento de unidade nova nativo (seção 12)
   Só faz sentido depois que o ciclo de vida da Fase 3/4 estiver validado em
   produção com dado real — provisionar "do zero" é o caso fácil, não deve
   ser otimizado antes do caso difícil (migração de dado existente) estar
-  resolvido.
+  resolvido. Desenho preliminar em `docs/CODEX_CORE_UNIT_DB_FASE_7.md`:
+  criação automática de banco disparada por `ProvisionTenantAction`
+  (hoje o único ponto de criação de `HealthUnit`, já restrito a
+  `isPlatformAdministrator()`), usando uma credencial MySQL dedicada e
+  restrita por padrão de nome (`GRANT ... ON \`sync_hosp_u%\`.*`), nunca a
+  credencial de runtime do app — autorização de aplicação (quem aciona) e
+  privilégio de credencial (o que a conexão pode fazer) são camadas
+  diferentes, e só restringir a primeira não elimina o risco de a segunda
+  vazar por qualquer outro caminho da aplicação. Reaproveita 100% do
+  mecanismo já validado na Fase 3 (`TenantDatabaseLifecycle`,
+  `TenantDatabaseProvisioner`, `TenantSchemaHardener`,
+  `TenantPilotDataSynchronizer`, `TenantDatabaseReconciler`), sem alterar a
+  máquina de estados.
 ```
 
-Cada fase, ao ser iniciada, ganha seu próprio `docs/CODEX_CORE_UNIT_DB_FASE_N.md` — a
-Fase 0 já está detalhada em `docs/CODEX_CORE_UNIT_DB_FASE_0.md` (Entregável E), mas **não
-deve ser executada nesta rodada**.
+Cada fase, ao ser iniciada, ganha seu próprio `docs/CODEX_CORE_UNIT_DB_FASE_N.md`. Fases 0
+a 3 já estão implementadas (`docs/CODEX_CORE_UNIT_DB_FASE_0.md` a
+`docs/CODEX_CORE_UNIT_DB_FASE_3.md`, mais as correções pós-auditoria
+`docs/CODEX_CORE_UNIT_DB_FASE_2_FIXES.md` e `docs/CODEX_CORE_UNIT_DB_FASE_3_FIXES.md`).
+A Fase 7 tem um desenho preliminar (`docs/CODEX_CORE_UNIT_DB_FASE_7.md`), mas **não deve
+ser executada nesta rodada nem antes da Fase 3/4 estarem validadas em produção com dado
+real** — o próprio documento condiciona sua implementação de verdade a esse marco.
 
 ---
 
