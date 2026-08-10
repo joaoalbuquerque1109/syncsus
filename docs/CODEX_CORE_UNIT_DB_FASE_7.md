@@ -1,6 +1,9 @@
 # Fase 7 — Provisionamento nativo de unidade nova
 
-> Documento de planejamento. Nenhum código de auto-provisionamento foi implementado.
+> Documento de planejamento e registro da fundação implementada. O registro nativo,
+> credenciais persistidas antes dos efeitos externos e o worker de infraestrutura foram
+> implementados; migrations, reconciliação, continuidade e cutover automáticos continuam
+> bloqueados pelos pré-requisitos abaixo.
 > **Não deve ser implementado nesta rodada nem antes da Fase 3/4 estarem validadas em
 > produção com dado real, nem antes da Fase 6 estar concluída** (dependência técnica, não
 > só cronológica — ver seção "Pré-requisitos"). Revisado pela segunda vez em 2026-08-10
@@ -15,14 +18,11 @@ substituindo `DB::transaction(...)` sem conexão — commit já mesclado, com te
 regressão provando que a organização deixa de ficar órfã quando algo falha depois da
 unidade ser criada). Isso resolve a atomicidade das escritas Core.
 
-**Ainda pendente**, e agora escopo explícito desta fase (não pode ser adiado para dentro do
-job, pelos motivos nas seções "Ator do lifecycle" e "Registro durável antes do
-provisionamento físico" abaixo):
+**Implementado na fundação da Fase 7:**
 
-1. `ProvisionTenantAction::execute()` passar a receber o admin autenticado como parâmetro
-   explícito (hoje não recebe).
-2. `ProvisionTenantAction` criar `HealthUnit` com `is_active => false`.
-3. `ProvisionTenantAction` chamar `TenantDatabaseLifecycle::register()` **dentro da mesma
+1. `ProvisionTenantAction::execute()` recebe o admin autenticado como parâmetro explícito.
+2. `ProvisionTenantAction` cria `HealthUnit` com `is_active => false`.
+3. `ProvisionTenantAction` chama `TenantDatabaseLifecycle::registerNative()` **dentro da mesma
    transação Core**, antes de qualquer banco físico existir.
 
 ## Pré-requisitos (bloqueantes, não apenas recomendados)
@@ -68,9 +68,9 @@ fictícia:**
      nome de banco (o próprio motor não permite escopar isso). É o único privilégio desta
      lista sem contenção por padrão de nome; a mitigação é o uso extremamente raro e
      restrito desta credencial, não sua ausência.
-   - `GRANT OPTION` sobre os privilégios que ela precisa repassar (abaixo) — para poder
-     criar e conceder acesso à credencial por unidade, sem ela mesma nunca tocar dado de
-     paciente diretamente.
+   - `GRANT OPTION` sobre os privilégios que ela precisa repassar (abaixo). Isso implica
+     alcance administrativo potencial sobre todos os schemas de unidade; o isolamento é
+     operacional, por processo, rede, TLS, segredo e auditoria, não por privilégio MySQL.
 2. **Credencial de runtime, uma por unidade, gerada dinamicamente** (não mais
    compartilhada) — resolve o achado de isolamento. Ver próxima seção.
 
@@ -81,9 +81,10 @@ sequência que já cria o banco:
 
 ```sql
 CREATE DATABASE IF NOT EXISTS `sync_hosp_u{ulid}`;
-CREATE USER 'tenant_u{ulid}'@'%' IDENTIFIED BY '{senha aleatória, gerada}';
+CREATE USER IF NOT EXISTS 'tu_{ulid}'@'HOST_RUNTIME' IDENTIFIED BY '{senha já persistida}';
+ALTER USER 'tu_{ulid}'@'HOST_RUNTIME' IDENTIFIED BY '{mesma senha persistida}' REQUIRE SSL;
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
-    ON `sync_hosp_u{ulid}`.* TO 'tenant_u{ulid}'@'%';
+    ON `sync_hosp_u{ulid}`.* TO 'tu_{ulid}'@'HOST_RUNTIME';
 ```
 
 Sem curinga nenhum aqui — é um nome de schema exato, então a ambiguidade de `_`/`%` e a
@@ -95,9 +96,10 @@ migração", porque o escopo já está reduzido a uma única unidade; a única r
 separar migração de runtime seria reduzir o alcance de um vazamento, e aqui o alcance já é
 "uma unidade", o mínimo possível.
 
-`tenant_databases` ganha duas colunas novas: `runtime_username` e
+`tenant_databases` ganha `provisioning_mode`, `infrastructure_status`, `runtime_username`,
 `encrypted_runtime_password` (cifrada com o `Encrypter` do Laravel — mesmo mecanismo já
-usado em `PatientIdentifier.encrypted_value`, não um novo). `TenantConnectionManager::dedicatedConnectionName()`
+usado em `PatientIdentifier.encrypted_value`), `runtime_host` e `requested_by_user_id`.
+Username e senha nascem na transação Core, antes do job. `TenantConnectionManager::dedicatedConnectionName()`
 passa a montar a configuração da conexão a partir dessas colunas em vez de um perfil
 estático em `TENANT_DATABASE_PROFILES` — o "perfil" `TENANT_DATABASE_PROFILES` continua
 existindo só para o piloto manual da Fase 3 (uma entrada, `pilot`), não para unidades
@@ -105,22 +107,21 @@ provisionadas nativamente.
 
 **Efeito prático do vazamento de cada credencial**, para deixar o tradeoff explícito:
 
-- `tenant_provisioning` vazada: quem a obtém pode criar bancos e usuários novos, mas não
-  tem acesso direto a dado de paciente de nenhuma unidade já existente (as credenciais por
-  unidade já geradas não ficam visíveis por essa credencial). Superfície pequena, mas
-  privilégio real — por isso o uso precisa ser raro e auditado (todo uso já gera
-  `tenant_database_events`, reaproveitando o que a Fase 3 já tem).
+- `tenant_provisioning` vazada: comprometimento potencial de todos os bancos de unidade,
+  pois ela possui os privilégios que concede com `GRANT OPTION`. Por isso o segredo não
+  existe no processo web: somente um worker isolado, em fila exclusiva, rede restrita e
+  TLS pode carregá-lo. Todo checkpoint gera `tenant_database_events`.
 - Credencial de uma unidade vazada: quem a obtém alcança **só aquela unidade**. É
   exatamente o blast radius que motivou a arquitetura inteira.
 
 ## No MySQL (ação de infraestrutura, fora do código Laravel), configurada uma vez
 
 ```sql
-CREATE USER 'tenant_provisioner'@'%' IDENTIFIED BY '...';
-GRANT CREATE ON `sync\_hosp\_u%`.* TO 'tenant_provisioner'@'%';
-GRANT CREATE USER ON *.* TO 'tenant_provisioner'@'%';
+CREATE USER 'tenant_provisioner'@'IP_DO_WORKER' IDENTIFIED BY '...' REQUIRE SSL;
+GRANT CREATE ON `sync\_hosp\_u%`.* TO 'tenant_provisioner'@'IP_DO_WORKER';
+GRANT CREATE USER ON *.* TO 'tenant_provisioner'@'IP_DO_WORKER';
 GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
-    ON `sync\_hosp\_u%`.* TO 'tenant_provisioner'@'%' WITH GRANT OPTION;
+    ON `sync\_hosp\_u%`.* TO 'tenant_provisioner'@'IP_DO_WORKER' WITH GRANT OPTION;
 ```
 
 **Pendências de ambiente, não resolvidas aqui** (mesmas duas já registradas na revisão
@@ -143,7 +144,7 @@ dedicado. Aceitável no piloto único e manual da Fase 3; inaceitável numa fase
 provisiona repetidamente sem supervisão. A Fase 7 não começa antes de
 `database/migrations/tenant/` existir e o provisionador rodar só esse `--path`.
 
-## Registro durável antes do provisionamento físico (resolve o achado "outbox")
+## Registro durável antes do provisionamento físico (intenção durável, não outbox)
 
 A revisão anterior criava o banco físico (`CREATE DATABASE`) **antes** de chamar
 `TenantDatabaseLifecycle::register()`. Isso significa: se o processo cair entre os dois
@@ -152,17 +153,17 @@ existe nenhuma linha em `tenant_databases` — e `tenant:status`, que lista excl
 essa tabela, não mostra nada. Um banco pode ficar órfão no MySQL sem nenhum rastro na
 aplicação.
 
-**Correção: inverter a ordem.** `TenantDatabaseLifecycle::register()` não toca o banco
-físico — só grava a intenção (unidade, perfil, nome de banco planejado, estado `LEGACY`).
+**Correção: inverter a ordem.** `TenantDatabaseLifecycle::registerNative()` não toca o
+banco físico — só grava a intenção, nomes, credencial cifrada e estado `LEGACY`.
 Não há razão para ele esperar o banco existir. Ele passa a ser chamado **dentro da mesma
 transação Core de `ProvisionTenantAction`**, junto com `Organization`/`HealthUnit`/`User` —
 o nome do banco (`sync_hosp_u{public_id da unidade}`) já é conhecido nesse momento, porque
 deriva do `public_id`, gerado no `HealthUnit::create()` que acabou de rodar na mesma
 transação.
 
-Isso substitui a necessidade de um outbox literal (tabela de mensagens pendentes): a
-própria linha de `tenant_databases`, em estado `LEGACY` com `schema_status = pending`,
-**é** o registro durável de intenção — nasce garantidamente junto com a unidade (mesma
+Isso cria uma **intenção durável de provisionamento**, não um outbox transacional: a
+própria linha de `tenant_databases`, em estado `LEGACY`, `schema_status = pending` e
+`infrastructure_status = credentials_staged`, nasce garantidamente junto com a unidade (mesma
 transação Core, mesmo commit), antes de qualquer chamada a `CREATE DATABASE` ou de
 qualquer job ser despachado. Um `CREATE DATABASE` que falhe, ou um job que nunca rode,
 deixam a unidade visível em `tenant:status` como "registrada, schema pendente" — nunca
@@ -196,15 +197,15 @@ modo fica registrado como ideia, não é escopo desta fase.
 
 1. `ProvisionTenantAction` (já corrigida + os 3 itens pendentes desta rodada): cria
    `Organization`, `HealthUnit` (`is_active = false`), bootstrap Core, `User`, **e**
-   `TenantDatabaseLifecycle::register()` — tudo na mesma transação Core. Despacha
+   `TenantDatabaseLifecycle::registerNative()` — tudo na mesma transação Core. Despacha
    `ProvisionTenantDatabaseJob::dispatch(...)->afterCommit()` carregando
    `health_unit_public_id` e `actor_user_public_id`.
-2. Job (ou `tenant:resume-provisioning`, mesma lógica): `tenant_provisioning` executa
-   `CREATE DATABASE` + `CREATE USER` + `GRANT` (schema exato, sem curinga) para a
-   credencial da unidade; grava `runtime_username`/`encrypted_runtime_password` no
-   `TenantDatabase`.
+2. Job (ou `tenant:resume-provisioning`, mesma lógica): carrega as credenciais já
+   persistidas e executa convergentemente `CREATE DATABASE IF NOT EXISTS`, `CREATE USER IF
+   NOT EXISTS`, `ALTER USER` e `GRANT`. Registra os checkpoints `database_created`,
+   `user_configured`, `grants_applied` ou `failed`.
 3. `TenantDatabaseProvisioner::provision()` — migrations **só de `database/migrations/tenant/`**
-   (Fase 6), agora resolvendo a conexão pela credencial recém-gerada → `SHADOW`.
+   (Fase 6), resolvendo a conexão pela credencial previamente persistida → `SHADOW`.
 4. `TenantPilotDataSynchronizer::synchronize()` — carga inicial (o pouco que já existe no
    legado para essa unidade nesse momento).
 5. `TenantDatabaseReconciler::reconcile()` → `VALIDATING` → `recordContinuityEvidence()` →
@@ -229,7 +230,8 @@ aqui.
 
 ## Fora de escopo
 
-- Qualquer implementação de código de auto-provisionamento nesta rodada.
+- Automatizar migrations, sincronização, reconciliação, continuidade e cutover; a rodada
+  implementa somente a fundação e a infraestrutura física retomável.
 - Alterar `TenantDatabaseState::canTransitionTo()` ou qualquer guarda de `CUTOVER` já
   validado na Fase 3.
 - Criar a ação de "adicionar unidade a organização existente" — não existe hoje.
@@ -241,8 +243,8 @@ aqui.
 
 ## Critério para começar esta fase de verdade
 
-1. Os 3 itens pendentes de `ProvisionTenantAction` (ator explícito, `is_active` inicial
-   `false`, `register()` dentro da transação Core) implementados, commitados, com testes.
+1. Os 3 itens de `ProvisionTenantAction` (ator explícito, `is_active` inicial `false`,
+   `registerNative()` dentro da transação Core) estão implementados e cobertos por testes.
 2. Fase 6 concluída (`database/migrations/tenant/` existe e o provisionador usa `--path`).
 3. Pelo menos uma unidade real ter completado `LEGACY→...→TENANT` pela Fase 3/4 sem
    intervenção manual fora do runbook documentado.

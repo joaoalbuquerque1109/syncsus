@@ -1,8 +1,11 @@
 # Plano Mestre — Arquitetura Core + Banco por Unidade
 
-> **Atualização de implementação (2026-08-09):** as Fases 0, 1 e 2 foram autorizadas
+> **Atualização de implementação (2026-08-10):** as Fases 0, 1 e 2 foram autorizadas
 > e implementadas. O control plane provider-neutral da Fase 3 também foi implementado;
 > a execução em uma unidade piloto real permanece uma decisão operacional explícita.
+> A fundação da Fase 7 (registro atômico, credencial por unidade e worker de
+> infraestrutura isolado/retomável) também foi implementada, sem antecipar migrations,
+> reconciliação, continuidade ou cutover automáticos.
 > Consulte `docs/CODEX_CORE_UNIT_DB_FASE_0.md`,
 > `docs/CODEX_CORE_UNIT_DB_FASE_1.md`, `docs/CODEX_CORE_UNIT_DB_FASE_2.md` e
 > `docs/CODEX_CORE_UNIT_DB_FASE_3.md`. As restrições
@@ -477,13 +480,17 @@ algum dado no legado antes do banco dedicado existir (o catálogo inicial de
 `OrganizationCatalogBootstrapper`, por exemplo), então o ciclo completo se aplica, só que
 com volume mínimo:
 
-1. `tenant_databases` criado em `LEGACY` via `TenantDatabaseLifecycle::register()`.
-2. Banco físico provisionado e migrations rodadas (`TenantDatabaseProvisioner`) —
+1. `tenant_databases` criado em `LEGACY` via `TenantDatabaseLifecycle::registerNative()`,
+   com unidade inativa, nome e credencial cifrada persistidos antes de efeitos externos.
+2. Worker isolado e privilegiado cria database/usuário/grants de forma convergente. A
+   credencial administrativa tem alcance potencial sobre todos os tenants e não existe no
+   processo web; sua contenção é por processo, fila, rede, TLS, segredo e auditoria.
+3. Migrations são rodadas (`TenantDatabaseProvisioner`) —
    **depende da Fase 6** ter separado `database/migrations/tenant/` de `core/`; sem isso, o
    banco novo herda cópias vazias das tabelas Core (ver `docs/CODEX_CORE_UNIT_DB_FASE_7.md`).
-3. Carga inicial idempotente (`TenantPilotDataSynchronizer`) do pouco que já existe no
+4. Carga inicial idempotente (`TenantPilotDataSynchronizer`) do pouco que já existe no
    legado para essa unidade → `SHADOW`.
-4. Reconciliação (`TenantDatabaseReconciler`) → `VALIDATING` → evidência de continuidade →
+5. Reconciliação (`TenantDatabaseReconciler`) → `VALIDATING` → evidência de continuidade →
    nova reconciliação → `CUTOVER` → `TENANT`.
 
 Mesmo mecanismo da Fase 3, executado programaticamente em vez de digitado manualmente —
@@ -723,28 +730,28 @@ FASE 7 — Provisionamento de unidade nova nativo (seção 12)
   técnica, ver acima) — provisionar "do zero" é o caso fácil, não deve
   ser otimizado antes do caso difícil (migração de dado existente) estar
   resolvido. Desenho revisado duas vezes em `docs/CODEX_CORE_UNIT_DB_FASE_7.md`
-  após duas auditorias externas (14 achados no total) — a segunda rodada
+  após duas auditorias externas (14 achados no total). A fundação segura foi
+  implementada: registro Core atômico, credenciais por unidade, worker isolado,
+  checkpoints retomáveis e unidade inativa. A segunda rodada
   forçou uma mudança real de desenho, não só de texto: credencial de
   runtime deixou de ser compartilhada entre todas as unidades e passou a
   ser gerada uma por unidade (blast radius de um vazamento cai de "todos
   os hospitais" para "uma unidade"), e o registro em `tenant_databases`
   passou a nascer na mesma transação Core de `ProvisionTenantAction`,
   antes de qualquer banco físico existir — funcionando como o registro
-  durável de intenção que faltava. Continua bloqueada e não deve ser
-  implementada nesta rodada.
+  durável de intenção que faltava. A automação posterior aos grants continua
+  bloqueada por Fase 6, validação real e evidência de continuidade.
 ```
 
 Cada fase, ao ser iniciada, ganha seu próprio `docs/CODEX_CORE_UNIT_DB_FASE_N.md`. Fases 0
 a 3 já estão implementadas (`docs/CODEX_CORE_UNIT_DB_FASE_0.md` a
 `docs/CODEX_CORE_UNIT_DB_FASE_3.md`, mais as correções pós-auditoria
 `docs/CODEX_CORE_UNIT_DB_FASE_2_FIXES.md` e `docs/CODEX_CORE_UNIT_DB_FASE_3_FIXES.md`).
-A Fase 7 tem um desenho revisado (`docs/CODEX_CORE_UNIT_DB_FASE_7.md`, corrigido após
-auditoria externa em 2026-08-10), mas **não deve ser executada nesta rodada, nem antes da
-Fase 3/4 estarem validadas em produção com dado real, nem antes da Fase 6 estar concluída**
-(dependência técnica, não só de ordem) — o próprio documento condiciona sua implementação
-de verdade a esses marcos, e ainda lista uma correção prévia necessária em
-`ProvisionTenantAction` (transação que hoje não cobre as conexões Core/Tenant que a ação
-já escreve).
+A Fase 7 tem desenho e fundação implementada
+(`docs/CODEX_CORE_UNIT_DB_FASE_7.md`): registro atômico, unidade inativa, credencial por
+unidade e provisionamento físico retomável. **Migrations automáticas, sincronização,
+reconciliação, continuidade e cutover não devem ser ativados antes da Fase 3/4 estar
+validada em produção com dado real e da Fase 6 estar concluída.**
 
 ---
 
