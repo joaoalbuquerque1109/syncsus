@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Administration\Application\Actions\ProvisionTenantAction;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use Database\Seeders\RolePermissionSeeder;
+use RuntimeException;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
@@ -106,6 +109,30 @@ final class TenantProvisioningTest extends TestCase
             ->assertSessionHasErrors('health_unit');
 
         $this->assertDatabaseCount('health_units', 1);
+    }
+
+    public function test_organization_and_unit_are_not_persisted_when_provisioning_fails_partway(): void
+    {
+        HealthUnit::created(function (): void {
+            throw new RuntimeException('Falha simulada depois de criar a unidade.');
+        });
+
+        try {
+            app(ProvisionTenantAction::class)->execute([
+                'cnes_code' => '9988776',
+                'legal_name' => 'Organização Falha',
+                'trade_name' => 'Unidade Falha',
+                'manager_name' => 'Gestor',
+                'manager_email' => 'gestor@falha.test',
+                'manager_password' => 'Temporary#Password2026',
+            ]);
+            $this->fail('Deveria ter propagado a falha simulada.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Falha simulada depois de criar a unidade.', $exception->getMessage());
+        }
+
+        $this->assertSame(0, Organization::query()->where('cnes_code', '9988776')->count());
+        $this->assertDatabaseMissing('health_units', ['cnes_code' => '9988776']);
     }
 
     public function test_global_administrator_without_units_is_sent_to_initial_provisioning(): void

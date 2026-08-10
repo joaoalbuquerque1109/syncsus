@@ -30,7 +30,7 @@ final readonly class ProvisionTenantAction
             ? [$this->tenantContext->healthUnit(), $this->tenantContext->connectionName()]
             : null;
         try {
-            return DB::transaction(function () use ($data): array {
+            return DB::connection('core')->transaction(function () use ($data): array {
                 $cnes = preg_replace('/\D/', '', (string) $data['cnes_code']);
                 $organization = Organization::query()->create([
                     'code' => $cnes,
