@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Actions\BackfillCanonicalExamCatalogAction;
 use App\Modules\Laboratory\Application\Actions\DispatchPendingLaboratoryTransmissionsAction;
@@ -21,9 +22,136 @@ use App\Modules\Patients\Application\Services\ResolveUnitPatientMigrationConflic
 use App\Modules\Patients\Infrastructure\Eloquent\PatientUnitMigrationConflict;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Tenancy\TenantDatabaseLifecycle;
+use App\Support\Tenancy\TenantDatabaseProvisioner;
+use App\Support\Tenancy\TenantDatabaseReconciler;
+use App\Support\Tenancy\TenantDatabaseState;
+use App\Support\Tenancy\TenantPilotDataSynchronizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+
+Artisan::command(
+    'tenant:pilot-register {unit} {profile} {actor} {--database=} {--apply}',
+    function (TenantDatabaseLifecycle $lifecycle): void {
+        if (! $this->option('apply')) {
+            $this->warn('Simulação: nenhum banco piloto foi registrado. Use --apply após conferir unidade e perfil.');
+
+            return;
+        }
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+        $tenantDatabase = $lifecycle->register(
+            $unit,
+            (string) $this->argument('profile'),
+            filled($this->option('database')) ? (string) $this->option('database') : null,
+            $actor,
+        );
+        $this->info("Piloto {$tenantDatabase->public_id} registrado em LEGACY.");
+    },
+)->purpose('Registra de forma auditada o perfil físico de uma unidade piloto.');
+
+Artisan::command(
+    'tenant:pilot-provision {unit} {actor} {--apply}',
+    function (TenantDatabaseProvisioner $provisioner): void {
+        if (! $this->option('apply')) {
+            $this->warn('Simulação: nenhuma migration foi executada. Use --apply para provisionar e entrar em SHADOW.');
+
+            return;
+        }
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+        $tenantDatabase = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+        $tenantDatabase = $provisioner->provision($tenantDatabase, $actor);
+        $this->info("Schema provisionado; unidade {$unit->public_id} em {$tenantDatabase->stateEnum()->value}.");
+    },
+)->purpose('Executa migrations e remove FKs cross-database no banco físico piloto.');
+
+Artisan::command(
+    'tenant:pilot-sync {unit} {actor} {--apply}',
+    function (TenantPilotDataSynchronizer $synchronizer): void {
+        if (! $this->option('apply')) {
+            $this->warn('Simulação: nenhum dado foi copiado. Use --apply para executar a carga inicial idempotente.');
+
+            return;
+        }
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+        $tenantDatabase = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+        $counts = $synchronizer->synchronize($tenantDatabase, $actor);
+        $this->info(array_sum($counts).' registro(s) sincronizado(s) no banco piloto.');
+    },
+)->purpose('Copia idempotentemente os dados da unidade LEGACY para o banco SHADOW.');
+
+Artisan::command(
+    'tenant:pilot-reconcile {unit} {actor} {--apply}',
+    function (TenantDatabaseReconciler $reconciler): void {
+        if (! $this->option('apply')) {
+            $this->warn('Simulação: a reconciliação não foi registrada. Use --apply para comparar e auditar o resultado.');
+
+            return;
+        }
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+        $tenantDatabase = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+        $result = $reconciler->reconcile($tenantDatabase, $actor);
+        $this->info('Reconciliação concluída: '.mb_strtoupper($result['status']).'.');
+    },
+)->purpose('Compara contagens e hashes entre LEGACY e SHADOW sem corrigir divergências.');
+
+Artisan::command(
+    'tenant:pilot-transition {unit} {state} {actor} {--apply}',
+    function (TenantDatabaseLifecycle $lifecycle): void {
+        $target = TenantDatabaseState::tryFrom(mb_strtoupper((string) $this->argument('state')));
+        if ($target === null) {
+            throw new InvalidArgumentException('Estado Tenant inválido.');
+        }
+        if (! $this->option('apply')) {
+            $this->warn("Simulação: nenhuma transição para {$target->value} foi aplicada.");
+
+            return;
+        }
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+        $tenantDatabase = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+        $tenantDatabase = $lifecycle->transition($tenantDatabase, $target, $actor, ['source' => 'artisan']);
+        $this->info("Unidade {$unit->public_id} movida para {$tenantDatabase->stateEnum()->value}.");
+    },
+)->purpose('Executa uma transição válida e auditada no ciclo do banco piloto.');
+
+Artisan::command(
+    'tenant:pilot-continuity {unit} {actor} {--backup-reference=} {--restore-reference=} {--apply}',
+    function (TenantDatabaseLifecycle $lifecycle): void {
+        if (! $this->option('apply')) {
+            $this->warn('Simulação: nenhuma evidência foi registrada. Use --apply após validar backup e restore.');
+
+            return;
+        }
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+        $tenantDatabase = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+        $lifecycle->recordContinuityEvidence($tenantDatabase, $actor, [
+            'backup_reference' => (string) $this->option('backup-reference'),
+            'restore_reference' => (string) $this->option('restore-reference'),
+        ]);
+        $this->info('Evidências de backup e restauração registradas para o piloto.');
+    },
+)->purpose('Registra evidências externas verificáveis de backup e teste de restore antes do CUTOVER.');
+
+Artisan::command('tenant:status', function (): void {
+    $rows = [];
+    foreach (TenantDatabase::query()->orderBy('health_unit_id')->get() as $database) {
+        $rows[] = [
+            $database->healthUnit()->firstOrFail()->code,
+            $database->stateEnum()->value,
+            $database->schema_status,
+            $database->connection_profile,
+            $database->last_reconciliation_status ?? '-',
+            $database->lastReconciledAtLabel() ?? '-',
+        ];
+    }
+    $this->table(['Unidade', 'Estado', 'Schema', 'Perfil', 'Reconciliação', 'Última execução'], $rows);
+})->purpose('Exibe estado, schema e última reconciliação de todos os bancos por unidade.');
 
 Artisan::command('patients:migrate-unit-records {--connection=} {--apply}', function (
     MigrateLegacyUnitPatientRecords $migration,

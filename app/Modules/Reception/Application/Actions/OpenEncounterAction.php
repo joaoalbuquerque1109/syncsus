@@ -42,6 +42,7 @@ final readonly class OpenEncounterAction
         return DB::transaction(function () use ($data, $user, $unit, $request, $requestHash): Encounter {
             $existingKey = IdempotencyKey::query()
                 ->where('user_id', $user->getKey())
+                ->where('health_unit_public_id', $unit->public_id)
                 ->where('route_name', 'reception.store')
                 ->where('idempotency_key', $data['idempotency_key'])
                 ->lockForUpdate()
@@ -190,6 +191,7 @@ final readonly class OpenEncounterAction
 
             IdempotencyKey::query()->create([
                 'user_id' => $user->getKey(),
+                'health_unit_public_id' => $unit->public_id,
                 'route_name' => 'reception.store',
                 'idempotency_key' => $data['idempotency_key'],
                 'request_hash' => $requestHash,

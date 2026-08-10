@@ -28,6 +28,7 @@ abstract class TestCase extends BaseTestCase
         'patients', 'patient_identifiers', 'patient_operation_keys', 'patient_unit_participations',
         'patient_unit_migration_conflicts', 'core_number_sequences', 'diagnosis_codes', 'sus_procedures',
         'exams', 'exam_groups', 'exam_group_items', 'public_lookup_index',
+        'tenant_databases', 'tenant_database_events',
     ];
 
     /** @var list<string> */
