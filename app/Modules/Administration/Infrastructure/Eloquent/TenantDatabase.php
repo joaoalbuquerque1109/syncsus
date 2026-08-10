@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Administration\Infrastructure\Eloquent;
 
+use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Models\CoreModel;
 use App\Support\Models\HasPublicId;
 use App\Support\Tenancy\TenantDatabaseState;
@@ -55,6 +56,12 @@ final class TenantDatabase extends CoreModel
     public function events(): HasMany
     {
         return $this->hasMany(TenantDatabaseEvent::class);
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function requestedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'requested_by_user_id');
     }
 
     protected function casts(): array

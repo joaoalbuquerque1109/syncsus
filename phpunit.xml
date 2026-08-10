@@ -33,6 +33,7 @@
         <env name="CORE_DB_DATABASE" value=":memory:"/>
         <env name="CORE_DB_FOREIGN_KEYS" value="false"/>
         <env name="TENANT_TEST_DB_DATABASE" value=":memory:"/>
+        <env name="TENANT_RUNTIME_ACCOUNT_HOST" value="127.0.0.1"/>
         <env name="PATIENT_IDENTIFIER_HMAC_KEY" value="phase-2-test-key-not-for-production"/>
         <env name="SYNC_SUS_SEED_DEMO" value="false" force="true"/>
         <env name="DB_URL" value=""/>

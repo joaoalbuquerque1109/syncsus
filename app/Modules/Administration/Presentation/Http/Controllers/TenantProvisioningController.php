@@ -35,11 +35,10 @@ final class TenantProvisioningController extends Controller
         RecordAuditEventAction $audit,
     ): RedirectResponse {
         $actor = $this->actor($request);
-        $result = $provision->execute($request->validated());
+        $result = $provision->execute($request->validated(), $actor);
         $unit = $result['health_unit'];
 
         Cache::forget("syncsus:organization:{$result['organization']->getKey()}:has-manager");
-        $request->session()->put('active_health_unit_id', $unit->getKey());
         $audit->execute('organization.provisioned', $request, $actor, [
             'organization' => $result['organization']->public_id,
             'cnes' => $result['organization']->tenantIdentifier(),
@@ -47,7 +46,7 @@ final class TenantProvisioningController extends Controller
         ], (int) $unit->getKey());
 
         return redirect()->route('administration.tenants.index')
-            ->with('success', 'Unidade criada com filas, painel e primeiro gestor.');
+            ->with('success', 'Unidade registrada. O banco dedicado está em provisionamento e a unidade permanecerá inativa até a validação final.');
     }
 
     private function actor(Request $request): User

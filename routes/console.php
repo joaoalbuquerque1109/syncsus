@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Modules\Administration\Application\Jobs\ProvisionTenantDatabaseJob;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
@@ -145,13 +146,33 @@ Artisan::command('tenant:status', function (): void {
             $database->healthUnit()->firstOrFail()->code,
             $database->stateEnum()->value,
             $database->schema_status,
+            $database->infrastructure_status,
             $database->connection_profile,
             $database->last_reconciliation_status ?? '-',
             $database->lastReconciledAtLabel() ?? '-',
         ];
     }
-    $this->table(['Unidade', 'Estado', 'Schema', 'Perfil', 'Reconciliação', 'Última execução'], $rows);
+    $this->table(['Unidade', 'Estado', 'Schema', 'Infra', 'Perfil', 'Reconciliação', 'Última execução'], $rows);
 })->purpose('Exibe estado, schema e última reconciliação de todos os bancos por unidade.');
+
+Artisan::command('tenant:resume-provisioning {unit} {--apply}', function (): void {
+    $unit = HealthUnit::query()
+        ->where('public_id', (string) $this->argument('unit'))
+        ->firstOrFail();
+    $database = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+    if ($database->provisioning_mode !== 'native') {
+        throw new LogicException('A retomada automática é exclusiva de unidades provisionadas nativamente.');
+    }
+    if (! $this->option('apply')) {
+        $this->warn("Simulação: unidade em {$database->infrastructure_status}; nenhum job foi despachado. Use --apply.");
+
+        return;
+    }
+
+    ProvisionTenantDatabaseJob::dispatch((string) $unit->public_id)
+        ->onQueue((string) config('tenancy.native_provisioning.queue'));
+    $this->info('Retomada de infraestrutura encaminhada ao worker isolado.');
+})->purpose('Retoma de forma convergente a infraestrutura de uma unidade nativa.');
 
 Artisan::command('patients:migrate-unit-records {--connection=} {--apply}', function (
     MigrateLegacyUnitPatientRecords $migration,

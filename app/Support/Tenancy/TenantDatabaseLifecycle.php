@@ -9,7 +9,9 @@ use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabaseEvent;
 use App\Modules\Audit\Application\Services\AuditContextSanitizer;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use LogicException;
 
 final readonly class TenantDatabaseLifecycle
@@ -26,6 +28,10 @@ final readonly class TenantDatabaseLifecycle
         User $actor,
     ): TenantDatabase {
         $this->authorize($unit, $actor);
+        $profile = config("tenancy.database_profiles.{$connectionProfile}");
+        if (! is_array($profile)) {
+            throw new LogicException("O perfil de conexão '{$connectionProfile}' não está configurado.");
+        }
 
         return DB::connection('core')->transaction(function () use (
             $unit,
@@ -41,10 +47,12 @@ final readonly class TenantDatabaseLifecycle
                 'health_unit_id' => $unit->getKey(),
                 'connection_profile' => trim($connectionProfile),
                 'database_name' => filled($databaseName) ? trim((string) $databaseName) : null,
+                'provisioning_mode' => 'legacy_migration',
                 'state' => TenantDatabaseState::Legacy,
                 'schema_status' => 'pending',
+                'infrastructure_status' => 'external',
+                'requested_by_user_id' => $actor->getKey(),
             ]);
-            $this->connections->dedicatedConnectionName($tenantDatabase);
             $this->event($tenantDatabase, $actor, 'registered', null, TenantDatabaseState::Legacy, [
                 'connection_profile' => $tenantDatabase->connection_profile,
                 'database_name' => $tenantDatabase->database_name,
@@ -52,6 +60,79 @@ final readonly class TenantDatabaseLifecycle
             $this->connections->forget($tenantDatabase);
 
             return $tenantDatabase->refresh();
+        });
+    }
+
+    public function registerNative(HealthUnit $unit, User $actor): TenantDatabase
+    {
+        $this->authorize($unit, $actor);
+        $databaseName = TenantDatabaseNaming::databaseName((string) $unit->public_id);
+        $runtimeUsername = TenantDatabaseNaming::runtimeUsername((string) $unit->public_id);
+        TenantDatabaseNaming::assertValidDatabaseName($databaseName);
+        TenantDatabaseNaming::assertValidUsername($runtimeUsername);
+        $runtimeHost = trim((string) config('tenancy.native_provisioning.runtime_host'));
+        if ($runtimeHost === '' || $runtimeHost === '%') {
+            throw new LogicException('O host da credencial de runtime deve ser explícito e restrito.');
+        }
+        $encryptedPassword = Crypt::encryptString(Str::password(48));
+
+        return DB::connection('core')->transaction(function () use (
+            $unit,
+            $actor,
+            $databaseName,
+            $runtimeUsername,
+            $runtimeHost,
+            $encryptedPassword,
+        ): TenantDatabase {
+            if (TenantDatabase::query()->where('health_unit_id', $unit->getKey())->lockForUpdate()->exists()) {
+                throw new LogicException('A unidade já possui um banco dedicado registrado.');
+            }
+
+            $tenantDatabase = TenantDatabase::query()->create([
+                'health_unit_id' => $unit->getKey(),
+                'connection_profile' => 'native',
+                'database_name' => $databaseName,
+                'provisioning_mode' => 'native',
+                'state' => TenantDatabaseState::Legacy,
+                'schema_status' => 'pending',
+                'infrastructure_status' => 'credentials_staged',
+                'runtime_username' => $runtimeUsername,
+                'encrypted_runtime_password' => $encryptedPassword,
+                'runtime_host' => $runtimeHost,
+                'requested_by_user_id' => $actor->getKey(),
+            ]);
+            $this->event($tenantDatabase, $actor, 'native_provisioning_registered', null, TenantDatabaseState::Legacy, [
+                'database_name' => $databaseName,
+                'runtime_username' => $runtimeUsername,
+                'runtime_host' => $runtimeHost,
+                'infrastructure_status' => 'credentials_staged',
+            ]);
+            $this->connections->forget($tenantDatabase);
+
+            return $tenantDatabase->refresh();
+        });
+    }
+
+    /** @param array<string, mixed> $context */
+    public function markInfrastructureStatus(
+        TenantDatabase $tenantDatabase,
+        User $actor,
+        string $status,
+        array $context = [],
+    ): TenantDatabase {
+        $this->authorize($tenantDatabase->healthUnit()->firstOrFail(), $actor);
+        $allowed = ['credentials_staged', 'database_created', 'user_configured', 'grants_applied', 'failed'];
+        if (! in_array($status, $allowed, true)) {
+            throw new LogicException('Checkpoint de infraestrutura inválido.');
+        }
+
+        return DB::connection('core')->transaction(function () use ($tenantDatabase, $actor, $status, $context): TenantDatabase {
+            $record = TenantDatabase::query()->lockForUpdate()->findOrFail($tenantDatabase->getKey());
+            $record->update(['infrastructure_status' => $status]);
+            $this->event($record, $actor, 'infrastructure_'.$status, $record->stateEnum(), $record->stateEnum(), $context);
+            $this->connections->forget($record);
+
+            return $record->refresh();
         });
     }
 
@@ -182,6 +263,9 @@ final readonly class TenantDatabaseLifecycle
                 default => [],
             };
             $record->update(['state' => $target, ...$timestamps]);
+            if ($target === TenantDatabaseState::Tenant && $record->provisioning_mode === 'native') {
+                $record->healthUnit()->update(['is_active' => true]);
+            }
             $this->event($record, $actor, 'state_transitioned', $from, $target, $context);
             $this->connections->forget($record);
 

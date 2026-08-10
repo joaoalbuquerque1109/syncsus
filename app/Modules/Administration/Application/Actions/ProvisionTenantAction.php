@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Administration\Application\Actions;
 
+use App\Modules\Administration\Application\Jobs\ProvisionTenantDatabaseJob;
 use App\Modules\Administration\Application\Services\OrganizationCatalogBootstrapper;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
+use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Tenancy\TenantDatabaseLifecycle;
 use Illuminate\Support\Facades\DB;
 
 final readonly class ProvisionTenantAction
@@ -18,19 +21,20 @@ final readonly class ProvisionTenantAction
         private OrganizationCatalogBootstrapper $catalogs,
         private TenantContext $tenantContext,
         private TenantConnectionManager $connectionManager,
+        private TenantDatabaseLifecycle $databaseLifecycle,
     ) {}
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array{organization: Organization, health_unit: HealthUnit, manager: User}
+     * @return array{organization: Organization, health_unit: HealthUnit, manager: User, tenant_database: TenantDatabase}
      */
-    public function execute(array $data): array
+    public function execute(array $data, User $actor): array
     {
         $previous = $this->tenantContext->isResolved()
             ? [$this->tenantContext->healthUnit(), $this->tenantContext->connectionName()]
             : null;
         try {
-            return DB::connection('core')->transaction(function () use ($data): array {
+            return DB::connection('core')->transaction(function () use ($data, $actor): array {
                 $cnes = preg_replace('/\D/', '', (string) $data['cnes_code']);
                 $organization = Organization::query()->create([
                     'code' => $cnes,
@@ -57,7 +61,7 @@ final readonly class ProvisionTenantAction
                     'street_number' => $data['street_number'] ?? null,
                     'address_complement' => $data['address_complement'] ?? null,
                     'phone' => $data['phone'] ?? null,
-                    'is_active' => true,
+                    'is_active' => false,
                 ]);
                 $this->tenantContext->reset();
                 $this->tenantContext->resolve($unit, $this->connectionManager->connectionName($unit));
@@ -75,7 +79,17 @@ final readonly class ProvisionTenantAction
                 $manager->healthUnits()->attach($unit->getKey());
                 $manager->syncRoles(['manager']);
 
-                return ['organization' => $organization, 'health_unit' => $unit, 'manager' => $manager];
+                $tenantDatabase = $this->databaseLifecycle->registerNative($unit, $actor);
+                ProvisionTenantDatabaseJob::dispatch((string) $unit->public_id)
+                    ->onQueue((string) config('tenancy.native_provisioning.queue'))
+                    ->afterCommit();
+
+                return [
+                    'organization' => $organization,
+                    'health_unit' => $unit,
+                    'manager' => $manager,
+                    'tenant_database' => $tenantDatabase,
+                ];
             });
         } finally {
             $this->tenantContext->reset();

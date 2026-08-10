@@ -5,10 +5,19 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Modules\Administration\Application\Actions\ProvisionTenantAction;
+use App\Modules\Administration\Application\Jobs\ProvisionTenantDatabaseJob;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
+use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Support\Tenancy\TenantConnectionManager;
+use App\Support\Tenancy\TenantDatabaseLifecycle;
+use App\Support\Tenancy\TenantDatabaseState;
+use App\Support\Tenancy\TenantInfrastructureProvisioner;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Queue;
+use LogicException;
 use RuntimeException;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
@@ -20,6 +29,7 @@ final class TenantProvisioningTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Queue::fake();
         $this->seed(RolePermissionSeeder::class);
     }
 
@@ -48,10 +58,22 @@ final class TenantProvisioningTest extends TestCase
         $response->assertRedirect(route('administration.tenants.index'));
         $this->assertSame('6612547', $organization->code);
         $this->assertSame('6612547', $unit->cnes_code);
+        $this->assertFalse($unit->is_active);
         $this->assertTrue($manager->hasRole('manager'));
         $this->assertTrue($manager->healthUnits()->whereKey($unit->getKey())->exists());
         $this->assertSame($unit->getKey(), $manager->default_health_unit_id);
         $this->assertTrue($manager->must_change_password);
+        $tenantDatabase = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+        $this->assertSame('native', $tenantDatabase->provisioning_mode);
+        $this->assertSame('credentials_staged', $tenantDatabase->infrastructure_status);
+        $this->assertSame('tu_'.strtolower((string) $unit->public_id), $tenantDatabase->runtime_username);
+        $this->assertLessThanOrEqual(32, strlen((string) $tenantDatabase->runtime_username));
+        $this->assertNotEmpty(Crypt::decryptString((string) $tenantDatabase->encrypted_runtime_password));
+        Queue::assertPushed(ProvisionTenantDatabaseJob::class, function (ProvisionTenantDatabaseJob $job) use ($unit): bool {
+            $this->assertFalse(property_exists($job, 'actorUserPublicId'));
+
+            return $job->healthUnitPublicId === (string) $unit->public_id;
+        });
         $this->assertDatabaseCount('specialties', 3);
         $this->assertDatabaseCount('arrival_methods', 4);
         $this->assertDatabaseCount('entry_types', 3);
@@ -71,6 +93,63 @@ final class TenantProvisioningTest extends TestCase
 
         $this->actingAs($manager)->get(route('administration.tenants.index'))->assertForbidden();
         $this->actingAs($manager)->post(route('administration.tenants.store'), [])->assertForbidden();
+    }
+
+    public function test_native_registration_is_local_and_admin_credentials_are_blocked_in_web_process(): void
+    {
+        $unit = $this->createHealthUnit('NATIVE-LOCAL');
+        $actor = $this->createPlatformAdministrator();
+        $database = app(TenantDatabaseLifecycle::class)->registerNative($unit, $actor);
+
+        $this->assertSame('credentials_staged', $database->infrastructure_status);
+        $this->assertSame('tu_'.strtolower((string) $unit->public_id), $database->runtime_username);
+        $this->assertSame(29, strlen((string) $database->runtime_username));
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('worker de provisionamento isolado');
+        app(TenantInfrastructureProvisioner::class)->provision($database);
+    }
+
+    public function test_native_connection_uses_the_credentials_staged_for_its_exact_database(): void
+    {
+        $unit = $this->createHealthUnit('NATIVE-CONNECTION');
+        $actor = $this->createPlatformAdministrator();
+        $database = app(TenantDatabaseLifecycle::class)->registerNative($unit, $actor);
+        $database->update(['infrastructure_status' => 'grants_applied']);
+        config()->set('tenancy.native_provisioning.runtime_connection', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+            'transaction_mode' => 'DEFERRED',
+        ]);
+
+        $name = app(TenantConnectionManager::class)->dedicatedConnectionName($database->refresh());
+        $configuration = config("database.connections.{$name}");
+
+        $this->assertSame($database->database_name, $configuration['database']);
+        $this->assertSame($database->runtime_username, $configuration['username']);
+        $this->assertSame(
+            Crypt::decryptString((string) $database->encrypted_runtime_password),
+            $configuration['password'],
+        );
+    }
+
+    public function test_native_unit_is_activated_only_when_lifecycle_reaches_tenant(): void
+    {
+        $unit = $this->createHealthUnit('NATIVE-ACTIVATION');
+        $unit->update(['is_active' => false]);
+        $actor = $this->createPlatformAdministrator();
+        $lifecycle = app(TenantDatabaseLifecycle::class);
+        $database = $lifecycle->registerNative($unit, $actor);
+        $database->update([
+            'state' => TenantDatabaseState::Cutover,
+            'infrastructure_status' => 'grants_applied',
+        ]);
+
+        $this->assertFalse($unit->refresh()->is_active);
+        $lifecycle->transition($database->refresh(), TenantDatabaseState::Tenant, $actor);
+        $this->assertTrue($unit->refresh()->is_active);
     }
 
     public function test_cnes_cannot_be_reused_by_another_tenant(): void
@@ -125,7 +204,7 @@ final class TenantProvisioningTest extends TestCase
                 'manager_name' => 'Gestor',
                 'manager_email' => 'gestor@falha.test',
                 'manager_password' => 'Temporary#Password2026',
-            ]);
+            ], $this->createPlatformAdministrator());
             $this->fail('Deveria ter propagado a falha simulada.');
         } catch (RuntimeException $exception) {
             $this->assertSame('Falha simulada depois de criar a unidade.', $exception->getMessage());
@@ -133,6 +212,35 @@ final class TenantProvisioningTest extends TestCase
 
         $this->assertSame(0, Organization::query()->where('cnes_code', '9988776')->count());
         $this->assertDatabaseMissing('health_units', ['cnes_code' => '9988776']);
+        $this->assertSame(0, TenantDatabase::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_core_transaction_rolls_back_unit_and_credentials_when_native_registration_fails(): void
+    {
+        $actor = $this->createPlatformAdministrator();
+        TenantDatabase::created(function (): void {
+            throw new RuntimeException('Falha simulada depois de registrar as credenciais.');
+        });
+
+        try {
+            app(ProvisionTenantAction::class)->execute([
+                'cnes_code' => '8877665',
+                'legal_name' => 'Organização Credencial Falha',
+                'trade_name' => 'Unidade Credencial Falha',
+                'manager_name' => 'Gestora',
+                'manager_email' => 'gestora.credencial@falha.test',
+                'manager_password' => 'Temporary#Password2026',
+            ], $actor);
+            $this->fail('Deveria ter propagado a falha depois do registro nativo.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Falha simulada depois de registrar as credenciais.', $exception->getMessage());
+        }
+
+        $this->assertSame(0, Organization::query()->where('cnes_code', '8877665')->count());
+        $this->assertDatabaseMissing('health_units', ['cnes_code' => '8877665']);
+        $this->assertSame(0, TenantDatabase::query()->count());
+        Queue::assertNothingPushed();
     }
 
     public function test_global_administrator_without_units_is_sent_to_initial_provisioning(): void

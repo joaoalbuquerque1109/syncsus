@@ -7,6 +7,7 @@ namespace App\Support\Tenancy;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -73,17 +74,14 @@ final class TenantConnectionManager
         $tenantDatabase = $tenant instanceof TenantDatabase
             ? $tenant
             : ($this->tenantDatabase($tenant) ?? throw new LogicException('A unidade não possui banco piloto registrado.'));
-        $profile = config("tenancy.database_profiles.{$tenantDatabase->connection_profile}");
-        if (! is_array($profile)) {
-            throw new LogicException("O perfil de conexão '{$tenantDatabase->connection_profile}' não está configurado.");
-        }
-
         $template = config('database.connections.tenant_template');
         if (! is_array($template)) {
             throw new LogicException('O template de conexão Tenant não está configurado.');
         }
 
-        $configuration = array_replace($template, $profile);
+        $configuration = $tenantDatabase->provisioning_mode === 'native'
+            ? $this->nativeConfiguration($tenantDatabase, $template)
+            : $this->profileConfiguration($tenantDatabase, $template);
         if (filled($tenantDatabase->database_name)) {
             $configuration['database'] = $tenantDatabase->database_name;
         }
@@ -109,6 +107,45 @@ final class TenantConnectionManager
         }
 
         return $connectionName;
+    }
+
+    /** @param array<string, mixed> $template
+     * @return array<string, mixed>
+     */
+    private function nativeConfiguration(TenantDatabase $tenantDatabase, array $template): array
+    {
+        if (! in_array($tenantDatabase->infrastructure_status, ['grants_applied', 'schema_ready'], true)) {
+            throw new TenantDatabaseNotProvisionedException('A infraestrutura do banco da unidade ainda não está pronta.');
+        }
+        if (blank($tenantDatabase->runtime_username) || blank($tenantDatabase->encrypted_runtime_password)) {
+            throw new TenantDatabaseNotProvisionedException('A credencial do banco da unidade não está disponível.');
+        }
+        TenantDatabaseNaming::assertValidDatabaseName((string) $tenantDatabase->database_name);
+        TenantDatabaseNaming::assertValidUsername((string) $tenantDatabase->runtime_username);
+        $runtime = config('tenancy.native_provisioning.runtime_connection');
+        if (! is_array($runtime)) {
+            throw new LogicException('A conexão base de runtime dos tenants não está configurada.');
+        }
+
+        return array_replace($template, $runtime, [
+            'url' => null,
+            'database' => $tenantDatabase->database_name,
+            'username' => $tenantDatabase->runtime_username,
+            'password' => Crypt::decryptString((string) $tenantDatabase->encrypted_runtime_password),
+        ]);
+    }
+
+    /** @param array<string, mixed> $template
+     * @return array<string, mixed>
+     */
+    private function profileConfiguration(TenantDatabase $tenantDatabase, array $template): array
+    {
+        $profile = config("tenancy.database_profiles.{$tenantDatabase->connection_profile}");
+        if (! is_array($profile)) {
+            throw new LogicException("O perfil de conexão '{$tenantDatabase->connection_profile}' não está configurado.");
+        }
+
+        return array_replace($template, $profile);
     }
 
     public function assertDedicatedConnectionAvailable(HealthUnit|TenantDatabase $tenant): string
