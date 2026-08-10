@@ -137,9 +137,18 @@ aprovada silenciosamente.
    Unidade) precisa ser desenhada como idempotente/retentável/reconciliável — nunca como
    "as duas escritas têm que acontecer atomicamente juntas".
 3. **Resolução de tenant fail-closed.** Se o tenant/unidade não puder ser resolvido com
-   certeza (sessão inválida, unidade inativa, tenant em `SHADOW`/`VALIDATING`, ausência de
+   certeza (sessão inválida, unidade inativa, tenant em estado desconhecido, ausência de
    header em contexto de API), a requisição é rejeitada — nunca cai para uma conexão
    "default" como se fosse segura. Isso vale inclusive para jobs e comandos de console.
+   **Correção (auditoria externa, 2026-08-10):** a versão anterior deste princípio incluía
+   `SHADOW`/`VALIDATING` na lista de estados que deveriam rejeitar a requisição — isso
+   contradizia a implementação da Fase 3 (correta, auditada e testada) e o próprio §11:
+   `SHADOW`/`VALIDATING` são estados **transparentes** para quem usa o sistema — a unidade
+   continua operando normalmente pela conexão legada (`usesDedicatedConnection()` só é
+   `true` em `CUTOVER`/`TENANT`); rejeitar a requisição nesses estados quebraria o
+   propósito do double-write, que é justamente não afetar o usuário enquanto o piloto roda
+   em segundo plano. Fail-closed se aplica a "tenant não resolvido" ou "estado do
+   `TenantDatabase` inconsistente/corrompido" — não a `SHADOW`/`VALIDATING` em si.
 4. **Autorização antes da resolução de tenant.** A verificação de que o usuário
    autenticado tem vínculo ativo com a unidade/organização acontece antes de qualquer
    query ser disparada na conexão daquela unidade — nunca depois, e nunca inferida do
@@ -459,15 +468,27 @@ senha como ação administrativa auditada, não automática).
 Fluxo para quando uma unidade nova (não migração de uma existente) entra no sistema
 depois que a arquitetura estiver madura:
 
-1. Registro `tenant_databases` criado em estado `SHADOW` diretamente (não passa por
-   `LEGACY`, porque não há dado legado a migrar).
-2. Banco físico provisionado (schema completo via migrations "de Unidade", ver
-   separação de migrations na Fase 1/seção 14).
-3. Seed de catálogos replicados (se a decisão da seção 22.2 optar por replicar em vez de
-   centralizar) a partir do Core.
-4. Health-check de conectividade antes de expor a unidade para login de usuários.
-5. Transição direta para `TENANT` (sem `VALIDATING`, já que não há dado legado a
-   reconciliar).
+**Correção (auditoria externa, 2026-08-10):** a versão anterior deste fluxo propunha pular
+direto para `SHADOW` e depois `TENANT`, sem `VALIDATING`/`CUTOVER`, sob o argumento de que
+"não há dado legado a reconciliar". `docs/CODEX_CORE_UNIT_DB_FASE_7.md` reavaliou isso e
+decidiu **não** abrir uma exceção na máquina de estados (`TenantDatabaseState::canTransitionTo()`
+não tem — e não deve ganhar — um atalho `LEGACY→TENANT`): mesmo uma unidade nova recebe
+algum dado no legado antes do banco dedicado existir (o catálogo inicial de
+`OrganizationCatalogBootstrapper`, por exemplo), então o ciclo completo se aplica, só que
+com volume mínimo:
+
+1. `tenant_databases` criado em `LEGACY` via `TenantDatabaseLifecycle::register()`.
+2. Banco físico provisionado e migrations rodadas (`TenantDatabaseProvisioner`) —
+   **depende da Fase 6** ter separado `database/migrations/tenant/` de `core/`; sem isso, o
+   banco novo herda cópias vazias das tabelas Core (ver `docs/CODEX_CORE_UNIT_DB_FASE_7.md`).
+3. Carga inicial idempotente (`TenantPilotDataSynchronizer`) do pouco que já existe no
+   legado para essa unidade → `SHADOW`.
+4. Reconciliação (`TenantDatabaseReconciler`) → `VALIDATING` → evidência de continuidade →
+   nova reconciliação → `CUTOVER` → `TENANT`.
+
+Mesmo mecanismo da Fase 3, executado programaticamente em vez de digitado manualmente —
+ver `docs/CODEX_CORE_UNIT_DB_FASE_7.md` para o desenho completo, incluindo o gate de
+`is_active` que impede uso da unidade antes do ciclo terminar.
 
 ---
 
@@ -686,33 +707,40 @@ FASE 5 — Descomissionamento de suposições de banco único
 FASE 6 — Migrations "de Unidade" com detecção de drift (seção 13)
   Pode começar em paralelo à Fase 4/5 uma vez que a Fase 0 já separou a
   pasta de migrations; não depende de todas as unidades estarem migradas.
+  **Pré-requisito técnico da Fase 7, não só cronológico** (auditoria
+  externa, 2026-08-10): `TenantDatabaseProvisioner::provision()` hoje roda
+  `migrate` sem `--path`, ou seja, executa todas as migrations — inclusive
+  as que criam tabela Core — contra o banco dedicado. Isso é aceitável para
+  o piloto único e manual da Fase 3 (uma unidade, supervisionada), mas
+  inaceitável para a Fase 7, que provisiona repetidamente sem supervisão:
+  cada unidade nova receberia uma cópia vazia e crescente do schema Core.
+  A Fase 7 não pode começar antes de `database/migrations/tenant/` existir
+  e o provisionador rodar só esse subconjunto.
 
 FASE 7 — Provisionamento de unidade nova nativo (seção 12)
   Só faz sentido depois que o ciclo de vida da Fase 3/4 estiver validado em
-  produção com dado real — provisionar "do zero" é o caso fácil, não deve
+  produção com dado real **e a Fase 6 estiver concluída** (dependência
+  técnica, ver acima) — provisionar "do zero" é o caso fácil, não deve
   ser otimizado antes do caso difícil (migração de dado existente) estar
-  resolvido. Desenho preliminar em `docs/CODEX_CORE_UNIT_DB_FASE_7.md`:
-  criação automática de banco disparada por `ProvisionTenantAction`
-  (hoje o único ponto de criação de `HealthUnit`, já restrito a
-  `isPlatformAdministrator()`), usando uma credencial MySQL dedicada e
-  restrita por padrão de nome (`GRANT ... ON \`sync_hosp_u%\`.*`), nunca a
-  credencial de runtime do app — autorização de aplicação (quem aciona) e
-  privilégio de credencial (o que a conexão pode fazer) são camadas
-  diferentes, e só restringir a primeira não elimina o risco de a segunda
-  vazar por qualquer outro caminho da aplicação. Reaproveita 100% do
-  mecanismo já validado na Fase 3 (`TenantDatabaseLifecycle`,
-  `TenantDatabaseProvisioner`, `TenantSchemaHardener`,
-  `TenantPilotDataSynchronizer`, `TenantDatabaseReconciler`), sem alterar a
-  máquina de estados.
+  resolvido. Desenho revisado em `docs/CODEX_CORE_UNIT_DB_FASE_7.md`, após
+  auditoria externa que encontrou 8 lacunas na primeira versão (privilégio
+  de banco, ativação prematura da unidade, ator do lifecycle, transação de
+  `ProvisionTenantAction`, entre outras) — todas corrigidas ou registradas
+  como pré-requisito explícito. Continua bloqueada e não deve ser
+  implementada nesta rodada.
 ```
 
 Cada fase, ao ser iniciada, ganha seu próprio `docs/CODEX_CORE_UNIT_DB_FASE_N.md`. Fases 0
 a 3 já estão implementadas (`docs/CODEX_CORE_UNIT_DB_FASE_0.md` a
 `docs/CODEX_CORE_UNIT_DB_FASE_3.md`, mais as correções pós-auditoria
 `docs/CODEX_CORE_UNIT_DB_FASE_2_FIXES.md` e `docs/CODEX_CORE_UNIT_DB_FASE_3_FIXES.md`).
-A Fase 7 tem um desenho preliminar (`docs/CODEX_CORE_UNIT_DB_FASE_7.md`), mas **não deve
-ser executada nesta rodada nem antes da Fase 3/4 estarem validadas em produção com dado
-real** — o próprio documento condiciona sua implementação de verdade a esse marco.
+A Fase 7 tem um desenho revisado (`docs/CODEX_CORE_UNIT_DB_FASE_7.md`, corrigido após
+auditoria externa em 2026-08-10), mas **não deve ser executada nesta rodada, nem antes da
+Fase 3/4 estarem validadas em produção com dado real, nem antes da Fase 6 estar concluída**
+(dependência técnica, não só de ordem) — o próprio documento condiciona sua implementação
+de verdade a esses marcos, e ainda lista uma correção prévia necessária em
+`ProvisionTenantAction` (transação que hoje não cobre as conexões Core/Tenant que a ação
+já escreve).
 
 ---
 
