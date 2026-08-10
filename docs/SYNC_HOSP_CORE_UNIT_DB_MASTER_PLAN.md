@@ -722,11 +722,15 @@ FASE 7 — Provisionamento de unidade nova nativo (seção 12)
   produção com dado real **e a Fase 6 estiver concluída** (dependência
   técnica, ver acima) — provisionar "do zero" é o caso fácil, não deve
   ser otimizado antes do caso difícil (migração de dado existente) estar
-  resolvido. Desenho revisado em `docs/CODEX_CORE_UNIT_DB_FASE_7.md`, após
-  auditoria externa que encontrou 8 lacunas na primeira versão (privilégio
-  de banco, ativação prematura da unidade, ator do lifecycle, transação de
-  `ProvisionTenantAction`, entre outras) — todas corrigidas ou registradas
-  como pré-requisito explícito. Continua bloqueada e não deve ser
+  resolvido. Desenho revisado duas vezes em `docs/CODEX_CORE_UNIT_DB_FASE_7.md`
+  após duas auditorias externas (14 achados no total) — a segunda rodada
+  forçou uma mudança real de desenho, não só de texto: credencial de
+  runtime deixou de ser compartilhada entre todas as unidades e passou a
+  ser gerada uma por unidade (blast radius de um vazamento cai de "todos
+  os hospitais" para "uma unidade"), e o registro em `tenant_databases`
+  passou a nascer na mesma transação Core de `ProvisionTenantAction`,
+  antes de qualquer banco físico existir — funcionando como o registro
+  durável de intenção que faltava. Continua bloqueada e não deve ser
   implementada nesta rodada.
 ```
 
