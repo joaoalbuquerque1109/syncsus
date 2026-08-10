@@ -1,5 +1,10 @@
 # Plano Mestre — Arquitetura Core + Banco por Unidade
 
+> **Atualização de implementação (2026-08-09):** as Fases 0, 1 e 2 foram autorizadas
+> e implementadas. Consulte `docs/CODEX_CORE_UNIT_DB_FASE_0.md`,
+> `docs/CODEX_CORE_UNIT_DB_FASE_1.md` e `docs/CODEX_CORE_UNIT_DB_FASE_2.md`. As restrições
+> históricas abaixo registram o contexto em que o plano foi escrito, não o estado atual.
+
 > Documento de planejamento. Nenhum código, migration ou configuração foi alterado ao
 > produzi-lo. Supersede `docs/CODEX_CORE_UNIT_DB_ROADMAP.md` (mantido como registro
 > histórico do primeiro levantamento; ver nota no topo daquele arquivo). Este documento
