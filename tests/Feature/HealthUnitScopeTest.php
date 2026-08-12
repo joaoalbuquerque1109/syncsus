@@ -49,7 +49,7 @@ final class HealthUnitScopeTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertSame($secondUnit->getKey(), session('active_health_unit_id'));
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'user_id' => $user->getKey(),
             'health_unit_id' => $secondUnit->getKey(),
             'action' => 'user.active_health_unit_changed',

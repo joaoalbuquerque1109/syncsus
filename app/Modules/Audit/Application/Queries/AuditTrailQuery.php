@@ -6,6 +6,7 @@ namespace App\Modules\Audit\Application\Queries;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
+use App\Modules\Audit\Infrastructure\Eloquent\SecurityAuditLog;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientAccessLog;
@@ -55,6 +56,19 @@ final class AuditTrailQuery
     }
 
     /** @param array<string, mixed> $filters
+     * @return LengthAwarePaginator<int, SecurityAuditLog>
+     */
+    public function securityEvents(HealthUnit $unit, array $filters): LengthAwarePaginator
+    {
+        $query = SecurityAuditLog::query()
+            ->with('user')
+            ->where('health_unit_id', $unit->getKey());
+        $this->applySecurityFilters($query, $filters);
+
+        return $query->latest('occurred_at')->paginate(50, ['*'], 'security_page')->withQueryString();
+    }
+
+    /** @param array<string, mixed> $filters
      * @return array{events: int, record_accesses: int, login_failures: int, exports: int}
      */
     public function summary(HealthUnit $unit, array $filters): array
@@ -64,12 +78,15 @@ final class AuditTrailQuery
             Carbon::parse((string) $filters['date_to'])->endOfDay(),
         ];
         $events = AuditLog::query()->where('health_unit_id', $unit->getKey())->whereBetween('occurred_at', $period);
+        $securityEvents = SecurityAuditLog::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->whereBetween('occurred_at', $period);
         $accesses = PatientAccessLog::query()->where('health_unit_id', $unit->getKey())->whereBetween('occurred_at', $period);
 
         return [
-            'events' => (clone $events)->count(),
+            'events' => (clone $events)->count() + (clone $securityEvents)->count(),
             'record_accesses' => $accesses->count(),
-            'login_failures' => (clone $events)->where('action', 'user.login_failed')->count(),
+            'login_failures' => (clone $securityEvents)->where('action', 'user.login_failed')->count(),
             'exports' => (clone $events)->where('action', 'report.exported')->count(),
         ];
     }
@@ -77,12 +94,18 @@ final class AuditTrailQuery
     /** @return list<string> */
     public function actions(HealthUnit $unit): array
     {
-        return AuditLog::query()
+        $clinical = AuditLog::query()
             ->where('health_unit_id', $unit->getKey())
             ->distinct()
-            ->orderBy('action')
             ->pluck('action')
             ->all();
+        $security = SecurityAuditLog::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->distinct()
+            ->pluck('action')
+            ->all();
+
+        return collect([...$clinical, ...$security])->unique()->sort()->values()->all();
     }
 
     /** @return list<string> */
@@ -125,6 +148,23 @@ final class AuditTrailQuery
                 ->pluck('id')
                 ->all();
             $query->whereIn('encounter_id', $encounterIds);
+        }
+    }
+
+    /** @param Builder<SecurityAuditLog> $query
+     * @param  array<string, mixed>  $filters
+     */
+    private function applySecurityFilters(Builder $query, array $filters): void
+    {
+        $query->whereBetween('occurred_at', [
+            Carbon::parse((string) $filters['date_from'])->startOfDay(),
+            Carbon::parse((string) $filters['date_to'])->endOfDay(),
+        ]);
+        if (filled($filters['user_id'] ?? null)) {
+            $query->where('user_id', $filters['user_id']);
+        }
+        if (filled($filters['action'] ?? null)) {
+            $query->where('action', (string) $filters['action']);
         }
     }
 

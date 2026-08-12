@@ -6,6 +6,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 return new class extends Migration
 {
@@ -56,6 +57,23 @@ return new class extends Migration
 
     public function up(): void
     {
+        Schema::table('specialties', function (Blueprint $blueprint): void {
+            $blueprint->ulid('public_id')->nullable()->after('id');
+        });
+
+        DB::table('specialties')->select('id')->orderBy('id')->chunkById(500, function ($specialties): void {
+            foreach ($specialties as $specialty) {
+                DB::table('specialties')->where('id', $specialty->id)->update([
+                    'public_id' => (string) Str::ulid(),
+                ]);
+            }
+        });
+
+        Schema::table('specialties', function (Blueprint $blueprint): void {
+            $blueprint->ulid('public_id')->nullable(false)->change();
+            $blueprint->unique('public_id');
+        });
+
         foreach ($this->references as $table => $references) {
             if ($references === []) {
                 continue;
@@ -84,6 +102,11 @@ return new class extends Migration
                 $blueprint->dropColumn(array_keys($references));
             });
         }
+
+        Schema::table('specialties', function (Blueprint $blueprint): void {
+            $blueprint->dropUnique(['public_id']);
+            $blueprint->dropColumn('public_id');
+        });
     }
 
     private function backfill(

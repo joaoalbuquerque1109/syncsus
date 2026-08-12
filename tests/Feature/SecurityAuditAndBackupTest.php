@@ -6,6 +6,7 @@ namespace Tests\Feature;
 
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
+use App\Modules\Audit\Infrastructure\Eloquent\SecurityAuditLog;
 use App\Modules\Identity\Application\Services\LimitConcurrentSessions;
 use App\Modules\Operations\Application\Services\BackupSetVerifier;
 use App\Modules\Patients\Domain\Enums\PatientSex;
@@ -100,7 +101,7 @@ final class SecurityAuditAndBackupTest extends TestCase
             ],
             (int) $unit->getKey(),
         );
-        $context = AuditLog::query()->where('action', 'security.redaction_test')->sole()->context;
+        $context = SecurityAuditLog::query()->where('action', 'security.redaction_test')->sole()->context;
         $this->assertSame('[REDACTED]', $context['password']);
         $this->assertSame('[REDACTED]', $context['nested']['api_token']);
         $this->assertSame('kept', $context['nested']['safe']);
@@ -134,7 +135,7 @@ final class SecurityAuditAndBackupTest extends TestCase
         $unit = $this->createHealthUnit();
         $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         foreach ([100, 200, 300] as $lastActivity) {
-            DB::table('sessions')->insert([
+            DB::connection('core')->table('sessions')->insert([
                 'id' => Str::random(40),
                 'user_id' => $user->getKey(),
                 'ip_address' => '127.0.0.1',

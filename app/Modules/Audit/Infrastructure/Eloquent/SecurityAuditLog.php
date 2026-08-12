@@ -6,23 +6,15 @@ namespace App\Modules\Audit\Infrastructure\Eloquent;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
-use App\Modules\Patients\Infrastructure\Eloquent\Patient;
-use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
-use App\Support\Models\TenantModel;
-use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use App\Support\Models\CoreModel;
+use App\Support\Models\HasPublicId;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class AuditLog extends TenantModel
+final class SecurityAuditLog extends CoreModel
 {
-    use HasUlids;
+    use HasPublicId;
 
     protected $guarded = [];
-
-    /** @return list<string> */
-    public function uniqueIds(): array
-    {
-        return ['public_id'];
-    }
 
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
@@ -34,18 +26,6 @@ final class AuditLog extends TenantModel
     public function healthUnit(): BelongsTo
     {
         return $this->belongsTo(HealthUnit::class);
-    }
-
-    /** @return BelongsTo<Patient, $this> */
-    public function patient(): BelongsTo
-    {
-        return $this->belongsTo(Patient::class);
-    }
-
-    /** @return BelongsTo<Encounter, $this> */
-    public function encounter(): BelongsTo
-    {
-        return $this->belongsTo(Encounter::class);
     }
 
     protected function casts(): array

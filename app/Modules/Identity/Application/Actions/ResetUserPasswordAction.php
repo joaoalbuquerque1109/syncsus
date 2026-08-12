@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Identity\Application\Actions;
 
-use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
+use App\Modules\Audit\Infrastructure\Eloquent\SecurityAuditLog;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 final class ResetUserPasswordAction
 {
@@ -28,19 +29,21 @@ final class ResetUserPasswordAction
             throw new AuthorizationException('O usuario pertence a outra organizacao.');
         }
 
-        DB::transaction(function () use ($actor, $target, $temporaryPassword, $healthUnitId, $source): void {
+        DB::connection('core')->transaction(function () use ($actor, $target, $temporaryPassword, $healthUnitId, $source): void {
             $target->forceFill([
                 'password' => Hash::make($temporaryPassword),
                 'must_change_password' => true,
                 'password_changed_at' => now(),
             ])->save();
 
-            DB::table('sessions')->where('user_id', $target->getKey())->delete();
+            DB::connection((string) config('session.connection', 'core'))
+                ->table('sessions')->where('user_id', $target->getKey())->delete();
 
-            AuditLog::query()->create([
+            SecurityAuditLog::query()->create([
                 'user_id' => $actor->getKey(),
                 'health_unit_id' => $healthUnitId ?? $actor->default_health_unit_id,
                 'action' => 'user.password_reset_by_administrator',
+                'correlation_id' => (string) Str::ulid(),
                 'auditable_type' => User::class,
                 'auditable_id' => $target->getKey(),
                 'changed_fields' => ['password' => 'redacted', 'must_change_password' => true],

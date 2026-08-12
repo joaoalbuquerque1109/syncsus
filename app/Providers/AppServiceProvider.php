@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
 use App\Modules\Documents\Application\Contracts\PdfRenderer;
 use App\Modules\Documents\Infrastructure\Pdf\DompdfRenderer;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
@@ -41,13 +40,13 @@ final class AppServiceProvider extends ServiceProvider
     {
         Event::listen('eloquent.saved: *', function (string $event, array $models): void {
             $model = $models[0] ?? null;
-            if ($model instanceof TenantModel || $model instanceof AuditLog) {
+            if ($model instanceof TenantModel) {
                 app(TenantShadowWriter::class)->mirrorSaved($model);
             }
         });
         Event::listen('eloquent.deleted: *', function (string $event, array $models): void {
             $model = $models[0] ?? null;
-            if ($model instanceof TenantModel || $model instanceof AuditLog) {
+            if ($model instanceof TenantModel) {
                 app(TenantShadowWriter::class)->mirrorDeleted($model);
             }
         });

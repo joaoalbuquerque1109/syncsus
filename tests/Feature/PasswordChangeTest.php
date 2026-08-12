@@ -52,7 +52,7 @@ final class PasswordChangeTest extends TestCase
         $this->assertFalse($user->must_change_password);
         $this->assertTrue(Hash::check('Fresh#Password2026', (string) $user->password));
         $this->assertNotNull($user->password_changed_at);
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'user_id' => $user->getKey(),
             'action' => 'user.password_changed',
         ]);

@@ -21,6 +21,7 @@ final class AuditTrailController extends Controller
 
         return view('audit.index', [
             'events' => $trail->events($unit, $filters),
+            'securityEvents' => $trail->securityEvents($unit, $filters),
             'accesses' => $trail->accesses($unit, $filters),
             'summary' => $trail->summary($unit, $filters),
             'actions' => $trail->actions($unit),

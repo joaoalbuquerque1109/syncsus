@@ -115,10 +115,10 @@ final class TenantDatabasePilotTest extends TestCase
             [],
             (int) $unit->getKey(),
         );
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'action' => 'tenant.pilot_cutover_verified',
             'health_unit_id' => $unit->getKey(),
-        ], $dedicated);
+        ], 'core');
         $this->assertDatabaseMissing('audit_logs', [
             'action' => 'tenant.pilot_cutover_verified',
         ], 'tenant_test');
