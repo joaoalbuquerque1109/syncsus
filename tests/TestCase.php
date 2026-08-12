@@ -29,6 +29,8 @@ abstract class TestCase extends BaseTestCase
         'patient_unit_migration_conflicts', 'core_number_sequences', 'diagnosis_codes', 'sus_procedures',
         'exams', 'exam_groups', 'exam_group_items', 'public_lookup_index',
         'tenant_databases', 'tenant_database_events',
+        'security_audit_logs', 'backup_logs', 'backup_verifications', 'unit_report_snapshots',
+        'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs', 'sessions', 'password_reset_tokens',
     ];
 
     /** @var list<string> */

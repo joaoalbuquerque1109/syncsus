@@ -5,26 +5,34 @@ declare(strict_types=1);
 namespace App\Modules\Operations\Infrastructure\Eloquent;
 
 use App\Modules\Identity\Infrastructure\Eloquent\User;
-use Illuminate\Database\Eloquent\Concerns\HasUlids;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\CoreModel;
+use App\Support\Models\HasPublicId;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
-final class BackupVerification extends Model
+final class BackupVerification extends CoreModel
 {
-    use HasUlids;
+    use HasPublicId;
 
     protected $guarded = [];
-
-    /** @return list<string> */
-    public function uniqueIds(): array
-    {
-        return ['public_id'];
-    }
 
     /** @return BelongsTo<User, $this> */
     public function verifiedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function finishedAt(): ?CarbonImmutable
+    {
+        $finishedAt = $this->getAttribute('finished_at');
+        if ($finishedAt === null) {
+            return null;
+        }
+
+        return $finishedAt instanceof CarbonImmutable
+            ? $finishedAt
+            : Carbon::parse((string) $finishedAt)->toImmutable();
     }
 
     protected function casts(): array
@@ -33,6 +41,9 @@ final class BackupVerification extends Model
             'checks' => 'array',
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
+            'core_reference_at' => 'immutable_datetime',
+            'restore_point_at' => 'immutable_datetime',
+            'restore_compatible' => 'boolean',
         ];
     }
 }

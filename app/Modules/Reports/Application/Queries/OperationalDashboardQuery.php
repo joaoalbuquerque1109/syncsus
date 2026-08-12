@@ -37,7 +37,7 @@ final class OperationalDashboardQuery
     }
 
     /** @return array<string, int|string> */
-    private function freshMetrics(HealthUnit $unit): array
+    public function freshMetrics(HealthUnit $unit): array
     {
         $activeStatuses = [
             EncounterStatus::WaitingTriage,
