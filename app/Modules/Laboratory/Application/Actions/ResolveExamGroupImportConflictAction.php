@@ -27,38 +27,64 @@ final readonly class ResolveExamGroupImportConflictAction
         string $decision,
         User $actor,
     ): ExamGroupImportConflict {
-        return DB::transaction(function () use ($conflict, $decision, $actor): ExamGroupImportConflict {
-            $conflict = ExamGroupImportConflict::query()
+        $tenantConnection = (string) $conflict->getConnectionName();
+        $preflight = ExamGroupImportConflict::on($tenantConnection)
+            ->with('integration')
+            ->findOrFail($conflict->getKey());
+        $group = $preflight->resolveGroup()?->load('items.exam');
+        $preflight->setRelation('group', $group);
+        $this->authorize($preflight, $actor);
+        if ($preflight->status !== 'pending') {
+            throw new LogicException('Este conflito de grupo já foi resolvido.');
+        }
+        if (! in_array($decision, ['accept', 'ignore', 'merge'], true)) {
+            throw new InvalidArgumentException('Decisão inválida para o conflito de grupo.');
+        }
+
+        $createdGroup = null;
+        if ($decision !== 'ignore' && $group === null) {
+            $createdGroup = ExamGroup::query()->create([
+                'organization_id' => $preflight->organization_id,
+                'name' => $preflight->external_name,
+                'normalized_name' => $preflight->normalized_name,
+                'is_active' => true,
+            ]);
+        }
+        $preparedGroup = $group ?? $createdGroup;
+        $before = $group?->items->pluck('exam.public_id')->filter()->values()->all() ?? [];
+        if ($decision !== 'ignore') {
+            if ($preparedGroup === null) {
+                throw new LogicException('Não foi possível preparar o grupo canônico.');
+            }
+            [$examIds, $displayOrders] = $this->resolveSourceItems($preflight);
+            if ($decision === 'merge') {
+                $examIds = $preparedGroup->items()->pluck('exam_id')->merge($examIds)->unique()->values()->all();
+            }
+            $this->syncItems->execute($preparedGroup, $examIds, $displayOrders, $decision === 'merge');
+            $preparedGroup->load('items.exam');
+        }
+        $after = $preparedGroup?->items->pluck('exam.public_id')->filter()->values()->all() ?? $before;
+
+        return DB::connection($tenantConnection)->transaction(function () use (
+            $conflict,
+            $decision,
+            $actor,
+            $preparedGroup,
+            $tenantConnection,
+            $before,
+            $after,
+        ): ExamGroupImportConflict {
+            $conflict = ExamGroupImportConflict::on($tenantConnection)
                 ->with('integration')
                 ->lockForUpdate()
                 ->findOrFail($conflict->getKey());
             $group = $conflict->resolveGroup()?->load('items.exam');
+            $group ??= $preparedGroup;
             $conflict->setRelation('group', $group);
             $this->authorize($conflict, $actor);
             if ($conflict->status !== 'pending') {
                 throw new LogicException('Este conflito de grupo já foi resolvido.');
             }
-            if (! in_array($decision, ['accept', 'ignore', 'merge'], true)) {
-                throw new InvalidArgumentException('Decisão inválida para o conflito de grupo.');
-            }
-
-            $before = $group?->items->pluck('exam.public_id')->filter()->values()->all() ?? [];
-            if ($decision !== 'ignore') {
-                [$examIds, $displayOrders] = $this->resolveSourceItems($conflict);
-                if ($group === null) {
-                    $group = ExamGroup::query()->create([
-                        'organization_id' => $conflict->organization_id,
-                        'name' => $conflict->external_name,
-                        'normalized_name' => $conflict->normalized_name,
-                        'is_active' => true,
-                    ]);
-                }
-                if ($decision === 'merge') {
-                    $examIds = $group->items()->pluck('exam_id')->merge($examIds)->unique()->values()->all();
-                }
-                $this->syncItems->execute($group, $examIds, $displayOrders, $decision === 'merge');
-            }
-
             $conflict->forceFill([
                 'exam_group_id' => $group?->getKey(),
                 'status' => 'resolved',
@@ -66,8 +92,6 @@ final readonly class ResolveExamGroupImportConflictAction
                 'resolved_by' => $actor->getKey(),
                 'resolved_at' => now(),
             ])->save();
-            $group?->load('items.exam');
-            $after = $group?->items->pluck('exam.public_id')->filter()->values()->all() ?? $before;
             $this->audit->execute(
                 'laboratory.exam_group_import_conflict_resolved',
                 $actor,

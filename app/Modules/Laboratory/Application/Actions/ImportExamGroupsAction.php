@@ -10,7 +10,6 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroup;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroupImportConflict;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use SplFileObject;
@@ -29,85 +28,83 @@ final readonly class ImportExamGroupsAction
             throw new RuntimeException('Arquivo CSV de grupos de exames não encontrado.');
         }
 
-        return DB::transaction(function () use ($integration, $path): array {
-            $counts = ['created' => 0, 'unchanged' => 0, 'conflicts' => 0];
-            foreach ($this->groups($path) as $sourceGroup) {
-                $normalizedName = $this->normalizer->normalize($sourceGroup['name']);
-                $group = ExamGroup::query()
-                    ->where('organization_id', $integration->organization_id)
-                    ->where('normalized_name', $normalizedName)
-                    ->with('items')
-                    ->first();
-                $codes = collect($sourceGroup['items'])->pluck('external_code')->unique()->values();
-                $mappings = ExamMapping::query()
-                    ->where('laboratory_integration_id', $integration->getKey())
-                    ->where('is_active', true)
-                    ->whereIn('exam_public_id', $this->catalog
-                        ->activeExamPublicIdsForOrganization((int) $integration->organization_id))
-                    ->whereIn('external_code', $codes)
-                    ->get()
-                    ->keyBy('external_code');
-                $missingCodes = $codes->reject(fn (string $code): bool => $mappings->has($code))->values()->all();
-                $sourceItems = collect($sourceGroup['items'])->map(fn (array $item): array => [
-                    ...$item,
-                    'exam_id' => $mappings->get($item['external_code'])?->exam_id,
-                ])->all();
+        $counts = ['created' => 0, 'unchanged' => 0, 'conflicts' => 0];
+        foreach ($this->groups($path) as $sourceGroup) {
+            $normalizedName = $this->normalizer->normalize($sourceGroup['name']);
+            $group = ExamGroup::query()
+                ->where('organization_id', $integration->organization_id)
+                ->where('normalized_name', $normalizedName)
+                ->with('items')
+                ->first();
+            $codes = collect($sourceGroup['items'])->pluck('external_code')->unique()->values();
+            $mappings = ExamMapping::query()
+                ->where('laboratory_integration_id', $integration->getKey())
+                ->where('is_active', true)
+                ->whereIn('exam_public_id', $this->catalog
+                    ->activeExamPublicIdsForOrganization((int) $integration->organization_id))
+                ->whereIn('external_code', $codes)
+                ->get()
+                ->keyBy('external_code');
+            $missingCodes = $codes->reject(fn (string $code): bool => $mappings->has($code))->values()->all();
+            $sourceItems = collect($sourceGroup['items'])->map(fn (array $item): array => [
+                ...$item,
+                'exam_id' => $mappings->get($item['external_code'])?->exam_id,
+            ])->all();
 
-                if ($missingCodes !== []) {
-                    $this->recordConflict(
-                        $integration,
-                        $group,
-                        $sourceGroup,
-                        $normalizedName,
-                        'missing_mappings',
-                        $sourceItems,
-                        $missingCodes,
-                    );
-                    $counts['conflicts']++;
-
-                    continue;
-                }
-
-                $sourceExamIds = collect($sourceItems)->pluck('exam_id')->map(fn (mixed $id): int => (int) $id)->unique()->values();
-                if ($group === null) {
-                    $group = ExamGroup::query()->create([
-                        'organization_id' => $integration->organization_id,
-                        'name' => $sourceGroup['name'],
-                        'normalized_name' => $normalizedName,
-                        'is_active' => true,
-                    ]);
-                    foreach ($sourceItems as $index => $item) {
-                        $group->items()->create([
-                            'exam_id' => $item['exam_id'],
-                            'display_order' => $item['display_order'],
-                        ]);
-                    }
-                    $counts['created']++;
-
-                    continue;
-                }
-
-                $currentExamIds = $group->items->pluck('exam_id')->map(fn (mixed $id): int => (int) $id)->unique()->values();
-                if ($currentExamIds->sort()->values()->all() === $sourceExamIds->sort()->values()->all()) {
-                    $counts['unchanged']++;
-
-                    continue;
-                }
-
+            if ($missingCodes !== []) {
                 $this->recordConflict(
                     $integration,
                     $group,
                     $sourceGroup,
                     $normalizedName,
-                    'composition_mismatch',
+                    'missing_mappings',
                     $sourceItems,
-                    [],
+                    $missingCodes,
                 );
                 $counts['conflicts']++;
+
+                continue;
             }
 
-            return $counts;
-        });
+            $sourceExamIds = collect($sourceItems)->pluck('exam_id')->map(fn (mixed $id): int => (int) $id)->unique()->values();
+            if ($group === null) {
+                $group = ExamGroup::query()->create([
+                    'organization_id' => $integration->organization_id,
+                    'name' => $sourceGroup['name'],
+                    'normalized_name' => $normalizedName,
+                    'is_active' => true,
+                ]);
+                foreach ($sourceItems as $index => $item) {
+                    $group->items()->create([
+                        'exam_id' => $item['exam_id'],
+                        'display_order' => $item['display_order'],
+                    ]);
+                }
+                $counts['created']++;
+
+                continue;
+            }
+
+            $currentExamIds = $group->items->pluck('exam_id')->map(fn (mixed $id): int => (int) $id)->unique()->values();
+            if ($currentExamIds->sort()->values()->all() === $sourceExamIds->sort()->values()->all()) {
+                $counts['unchanged']++;
+
+                continue;
+            }
+
+            $this->recordConflict(
+                $integration,
+                $group,
+                $sourceGroup,
+                $normalizedName,
+                'composition_mismatch',
+                $sourceItems,
+                [],
+            );
+            $counts['conflicts']++;
+        }
+
+        return $counts;
     }
 
     /**

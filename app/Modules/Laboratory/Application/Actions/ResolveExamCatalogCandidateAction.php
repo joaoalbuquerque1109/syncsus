@@ -29,14 +29,38 @@ final readonly class ResolveExamCatalogCandidateAction
         ?Exam $selectedExam = null,
         bool $enableForUnit = false,
     ): ExamCatalogImportCandidate {
-        return DB::transaction(function () use (
+        $tenantConnection = (string) $candidate->getConnectionName();
+        $preflight = ExamCatalogImportCandidate::on($tenantConnection)
+            ->with(['laboratoryExam', 'integration', 'existingMapping'])
+            ->findOrFail($candidate->getKey());
+        $this->authorize($preflight, $actor);
+        if ($preflight->resolution !== null) {
+            throw new LogicException('Este candidato de catálogo já foi resolvido.');
+        }
+
+        $createdExam = null;
+        if ($decision === 'create') {
+            if ($preflight->match_status !== ExamCatalogMatchStatus::Unmatched) {
+                throw new LogicException('A criação de exame canônico exige um candidato sem correspondência.');
+            }
+            $createdExam = Exam::query()->create([
+                'organization_id' => $preflight->organization_id,
+                'name' => $preflight->laboratoryExam->name,
+                'sus_procedure_code' => $preflight->laboratoryExam->sus_procedure_code,
+                'is_active' => true,
+            ]);
+        }
+
+        return DB::connection($tenantConnection)->transaction(function () use (
             $candidate,
             $decision,
             $actor,
             $selectedExam,
             $enableForUnit,
+            $createdExam,
+            $tenantConnection,
         ): ExamCatalogImportCandidate {
-            $candidate = ExamCatalogImportCandidate::query()
+            $candidate = ExamCatalogImportCandidate::on($tenantConnection)
                 ->with(['laboratoryExam', 'integration', 'existingMapping'])
                 ->lockForUpdate()
                 ->findOrFail($candidate->getKey());
@@ -48,7 +72,7 @@ final readonly class ResolveExamCatalogCandidateAction
             $beforeMapping = $candidate->existingMapping?->resolveExam()?->public_id;
             $mapping = match ($decision) {
                 'confirm' => $this->confirm($candidate, $actor),
-                'create' => $this->createCanonicalExam($candidate, $actor),
+                'create' => $this->createCanonicalExam($candidate, $actor, $createdExam),
                 'keep_existing' => $this->keepExisting($candidate),
                 'remap' => $this->remap($candidate, $actor, $selectedExam),
                 'ignore' => null,
@@ -110,17 +134,17 @@ final readonly class ResolveExamCatalogCandidateAction
         return $this->saveMapping($candidate, $suggestedExam, ExamMappingMatchType::Probable, $actor);
     }
 
-    private function createCanonicalExam(ExamCatalogImportCandidate $candidate, User $actor): ExamMapping
-    {
-        if ($candidate->match_status !== ExamCatalogMatchStatus::Unmatched) {
+    private function createCanonicalExam(
+        ExamCatalogImportCandidate $candidate,
+        User $actor,
+        ?Exam $exam,
+    ): ExamMapping {
+        if ($candidate->match_status !== ExamCatalogMatchStatus::Unmatched || $exam === null) {
             throw new LogicException('A criação de exame canônico exige um candidato sem correspondência.');
         }
-        $exam = Exam::query()->create([
-            'organization_id' => $candidate->organization_id,
-            'name' => $candidate->laboratoryExam->name,
-            'sus_procedure_code' => $candidate->laboratoryExam->sus_procedure_code,
-            'is_active' => true,
-        ]);
+        if ((int) $exam->organization_id !== (int) $candidate->organization_id) {
+            throw new LogicException('O exame criado pertence a outra organização.');
+        }
 
         return $this->saveMapping($candidate, $exam, ExamMappingMatchType::Manual, $actor);
     }
