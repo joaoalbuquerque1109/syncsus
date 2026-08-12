@@ -1,14 +1,16 @@
 # Plano Mestre — Arquitetura Core + Banco por Unidade
 
-> **Atualização de implementação (2026-08-10):** as Fases 0, 1 e 2 foram autorizadas
-> e implementadas. O control plane provider-neutral da Fase 3 também foi implementado;
-> a execução em uma unidade piloto real permanece uma decisão operacional explícita.
-> A fundação da Fase 7 (registro atômico, credencial por unidade e worker de
-> infraestrutura isolado/retomável) também foi implementada, sem antecipar migrations,
-> reconciliação, continuidade ou cutover automáticos.
+> **Atualização de implementação (2026-08-11):** as Fases 0 a 6 foram autorizadas e
+> implementadas. O piloto físico está ativo na `URGENCIA-CENTRAL`; as Fases 5/6 removeram
+> o fan-out HTTP cross-unidade, formalizaram backup Tenant, separaram migrations de
+> unidade e ativaram detecção central de drift.
+> A Fase 7 também foi implementada: registro atômico, credencial por unidade, worker
+> isolado/retomável, migrations Tenant, sincronização e reconciliação convergentes, com
+> gates fail-closed para continuidade, ambiente MySQL e aprovação de cutover.
 > Consulte `docs/CODEX_CORE_UNIT_DB_FASE_0.md`,
-> `docs/CODEX_CORE_UNIT_DB_FASE_1.md`, `docs/CODEX_CORE_UNIT_DB_FASE_2.md` e
-> `docs/CODEX_CORE_UNIT_DB_FASE_3.md`. As restrições
+> `docs/CODEX_CORE_UNIT_DB_FASE_1.md`, `docs/CODEX_CORE_UNIT_DB_FASE_2.md`,
+> `docs/CODEX_CORE_UNIT_DB_FASE_3.md`, `docs/CODEX_CORE_UNIT_DB_FASE_4.md` e
+> `docs/CODEX_CORE_UNIT_DB_FASE_5.md`/`docs/CODEX_CORE_UNIT_DB_FASE_6.md`. As restrições
 > históricas abaixo registram o contexto em que o plano foi escrito, não o estado atual.
 
 > Documento de planejamento. Nenhum código, migration ou configuração foi alterado ao
@@ -723,6 +725,8 @@ FASE 6 — Migrations "de Unidade" com detecção de drift (seção 13)
   cada unidade nova receberia uma cópia vazia e crescente do schema Core.
   A Fase 7 não pode começar antes de `database/migrations/tenant/` existir
   e o provisionador rodar só esse subconjunto.
+  IMPLEMENTADA em 2026-08-11: baseline Tenant isolada, provisionador restrito
+  a `database/migrations/tenant/`, assinatura versionada e auditoria por unidade.
 
 FASE 7 — Provisionamento de unidade nova nativo (seção 12)
   Só faz sentido depois que o ciclo de vida da Fase 3/4 estiver validado em
@@ -739,19 +743,21 @@ FASE 7 — Provisionamento de unidade nova nativo (seção 12)
   os hospitais" para "uma unidade"), e o registro em `tenant_databases`
   passou a nascer na mesma transação Core de `ProvisionTenantAction`,
   antes de qualquer banco físico existir — funcionando como o registro
-  durável de intenção que faltava. A automação posterior aos grants continua
-  bloqueada por Fase 6, validação real e evidência de continuidade.
+  durável de intenção que faltava. IMPLEMENTADA em 2026-08-11: a automação posterior aos
+  grants converge até `VALIDATING`, exige evidência real de continuidade e somente cruza
+  o cutover com aprovação explícita. A execução MySQL real permanece condicionada à
+  validação do ambiente descrita no runbook.
 ```
 
 Cada fase, ao ser iniciada, ganha seu próprio `docs/CODEX_CORE_UNIT_DB_FASE_N.md`. Fases 0
-a 3 já estão implementadas (`docs/CODEX_CORE_UNIT_DB_FASE_0.md` a
-`docs/CODEX_CORE_UNIT_DB_FASE_3.md`, mais as correções pós-auditoria
+a 6 já estão implementadas (`docs/CODEX_CORE_UNIT_DB_FASE_0.md` a
+`docs/CODEX_CORE_UNIT_DB_FASE_6.md`, mais as correções pós-auditoria
 `docs/CODEX_CORE_UNIT_DB_FASE_2_FIXES.md` e `docs/CODEX_CORE_UNIT_DB_FASE_3_FIXES.md`).
-A Fase 7 tem desenho e fundação implementada
-(`docs/CODEX_CORE_UNIT_DB_FASE_7.md`): registro atômico, unidade inativa, credencial por
-unidade e provisionamento físico retomável. **Migrations automáticas, sincronização,
-reconciliação, continuidade e cutover não devem ser ativados antes da Fase 3/4 estar
-validada em produção com dado real e da Fase 6 estar concluída.**
+A Fase 7 está implementada (`docs/CODEX_CORE_UNIT_DB_FASE_7.md` e
+`docs/CODEX_CORE_UNIT_DB_FASE_7_IMPL.md`): registro atômico, unidade inativa, credencial
+por unidade, provisionamento retomável e fluxo convergente completo. Continuidade e
+cutover continuam sendo gates explícitos, e o worker recusa DDL sem validação do ambiente
+MySQL.
 
 ---
 
