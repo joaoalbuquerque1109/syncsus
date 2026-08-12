@@ -8,17 +8,20 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 
 trait RefreshCoreAndTenantDatabase
 {
-    use RefreshDatabase {
-        migrateDatabases as migrateTenantDatabase;
-    }
+    use RefreshDatabase;
 
     protected function migrateDatabases()
     {
         $this->artisan('migrate:fresh', [
             '--database' => 'core',
+            '--path' => (string) config('tenancy.migrations.core_path'),
             ...$this->migrateFreshUsing(),
         ]);
 
-        $this->migrateTenantDatabase();
+        $this->artisan('migrate:fresh', [
+            '--database' => 'tenant_test',
+            '--path' => (string) config('tenancy.migrations.tenant_path'),
+            ...$this->migrateFreshUsing(),
+        ]);
     }
 }

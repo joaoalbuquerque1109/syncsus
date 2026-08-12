@@ -15,6 +15,14 @@ final class TenantDatabaseEvent extends CoreModel
 
     protected $guarded = [];
 
+    /** @return array<string, mixed> */
+    public function contextPayload(): array
+    {
+        $context = $this->getAttribute('context');
+
+        return is_array($context) ? $context : [];
+    }
+
     /** @return BelongsTo<TenantDatabase, $this> */
     public function tenantDatabase(): BelongsTo
     {

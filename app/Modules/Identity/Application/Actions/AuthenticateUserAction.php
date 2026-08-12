@@ -79,7 +79,7 @@ final readonly class AuthenticateUserAction
             ]);
         }
 
-        DB::transaction(function () use ($request, $user, $auditHealthUnitId): void {
+        DB::connection('core')->transaction(function () use ($request, $user, $auditHealthUnitId): void {
             $user->forceFill(['last_login_at' => now()])->save();
             $this->recordAuditEvent->execute(
                 'user.logged_in',

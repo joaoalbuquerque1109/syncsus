@@ -120,7 +120,8 @@ final class UserManagementController extends Controller
                 'web_administration',
             );
         } elseif (! $active) {
-            DB::table('sessions')->where('user_id', $managedUser->getKey())->delete();
+            DB::connection((string) config('session.connection', 'core'))
+                ->table('sessions')->where('user_id', $managedUser->getKey())->delete();
         }
         $audit->execute('user.updated', $request, $actor, [
             'managed_user' => $managedUser->public_id,

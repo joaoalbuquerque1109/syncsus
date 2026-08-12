@@ -16,14 +16,14 @@ final readonly class ChangePasswordAction
 
     public function execute(User $user, string $password, Request $request): void
     {
-        DB::transaction(function () use ($user, $password, $request): void {
+        DB::connection('core')->transaction(function () use ($user, $password, $request): void {
             $user->forceFill([
                 'password' => Hash::make($password),
                 'must_change_password' => false,
                 'password_changed_at' => now(),
             ])->save();
 
-            DB::table('sessions')
+            DB::connection((string) config('session.connection', 'core'))->table('sessions')
                 ->where('user_id', $user->getKey())
                 ->where('id', '!=', $request->session()->getId())
                 ->delete();
