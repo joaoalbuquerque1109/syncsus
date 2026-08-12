@@ -6,10 +6,17 @@ $profiles = json_decode((string) env('TENANT_DATABASE_PROFILES', '{}'), true);
 
 return [
     'legacy_connection' => env('TENANT_LEGACY_CONNECTION', env('DB_CONNECTION', 'sqlite')),
+    'migrations' => [
+        'core_path' => 'database/migrations',
+        'tenant_path' => 'database/migrations/tenant',
+    ],
     'database_profiles' => is_array($profiles) ? $profiles : [],
     'native_provisioning' => [
         'queue' => env('TENANT_PROVISIONING_QUEUE', 'tenant-provisioning'),
         'worker_enabled' => env('TENANT_PROVISIONING_WORKER', false),
+        'automatic_cutover_enabled' => env('TENANT_AUTOMATIC_CUTOVER', false),
+        'expected_partial_revokes' => env('TENANT_PROVISIONING_EXPECTED_PARTIAL_REVOKES'),
+        'require_tls' => env('TENANT_PROVISIONING_REQUIRE_TLS', true),
         'runtime_host' => env('TENANT_RUNTIME_ACCOUNT_HOST', ''),
         'runtime_connection' => [
             'driver' => 'mysql',

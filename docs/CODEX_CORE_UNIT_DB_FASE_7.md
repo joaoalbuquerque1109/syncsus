@@ -1,9 +1,10 @@
 # Fase 7 — Provisionamento nativo de unidade nova
 
-> Documento de planejamento e registro da fundação implementada. O registro nativo,
-> credenciais persistidas antes dos efeitos externos e o worker de infraestrutura foram
-> implementados; migrations, reconciliação, continuidade e cutover automáticos continuam
-> bloqueados pelos pré-requisitos abaixo.
+> **Implementada em 2026-08-11.** O registro nativo, a orquestração convergente, as
+> migrations Tenant, sincronização, reconciliação e os gates de continuidade/cutover
+> estão implementados. A ativação contra MySQL de produção continua condicionada à
+> confirmação operacional de versão, `partial_revokes`, host restrito e TLS. O registro
+> executável está em `docs/CODEX_CORE_UNIT_DB_FASE_7_IMPL.md`.
 > **Não deve ser implementado nesta rodada nem antes da Fase 3/4 estarem validadas em
 > produção com dado real, nem antes da Fase 6 estar concluída** (dependência técnica, não
 > só cronológica — ver seção "Pré-requisitos"). Revisado pela segunda vez em 2026-08-10

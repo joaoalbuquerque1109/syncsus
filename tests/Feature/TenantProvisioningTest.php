@@ -79,7 +79,7 @@ final class TenantProvisioningTest extends TestCase
         $this->assertDatabaseCount('entry_types', 3);
         $this->assertDatabaseCount('queues', 4);
         $this->assertDatabaseCount('panels', 1);
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'action' => 'organization.provisioned',
             'health_unit_id' => $unit->getKey(),
         ]);
@@ -133,6 +133,19 @@ final class TenantProvisioningTest extends TestCase
             Crypt::decryptString((string) $database->encrypted_runtime_password),
             $configuration['password'],
         );
+    }
+
+    public function test_native_worker_refuses_ddl_without_explicit_partial_revokes_expectation(): void
+    {
+        $unit = $this->createHealthUnit('NATIVE-ENVIRONMENT');
+        $actor = $this->createPlatformAdministrator();
+        $database = app(TenantDatabaseLifecycle::class)->registerNative($unit, $actor);
+        config()->set('tenancy.native_provisioning.worker_enabled', true);
+        config()->set('tenancy.native_provisioning.expected_partial_revokes');
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('TENANT_PROVISIONING_EXPECTED_PARTIAL_REVOKES');
+        app(TenantInfrastructureProvisioner::class)->provision($database);
     }
 
     public function test_native_unit_is_activated_only_when_lifecycle_reaches_tenant(): void

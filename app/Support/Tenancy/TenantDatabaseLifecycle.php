@@ -9,6 +9,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabaseEvent;
 use App\Modules\Audit\Application\Services\AuditContextSanitizer;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Operations\Infrastructure\Eloquent\BackupVerification;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -295,6 +296,21 @@ final readonly class TenantDatabaseLifecycle
         $this->authorize($tenantDatabase->healthUnit()->firstOrFail(), $actor);
         if (blank($evidence['backup_reference'] ?? null) || blank($evidence['restore_reference'] ?? null)) {
             throw new LogicException('Informe referências verificáveis de backup e restauração.');
+        }
+        if ($tenantDatabase->provisioning_mode === 'native') {
+            $verification = BackupVerification::query()
+                ->where('tenant_database_id', $tenantDatabase->getKey())
+                ->where('public_id', (string) $evidence['backup_reference'])
+                ->where('status', 'completed')
+                ->where('restore_compatible', true)
+                ->first();
+            if ($verification === null) {
+                throw new LogicException(
+                    'Unidade nativa exige uma verificação de backup compatível vinculada ao próprio Tenant.',
+                );
+            }
+            $evidence['backup_set'] = $verification->backup_set;
+            $evidence['backup_verified_at'] = $verification->finishedAt()?->toIso8601String();
         }
 
         return DB::connection('core')->transaction(function () use ($tenantDatabase, $actor, $evidence): TenantDatabase {

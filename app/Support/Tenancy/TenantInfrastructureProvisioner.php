@@ -38,6 +38,7 @@ final readonly class TenantInfrastructureProvisioner
         try {
             $password = Crypt::decryptString((string) $tenantDatabase->encrypted_runtime_password);
             $connection = $this->administrativeConnection();
+            $this->assertServerEnvironment($connection);
             $pdo = $connection->getPdo();
             $account = $pdo->quote($username).'@'.$pdo->quote($host);
             $quotedPassword = $pdo->quote($password);
@@ -71,6 +72,12 @@ final readonly class TenantInfrastructureProvisioner
 
     private function administrativeConnection(): Connection
     {
+        $expectedPartialRevokes = config('tenancy.native_provisioning.expected_partial_revokes');
+        if (! is_string($expectedPartialRevokes)
+            || ! in_array(strtoupper($expectedPartialRevokes), ['ON', 'OFF'], true)) {
+            throw new LogicException('TENANT_PROVISIONING_EXPECTED_PARTIAL_REVOKES deve declarar ON ou OFF antes de executar DDL.');
+        }
+
         $configuration = config('tenancy.native_provisioning.administrative_connection');
         if (! is_array($configuration)
             || blank($configuration['host'] ?? null)
@@ -86,6 +93,46 @@ final readonly class TenantInfrastructureProvisioner
         Config::set('database.connections.tenant_provisioning', $configuration);
 
         return DB::connection('tenant_provisioning');
+    }
+
+    private function assertServerEnvironment(Connection $connection): void
+    {
+        $versionResult = (array) $connection->selectOne('SELECT VERSION() AS version');
+        $version = (string) ($versionResult['version'] ?? '');
+        if (preg_match('/^(\d+\.\d+\.\d+)/', $version, $matches) !== 1
+            || version_compare($matches[1], '8.0.0', '<')) {
+            throw new LogicException('O provisionamento nativo exige MySQL 8.0 ou superior.');
+        }
+
+        $partialRevokesResult = (array) $connection->selectOne(
+            'SELECT @@GLOBAL.partial_revokes AS partial_revokes',
+        );
+        $actualPartialRevokes = $this->normalizeBooleanSystemVariable(
+            $partialRevokesResult['partial_revokes'] ?? null,
+        );
+        $expectedPartialRevokes = strtoupper((string) config(
+            'tenancy.native_provisioning.expected_partial_revokes',
+        ));
+        if ($actualPartialRevokes !== $expectedPartialRevokes) {
+            throw new LogicException('O valor global de partial_revokes difere do valor confirmado para o worker.');
+        }
+
+        if (config('tenancy.native_provisioning.require_tls', true)) {
+            $tlsResult = (array) $connection->selectOne("SHOW SESSION STATUS LIKE 'Ssl_cipher'");
+            $cipher = (string) ($tlsResult['Value'] ?? $tlsResult['value'] ?? '');
+            if ($cipher === '') {
+                throw new LogicException('A conexão administrativa do worker deve usar TLS.');
+            }
+        }
+    }
+
+    private function normalizeBooleanSystemVariable(mixed $value): string
+    {
+        return match (strtoupper((string) $value)) {
+            '1', 'ON' => 'ON',
+            '0', 'OFF' => 'OFF',
+            default => throw new LogicException('O worker não conseguiu interpretar @@GLOBAL.partial_revokes.'),
+        };
     }
 
     private function assertValidAccountHost(string $host): void

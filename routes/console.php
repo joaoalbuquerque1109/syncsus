@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Modules\Administration\Application\Jobs\ProvisionTenantDatabaseJob;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
+use App\Modules\Audit\Application\Services\MigrateTenantSecurityAuditHistory;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Laboratory\Application\Actions\BackfillCanonicalExamCatalogAction;
 use App\Modules\Laboratory\Application\Actions\DispatchPendingLaboratoryTransmissionsAction;
@@ -17,19 +18,25 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamCatalogImportCandidate;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamGroupImportConflict;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Operations\Infrastructure\Eloquent\BackupVerification;
 use App\Modules\Patients\Application\Services\BackfillPatientIdentifierProtection;
 use App\Modules\Patients\Application\Services\MigrateLegacyUnitPatientRecords;
 use App\Modules\Patients\Application\Services\ResolveUnitPatientMigrationConflict;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientUnitMigrationConflict;
+use App\Modules\Reports\Application\Jobs\RefreshUnitReportSnapshotJob;
+use App\Modules\Reports\Infrastructure\Eloquent\UnitReportSnapshot;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantContext;
+use App\Support\Tenancy\TenantDatabaseAutoProvisioner;
 use App\Support\Tenancy\TenantDatabaseLifecycle;
 use App\Support\Tenancy\TenantDatabaseProvisioner;
 use App\Support\Tenancy\TenantDatabaseReconciler;
 use App\Support\Tenancy\TenantDatabaseState;
 use App\Support\Tenancy\TenantPilotDataSynchronizer;
+use App\Support\Tenancy\TenantSchemaMigrator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 
 Artisan::command(
@@ -139,23 +146,119 @@ Artisan::command(
     },
 )->purpose('Registra evidências externas verificáveis de backup e teste de restore antes do CUTOVER.');
 
-Artisan::command('tenant:status', function (): void {
+Artisan::command('tenant:status', function (TenantDatabaseAutoProvisioner $autoProvisioner): void {
     $rows = [];
-    foreach (TenantDatabase::query()->orderBy('health_unit_id')->get() as $database) {
+    foreach (TenantDatabase::query()->with('healthUnit')->orderBy('health_unit_id')->get() as $database) {
+        $snapshot = UnitReportSnapshot::query()
+            ->where('health_unit_id', $database->health_unit_id)
+            ->latest('generated_at')
+            ->first();
+        $backup = BackupVerification::query()
+            ->where('tenant_database_id', $database->getKey())
+            ->where('status', 'completed')
+            ->latest('finished_at')
+            ->first();
         $rows[] = [
-            $database->healthUnit()->firstOrFail()->code,
+            $database->healthUnit->code,
             $database->stateEnum()->value,
             $database->schema_status,
             $database->infrastructure_status,
             $database->connection_profile,
             $database->last_reconciliation_status ?? '-',
             $database->lastReconciledAtLabel() ?? '-',
+            $snapshot?->generatedAt()->format('Y-m-d H:i:s') ?? '-',
+            $backup?->finishedAt()?->format('Y-m-d H:i:s') ?? '-',
+            $database->provisioning_mode === 'native' ? $autoProvisioner->nextStep($database) : '-',
         ];
     }
-    $this->table(['Unidade', 'Estado', 'Schema', 'Infra', 'Perfil', 'Reconciliação', 'Última execução'], $rows);
+    $this->table(
+        ['Unidade', 'Estado', 'Schema', 'Infra', 'Perfil', 'Reconciliação', 'Última execução', 'Snapshot', 'Backup', 'Próximo passo'],
+        $rows,
+    );
 })->purpose('Exibe estado, schema e última reconciliação de todos os bancos por unidade.');
 
-Artisan::command('tenant:resume-provisioning {unit} {--apply}', function (): void {
+Artisan::command('tenant:schema {unit?} {--actor=} {--apply}', function (TenantSchemaMigrator $migrator): int {
+    $actor = null;
+    if ($this->option('apply')) {
+        $actorPublicId = trim((string) $this->option('actor'));
+        if ($actorPublicId === '') {
+            $this->error('--actor é obrigatório ao aplicar migrations Tenant.');
+
+            return 1;
+        }
+        $actor = User::query()->where('public_id', $actorPublicId)->firstOrFail();
+        if (! $actor->isPlatformAdministrator()) {
+            $this->error('O ator precisa ser administrador da plataforma.');
+
+            return 1;
+        }
+    }
+
+    $unitPublicId = trim((string) ($this->argument('unit') ?? ''));
+    $databases = TenantDatabase::query()
+        ->whereIn('state', [TenantDatabaseState::Cutover, TenantDatabaseState::Tenant])
+        ->with('healthUnit')
+        ->get()
+        ->when($unitPublicId !== '', fn ($items) => $items->filter(
+            fn (TenantDatabase $database): bool => $database->healthUnit?->public_id === $unitPublicId,
+        ));
+    if ($unitPublicId !== '' && $databases->isEmpty()) {
+        $this->error('A unidade informada não possui banco em CUTOVER/TENANT.');
+
+        return 1;
+    }
+
+    $rows = [];
+    $failures = 0;
+    foreach ($databases as $database) {
+        try {
+            $result = $this->option('apply')
+                ? $migrator->migrate($database, $actor)
+                : $migrator->audit($database);
+            $rows[] = [
+                $database->healthUnit?->code,
+                $result['status'],
+                count($result['pending']),
+                substr($result['signature'], 0, 12),
+            ];
+        } catch (Throwable $exception) {
+            $failures++;
+            $rows[] = [$database->healthUnit?->code, 'failed', '-', $exception::class];
+        }
+    }
+    $this->table(['Unidade', 'Schema', 'Pendentes', 'Assinatura/erro'], $rows);
+
+    return $failures === 0 ? 0 : 1;
+})->purpose('Detecta drift ou aplica, isoladamente por unidade, somente migrations Tenant.');
+
+Artisan::command('reports:refresh-unit-snapshots {unit?} {--sync}', function (): void {
+    $unitPublicId = trim((string) ($this->argument('unit') ?? ''));
+    $databases = TenantDatabase::query()
+        ->whereIn('state', [TenantDatabaseState::Cutover, TenantDatabaseState::Tenant])
+        ->with('healthUnit')
+        ->get()
+        ->when($unitPublicId !== '', fn ($items) => $items->filter(
+            fn (TenantDatabase $database): bool => $database->healthUnit?->public_id === $unitPublicId,
+        ));
+    if ($unitPublicId !== '' && $databases->isEmpty()) {
+        throw new InvalidArgumentException('A unidade informada não possui banco dedicado ativo.');
+    }
+
+    foreach ($databases as $database) {
+        $publicId = (string) $database->healthUnit?->public_id;
+        if ($this->option('sync')) {
+            RefreshUnitReportSnapshotJob::dispatchSync($publicId);
+        } else {
+            RefreshUnitReportSnapshotJob::dispatch($publicId)->onQueue('default');
+        }
+    }
+    $mode = $this->option('sync') ? 'gerado(s)' : 'despachado(s)';
+    $this->info($databases->count()." snapshot(s) {$mode}.");
+})->purpose('Gera ou despacha agregados Core sem fan-out síncrono durante requests HTTP.');
+
+Artisan::command('tenant:resume-provisioning {unit} {--apply}', function (
+    TenantDatabaseAutoProvisioner $provisioner,
+): void {
     $unit = HealthUnit::query()
         ->where('public_id', (string) $this->argument('unit'))
         ->firstOrFail();
@@ -164,15 +267,84 @@ Artisan::command('tenant:resume-provisioning {unit} {--apply}', function (): voi
         throw new LogicException('A retomada automática é exclusiva de unidades provisionadas nativamente.');
     }
     if (! $this->option('apply')) {
-        $this->warn("Simulação: unidade em {$database->infrastructure_status}; nenhum job foi despachado. Use --apply.");
+        $nextStep = $provisioner->nextStep($database);
+        $this->warn(
+            "Simulação: unidade em {$database->stateEnum()->value}; próximo passo {$nextStep}. "
+            .'Nenhum job foi despachado. Use --apply.',
+        );
 
         return;
     }
 
     ProvisionTenantDatabaseJob::dispatch((string) $unit->public_id)
         ->onQueue((string) config('tenancy.native_provisioning.queue'));
-    $this->info('Retomada de infraestrutura encaminhada ao worker isolado.');
-})->purpose('Retoma de forma convergente a infraestrutura de uma unidade nativa.');
+    $this->info('Retomada convergente encaminhada ao worker isolado.');
+})->purpose('Retoma infraestrutura, schema, sincronização e ciclo de validação de uma unidade nativa.');
+
+Artisan::command(
+    'tenant:record-continuity {unit} {backup-verification} {restore-reference} {actor} {--apply}',
+    function (TenantDatabaseLifecycle $lifecycle): int {
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $database = TenantDatabase::query()->where('health_unit_id', $unit->getKey())->firstOrFail();
+        $actor = User::query()->where('public_id', (string) $this->argument('actor'))->firstOrFail();
+        if (! $this->option('apply')) {
+            $this->warn('Simulação: nenhuma evidência será registrada e nenhum job será despachado. Use --apply.');
+
+            return 0;
+        }
+        $lifecycle->recordContinuityEvidence($database, $actor, [
+            'backup_reference' => (string) $this->argument('backup-verification'),
+            'restore_reference' => (string) $this->argument('restore-reference'),
+        ]);
+        ProvisionTenantDatabaseJob::dispatch((string) $unit->public_id)
+            ->onQueue((string) config('tenancy.native_provisioning.queue'));
+        $this->info('Continuidade registrada; reconciliação final encaminhada ao worker isolado.');
+
+        return 0;
+    },
+)->purpose('Registra backup verificado e ensaio de restore antes da reconciliação final de uma unidade nativa.');
+
+Artisan::command(
+    'audit:migrate-security-history {unit} {--from-backup=} {--apply}',
+    function (
+        MigrateTenantSecurityAuditHistory $migration,
+        TenantConnectionManager $connectionManager,
+    ): void {
+        $unit = HealthUnit::query()->where('public_id', (string) $this->argument('unit'))->firstOrFail();
+        $backupPath = trim((string) $this->option('from-backup'));
+
+        if ($backupPath !== '') {
+            if (! is_file($backupPath)) {
+                $this->error("Arquivo de backup não encontrado: {$backupPath}");
+
+                return;
+            }
+            $sourceConnection = 'audit_history_recovery_source';
+            config(["database.connections.{$sourceConnection}" => [
+                'driver' => 'sqlite',
+                'database' => $backupPath,
+                'prefix' => '',
+                'foreign_key_constraints' => false,
+            ]]);
+            DB::purge($sourceConnection);
+            $deleteAfterCopy = false;
+        } else {
+            $sourceConnection = $connectionManager->connectionName($unit);
+            $deleteAfterCopy = true;
+        }
+
+        if (! $this->option('apply')) {
+            $this->warn('Simulação: nenhum registro será copiado ou removido. Use --apply após conferir os números.');
+        }
+
+        $result = $migration->execute($sourceConnection, (bool) $this->option('apply'), $deleteAfterCopy);
+        $this->info(
+            "{$result['found']} evento(s) de segurança encontrado(s) na origem, "
+            ."{$result['already_present']} já presente(s) em security_audit_logs, "
+            ."{$result['migrated']} migrado(s)."
+        );
+    },
+)->purpose('Copia idempotentemente histórico de auditoria de segurança de uma unidade para o Core; --from-backup lê de um snapshot sem apagar a origem.');
 
 Artisan::command('patients:migrate-unit-records {--connection=} {--apply}', function (
     MigrateLegacyUnitPatientRecords $migration,
@@ -400,4 +572,12 @@ Schedule::command('synclab:dispatch-pending')
 
 Schedule::command('synclab:dispatch-received-results')
     ->everyFiveMinutes()
+    ->withoutOverlapping();
+
+Schedule::command('reports:refresh-unit-snapshots')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
+Schedule::command('tenant:schema')
+    ->dailyAt('02:15')
     ->withoutOverlapping();
