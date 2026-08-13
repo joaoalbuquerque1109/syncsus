@@ -14,6 +14,7 @@ use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
 use App\Modules\Medical\Infrastructure\Eloquent\Prescription;
 use App\Modules\Medical\Infrastructure\Eloquent\Referral;
+use App\Support\Tenancy\PublicLookupService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -25,7 +26,10 @@ use Throwable;
 /** @phpstan-import-type RenderedVersion from ClinicalDocumentVersionService */
 final readonly class GenerateSourceClinicalDocumentAction
 {
-    public function __construct(private IssueClinicalDocumentAction $documents) {}
+    public function __construct(
+        private IssueClinicalDocumentAction $documents,
+        private PublicLookupService $publicLookup,
+    ) {}
 
     public function prescription(MedicalConsultation $consultation, Prescription $prescription, User $user, HealthUnit $unit, Request $request): ClinicalDocument
     {
@@ -60,7 +64,7 @@ final readonly class GenerateSourceClinicalDocumentAction
         $prepared = $this->documents->render($consultation, $type, $content, $user, $unit);
 
         try {
-            return DB::transaction(function () use ($consultation, $source, $user, $unit, $request, $type, $prepared): ClinicalDocument {
+            $document = DB::transaction(function () use ($consultation, $source, $user, $unit, $request, $type, $prepared): ClinicalDocument {
                 $locked = $source->newQuery()->whereKey($source->getKey())->lockForUpdate()->firstOrFail();
                 abort_unless((int) $locked->getAttribute('medical_consultation_id') === (int) $consultation->getKey(), 404);
                 $documentId = $locked->getAttribute('document_id');
@@ -87,6 +91,14 @@ final readonly class GenerateSourceClinicalDocumentAction
 
             throw $exception;
         }
+
+        // Fora da transação de propósito, mesma razão do executeStructured() em
+        // IssueClinicalDocumentAction: PublicLookupService escreve no Core.
+        // Idempotente (updateOrCreate por verification_code) mesmo quando $document
+        // já existia (corrida perdida contra outro request).
+        $this->publicLookup->registerClinicalDocument($document);
+
+        return $document;
     }
 
     /** @return array{ClinicalDocumentType, array<string, mixed>} */

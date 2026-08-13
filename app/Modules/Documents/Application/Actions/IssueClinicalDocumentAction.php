@@ -13,6 +13,7 @@ use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Support\Tenancy\PublicLookupService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,6 +26,7 @@ final readonly class IssueClinicalDocumentAction
         private ClinicalDocumentVersionService $versions,
         private ClinicalDocumentCidService $cid,
         private RecordAuditEventAction $audit,
+        private PublicLookupService $publicLookup,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -68,15 +70,22 @@ final readonly class IssueClinicalDocumentAction
                 $unit,
                 $request,
             ));
-            $document->setRelation('healthUnit', $unit);
-            $document->setRelation('patient', Patient::query()->findOrFail($document->patient_id));
-
-            return $document;
         } catch (Throwable $exception) {
             $this->discardRenderedVersion($prepared['version']);
 
             throw $exception;
         }
+
+        // Fora da transação Tenant de propósito: PublicLookupService escreve em
+        // public_lookup_index (Core). Fazer isso dentro da transação acima trava
+        // em SQLite de arquivo único (Core e Tenant disputando o mesmo lock) e
+        // perde atomicidade silenciosamente em MySQL — mesma classe de bug já
+        // corrigida noutras Actions nesta base de código.
+        $this->publicLookup->registerClinicalDocument($document);
+        $document->setRelation('healthUnit', $unit);
+        $document->setRelation('patient', Patient::query()->findOrFail($document->patient_id));
+
+        return $document;
     }
 
     /**

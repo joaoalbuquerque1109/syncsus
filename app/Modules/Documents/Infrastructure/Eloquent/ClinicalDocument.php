@@ -12,7 +12,6 @@ use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
 use App\Support\Models\TenantModel;
-use App\Support\Tenancy\PublicLookupService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -23,13 +22,6 @@ final class ClinicalDocument extends TenantModel
     protected $table = 'documents';
 
     protected $guarded = [];
-
-    protected static function booted(): void
-    {
-        self::created(static function (ClinicalDocument $document): void {
-            app(PublicLookupService::class)->registerClinicalDocument($document);
-        });
-    }
 
     public function resolveHealthUnit(): ?HealthUnit
     {

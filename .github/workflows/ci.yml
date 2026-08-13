@@ -263,14 +263,21 @@ jobs:
       # .env.example aponta pra MySQL (template de produção); aqui não há
       # serviço MySQL, então core/tenant/legacy ficam todos no mesmo arquivo
       # SQLite local, como no LEGACY state real (Core e unidade compartilhando
-      # um banco físico só).
-      - name: Run migrations (SQLite)
+      # um banco físico só). APP_ENV=local + SYNC_SUS_SEED_DEMO=true liberam o
+      # DemoDataSeeder (admin@syncsus.local / CNES ADMIN), que o teste de login
+      # do Playwright espera encontrar; AdminUserSeeder só lança exceção com
+      # SYNC_SUS_ADMIN_* vazias em produção, então local evita isso também.
+      - name: Run migrations and seed (SQLite)
         env:
+          APP_ENV: local
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
           TENANT_LEGACY_CONNECTION: sqlite
           SYNC_SUS_REQUIRE_HTTPS: "false"
-        run: php artisan migrate --force
+          SYNC_SUS_SEED_DEMO: "true"
+        run: |
+          php artisan migrate --force
+          php artisan db:seed --force
 
       # SYNC_SUS_REQUIRE_HTTPS=true (padrão de .env.example) faz o EnforceHttps
       # middleware devolver 308 pra https://, que não existe no servidor PHP de
@@ -278,8 +285,10 @@ jobs:
       # closed.
       - name: Browser tests
         env:
+          APP_ENV: local
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
           TENANT_LEGACY_CONNECTION: sqlite
           SYNC_SUS_REQUIRE_HTTPS: "false"
+          SYNC_SUS_SEED_DEMO: "true"
         run: npm run test:browser
