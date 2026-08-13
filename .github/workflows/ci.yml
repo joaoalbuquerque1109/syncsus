@@ -98,8 +98,21 @@ jobs:
       - run: composer install --prefer-dist --no-progress --no-interaction
       - run: npm ci
 
+      # A API de advisories do Packagist já deu 502 transitório aqui; retry evita
+      # falha de CI por instabilidade externa em vez de vulnerabilidade real.
+      # Precisa propagar falha de verdade se todas as tentativas esgotarem
+      # (composer audit && break || sleep N sozinho mascararia CVE real, porque
+      # o exit code do step seria o do último sleep, não o do composer audit).
       - name: composer audit
-        run: composer audit
+        run: |
+          for i in 1 2 3; do
+            if composer audit; then
+              exit 0
+            fi
+            echo "Tentativa $i falhou, tentando novamente em 10s..."
+            sleep 10
+          done
+          exit 1
 
       - name: npm audit
         run: npm audit --audit-level=high
@@ -267,16 +280,22 @@ jobs:
       # DemoDataSeeder (admin@syncsus.local / CNES ADMIN), que o teste de login
       # do Playwright espera encontrar; AdminUserSeeder só lança exceção com
       # SYNC_SUS_ADMIN_* vazias em produção, então local evita isso também.
+      # --database=core é obrigatório: sem ele, migrate roda contra a conexão
+      # 'sqlite' (nome, não 'core'), e migrations guardadas por
+      # DB::connection()->getName() === 'core' (ex.: split_security_audit_logs)
+      # nunca criam a tabela, mesmo apontando pro mesmo arquivo físico.
       - name: Run migrations and seed (SQLite)
         env:
           APP_ENV: local
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
+          CORE_DB_CONNECTION: sqlite
+          CORE_DB_DATABASE: database/database.sqlite
           TENANT_LEGACY_CONNECTION: sqlite
           SYNC_SUS_REQUIRE_HTTPS: "false"
           SYNC_SUS_SEED_DEMO: "true"
         run: |
-          php artisan migrate --force
+          php artisan migrate --force --database=core
           php artisan db:seed --force
 
       # SYNC_SUS_REQUIRE_HTTPS=true (padrão de .env.example) faz o EnforceHttps
@@ -288,6 +307,8 @@ jobs:
           APP_ENV: local
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
+          CORE_DB_CONNECTION: sqlite
+          CORE_DB_DATABASE: database/database.sqlite
           TENANT_LEGACY_CONNECTION: sqlite
           SYNC_SUS_REQUIRE_HTTPS: "false"
           SYNC_SUS_SEED_DEMO: "true"
