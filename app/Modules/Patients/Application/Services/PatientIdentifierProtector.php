@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Patients\Application\Services;
 
-use Illuminate\Contracts\Encryption\Encrypter;
+use Illuminate\Contracts\Encryption\StringEncrypter;
 use RuntimeException;
 
 final readonly class PatientIdentifierProtector
 {
-    public function __construct(private Encrypter $encrypter) {}
+    public function __construct(private StringEncrypter $encrypter) {}
 
     /** @return array{encrypted_value: string, fingerprint: string, fingerprint_key_version: int} */
     public function protect(string $type, string $normalizedValue): array

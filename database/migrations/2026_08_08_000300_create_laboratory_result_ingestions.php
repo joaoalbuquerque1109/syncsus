@@ -21,7 +21,7 @@ return new class extends Migration
             $table->ulid('public_id')->unique();
             $table->foreignId('laboratory_integration_id')->constrained()->restrictOnDelete();
             $table->foreignId('laboratory_order_transmission_id')->nullable()
-                ->constrained()->nullOnDelete();
+                ->constrained(indexName: 'lab_result_ingestion_transmission_foreign')->nullOnDelete();
             $table->foreignId('exam_order_item_id')->nullable()->constrained()->nullOnDelete();
             $table->string('external_order_number', 128)->nullable();
             $table->string('external_exam_code', 128)->nullable();

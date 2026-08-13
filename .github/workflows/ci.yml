@@ -114,7 +114,7 @@ jobs:
         run: docker build --target app -t sync-sus-app:ci .
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: sync-sus-app:ci
           severity: "CRITICAL,HIGH"
@@ -259,7 +259,21 @@ jobs:
           cp .env.example .env
           php artisan key:generate
           touch database/database.sqlite
-          php artisan migrate --force
+
+      # .env.example aponta pra MySQL (template de produção); aqui não há
+      # serviço MySQL, então core/tenant/legacy ficam todos no mesmo arquivo
+      # SQLite local, como no LEGACY state real (Core e unidade compartilhando
+      # um banco físico só).
+      - name: Run migrations (SQLite)
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+          TENANT_LEGACY_CONNECTION: sqlite
+        run: php artisan migrate --force
 
       - name: Browser tests
+        env:
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+          TENANT_LEGACY_CONNECTION: sqlite
         run: npm run test:browser
