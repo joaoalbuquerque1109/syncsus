@@ -37,6 +37,7 @@
         <env name="TENANT_RUNTIME_ACCOUNT_HOST" value="127.0.0.1"/>
         <env name="PATIENT_IDENTIFIER_HMAC_KEY" value="phase-2-test-key-not-for-production"/>
         <env name="SYNC_SUS_SEED_DEMO" value="false" force="true"/>
+        <env name="SYNC_SUS_REQUIRE_HTTPS" value="false" force="true"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

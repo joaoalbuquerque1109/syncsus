@@ -269,11 +269,17 @@ jobs:
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
           TENANT_LEGACY_CONNECTION: sqlite
+          SYNC_SUS_REQUIRE_HTTPS: "false"
         run: php artisan migrate --force
 
+      # SYNC_SUS_REQUIRE_HTTPS=true (padrão de .env.example) faz o EnforceHttps
+      # middleware devolver 308 pra https://, que não existe no servidor PHP de
+      # teste (só HTTP) — o navegador segue o redirect e recebe connection
+      # closed.
       - name: Browser tests
         env:
           DB_CONNECTION: sqlite
           DB_DATABASE: database/database.sqlite
           TENANT_LEGACY_CONNECTION: sqlite
+          SYNC_SUS_REQUIRE_HTTPS: "false"
         run: npm run test:browser
