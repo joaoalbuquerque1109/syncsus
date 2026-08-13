@@ -56,8 +56,14 @@ return new class extends Migration
         }
 
         Schema::table('patient_social_histories', function (Blueprint $table): void {
+            // patient_id foi criado com ->unique()->constrained(), então a FK usa o
+            // próprio índice único como suporte. MySQL recusa dropUnique() enquanto
+            // essa FK existir (SQLite não liga) — precisa derrubar a FK antes e
+            // recriá-la depois que o novo índice único (unit_patient_id) já existir.
+            $table->dropForeign(['patient_id']);
             $table->dropUnique(['patient_id']);
             $table->unique('unit_patient_id');
+            $table->foreign('patient_id')->references('id')->on('patients')->cascadeOnDelete();
         });
 
         Schema::create('patient_unit_participations', function (Blueprint $table): void {
