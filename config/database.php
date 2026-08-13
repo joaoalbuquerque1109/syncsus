@@ -169,10 +169,23 @@ return [
             ]) : [],
         ],
 
+        // Defaults to SQLite for the fast local/CI run. CI also runs the same suite
+        // with TENANT_TEST_DB_CONNECTION=mysql against a real MySQL service to catch
+        // the cross-connection bugs SQLite's :memory: isolation structurally hides.
         'tenant_test' => [
-            'driver' => 'sqlite',
+            'driver' => env('TENANT_TEST_DB_CONNECTION', 'sqlite'),
+            'url' => env('TENANT_TEST_DB_URL'),
+            'host' => env('TENANT_TEST_DB_HOST', '127.0.0.1'),
+            'port' => env('TENANT_TEST_DB_PORT', '3306'),
             'database' => env('TENANT_TEST_DB_DATABASE', ':memory:'),
+            'username' => env('TENANT_TEST_DB_USERNAME', 'root'),
+            'password' => env('TENANT_TEST_DB_PASSWORD', ''),
+            'charset' => env('TENANT_TEST_DB_CHARSET', 'utf8mb4'),
+            'collation' => env('TENANT_TEST_DB_COLLATION', 'utf8mb4_unicode_ci'),
             'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
             // The transitional schema still contains legacy integer FKs that
             // cross the future Core/Tenant boundary. Public IDs are validated
             // in application services until those columns are retired.
@@ -241,6 +254,36 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            'timeout' => env('REDIS_CONNECT_TIMEOUT', 1.0),
+            'read_timeout' => env('REDIS_READ_TIMEOUT', 1.0),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
+        'session' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_SESSION_DB', '2'),
+            'timeout' => env('REDIS_CONNECT_TIMEOUT', 1.0),
+            'read_timeout' => env('REDIS_READ_TIMEOUT', 1.0),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
+        'queue' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_QUEUE_DB', '3'),
             'timeout' => env('REDIS_CONNECT_TIMEOUT', 1.0),
             'read_timeout' => env('REDIS_READ_TIMEOUT', 1.0),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
