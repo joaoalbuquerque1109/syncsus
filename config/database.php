@@ -55,6 +55,12 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            // Sem isso, a sessão MySQL assume o time_zone padrão do servidor (o
+            // container roda em UTC) enquanto o PHP manda horário já formatado em
+            // America/Fortaleza (config('app.timezone')) — colunas TIMESTAMP
+            // interpretam/convertem errado, gerando um desvio de 3h entre o que a
+            // aplicação grava e o que fica realmente armazenado.
+            'timezone' => env('DB_TIMEZONE', '-03:00'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
@@ -75,6 +81,7 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'timezone' => env('DB_TIMEZONE', '-03:00'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
@@ -130,6 +137,7 @@ return [
             'unix_socket' => env('CORE_DB_SOCKET', env('DB_SOCKET', '')),
             'charset' => env('CORE_DB_CHARSET', env('DB_CHARSET', 'utf8mb4')),
             'collation' => env('CORE_DB_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+            'timezone' => env('CORE_DB_TIMEZONE', env('DB_TIMEZONE', '-03:00')),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
@@ -155,6 +163,7 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'timezone' => env('DB_TIMEZONE', '-03:00'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,

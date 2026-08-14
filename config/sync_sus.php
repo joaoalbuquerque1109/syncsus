@@ -56,6 +56,11 @@ return [
         // Inbound result reception remains disabled until the Synclab operator
         // has configured the authenticated webhook for this installation.
         'results_enabled' => (bool) env('SYNC_SUS_SYNCLAB_RESULTS_ENABLED', false),
+        // Off by default: the static bearer token alone proves possession but not
+        // payload authenticity. Enable only after Synclab starts sending
+        // X-Synclab-Result-Signature (HMAC-SHA256 of the raw body, same shared
+        // token as key) — turning this on before that breaks real result intake.
+        'require_result_signature' => (bool) env('SYNC_SUS_SYNCLAB_REQUIRE_RESULT_SIGNATURE', false),
         // Future outbound phases remain explicitly disabled.
         'samples_enabled' => false,
         'barcodes_enabled' => false,

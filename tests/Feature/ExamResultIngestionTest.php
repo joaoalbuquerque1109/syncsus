@@ -111,6 +111,33 @@ final class ExamResultIngestionTest extends TestCase
         $this->assertDatabaseCount('exam_results', 1);
     }
 
+    public function test_signature_is_required_and_verified_when_enabled(): void
+    {
+        Queue::fake();
+        config()->set('sync_sus.synclab.require_result_signature', true);
+        [, $transmission, , $token] = $this->resultContext('RESULT-SIGNATURE');
+        $payload = $this->payload($transmission);
+        $body = json_encode($payload);
+        $validSignature = hash_hmac('sha256', (string) $body, $token);
+
+        $this->withHeader('X-Synclab-Result-Token', $token)
+            ->postJson('/api/v1/laboratory/synclab/results', $payload)
+            ->assertUnauthorized();
+        $this->withHeaders([
+            'X-Synclab-Result-Token' => $token,
+            'X-Synclab-Result-Signature' => 'wrong-signature',
+        ])->postJson('/api/v1/laboratory/synclab/results', $payload)
+            ->assertUnauthorized();
+        $this->assertDatabaseCount('laboratory_result_ingestions', 0);
+
+        $this->withHeaders([
+            'X-Synclab-Result-Token' => $token,
+            'X-Synclab-Result-Signature' => $validSignature,
+        ])->postJson('/api/v1/laboratory/synclab/results', $payload)
+            ->assertAccepted();
+        $this->assertDatabaseCount('laboratory_result_ingestions', 1);
+    }
+
     public function test_invalid_authentication_and_disabled_reception_are_rejected(): void
     {
         [, $transmission, , $token] = $this->resultContext('RESULT-AUTH');
