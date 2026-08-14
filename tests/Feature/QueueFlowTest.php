@@ -139,6 +139,7 @@ final class QueueFlowTest extends TestCase
             'is_primary' => true,
         ]);
         $panel = Panel::query()->where('health_unit_id', $unit->getKey())->sole();
+        $panel->update(['identification_mode' => 'full_name']);
 
         $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
             'version' => 1,
@@ -229,7 +230,7 @@ final class QueueFlowTest extends TestCase
         $this->assertDatabaseHas('panels', [
             'id' => $panel->getKey(),
             'name' => 'Painel da recepção',
-            'identification_mode' => 'full_name',
+            'identification_mode' => 'first_name_initial',
             'previous_calls_count' => 7,
         ]);
         $this->assertDatabaseCount('panel_queue', 1);

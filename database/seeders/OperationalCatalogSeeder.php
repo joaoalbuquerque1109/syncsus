@@ -144,7 +144,7 @@ final class OperationalCatalogSeeder extends Seeder
             ['health_unit_id' => $unit->getKey(), 'name' => 'Painel principal'],
             [
                 'public_code' => 'p-'.substr(hash('sha256', (string) config('app.key').'|'.$unit->public_id), 0, 40),
-                'identification_mode' => 'full_name',
+                'identification_mode' => 'social_first_initial',
                 'previous_calls_count' => 5,
                 'sound_enabled' => true,
                 'suggested_volume' => 80,

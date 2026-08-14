@@ -159,8 +159,7 @@ final class FlowConfigurationController extends Controller
             'health_unit_id' => $unit->getKey(),
             'name' => $data['name'],
             'public_code' => 'p-'.Str::lower(Str::random(40)),
-            'identification_mode' => PanelIdentificationMode::FullName->value,
-            // Fluxo configurável anterior: 'identification_mode' => $data['identification_mode'],
+            'identification_mode' => $data['identification_mode'],
             'previous_calls_count' => 5,
             'sound_enabled' => true,
             'suggested_volume' => 80,
@@ -225,8 +224,7 @@ final class FlowConfigurationController extends Controller
         ]);
         $panel->update([
             'name' => $data['name'],
-            'identification_mode' => PanelIdentificationMode::FullName->value,
-            // Fluxo configurável anterior: 'identification_mode' => $data['identification_mode'],
+            'identification_mode' => $data['identification_mode'],
             'previous_calls_count' => $data['previous_calls_count'],
             'sound_enabled' => $request->boolean('sound_enabled'),
             'suggested_volume' => $data['suggested_volume'],
