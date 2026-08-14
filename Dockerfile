@@ -31,13 +31,16 @@ COPY --from=composer --chown=www-data:www-data /build/vendor ./vendor
 COPY --from=frontend --chown=www-data:www-data /build/public/build ./public/build
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/sync-sus.ini
 COPY docker/php/fpm.conf /usr/local/etc/php-fpm.d/zz-sync-sus.conf
+COPY docker/php/entrypoint.sh /usr/local/bin/sync-sus-entrypoint
 
 RUN mkdir -p storage/app/private storage/framework/cache storage/framework/sessions storage/framework/views storage/logs \
     && php artisan package:discover --ansi \
-    && chown -R www-data:www-data storage bootstrap/cache
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod 0555 /usr/local/bin/sync-sus-entrypoint
 
 USER www-data
 EXPOSE 9000
+ENTRYPOINT ["/usr/local/bin/sync-sus-entrypoint"]
 CMD ["php-fpm"]
 
 FROM nginx:1.28-alpine AS web
