@@ -76,7 +76,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['patient_public_id', 'health_unit_public_id'], 'patient_unit_participation_unique');
-            $table->index(['health_unit_public_id', 'tenant_connection']);
+            $table->index(['health_unit_public_id', 'tenant_connection'], 'patient_unit_participation_unit_tenant_index');
         });
 
         Schema::create('patient_unit_migration_conflicts', function (Blueprint $table): void {
