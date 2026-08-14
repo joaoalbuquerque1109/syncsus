@@ -84,9 +84,14 @@ sequência que já cria o banco:
 CREATE DATABASE IF NOT EXISTS `sync_hosp_u{ulid}`;
 CREATE USER IF NOT EXISTS 'tu_{ulid}'@'HOST_RUNTIME' IDENTIFIED BY '{senha já persistida}';
 ALTER USER 'tu_{ulid}'@'HOST_RUNTIME' IDENTIFIED BY '{mesma senha persistida}' REQUIRE SSL;
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
     ON `sync_hosp_u{ulid}`.* TO 'tu_{ulid}'@'HOST_RUNTIME';
 ```
+
+`DROP` entrou na lista porque a migration baseline do Tenant
+(`TenantSchemaHardener::removeEmptyCoreCopies`) remove, dentro do próprio banco da
+unidade, cópias vazias de tabelas que pertencem ao Core — sem essa permissão a primeira
+migration trava. O escopo continua limitado ao banco desta unidade (nunca `*.*`).
 
 Sem curinga nenhum aqui — é um nome de schema exato, então a ambiguidade de `_`/`%` e a
 ressalva de `partial_revokes` **não se aplicam** a este grant (só ao grant amplo de
@@ -121,9 +126,13 @@ provisionadas nativamente.
 CREATE USER 'tenant_provisioner'@'IP_DO_WORKER' IDENTIFIED BY '...' REQUIRE SSL;
 GRANT CREATE ON `sync\_hosp\_u%`.* TO 'tenant_provisioner'@'IP_DO_WORKER';
 GRANT CREATE USER ON *.* TO 'tenant_provisioner'@'IP_DO_WORKER';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
     ON `sync\_hosp\_u%`.* TO 'tenant_provisioner'@'IP_DO_WORKER' WITH GRANT OPTION;
 ```
+
+`tenant_provisioner` precisa ter `DROP` aqui — com `GRANT OPTION` — porque só é possível
+repassar a uma credencial de unidade um privilégio que a própria conta administrativa já
+possui.
 
 **Pendências de ambiente, não resolvidas aqui** (mesmas duas já registradas na revisão
 anterior, ainda sem resposta):

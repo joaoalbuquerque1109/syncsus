@@ -50,8 +50,13 @@ final readonly class TenantInfrastructureProvisioner
             $connection->unprepared("ALTER USER {$account} IDENTIFIED BY {$quotedPassword} REQUIRE SSL");
             $tenantDatabase = $this->lifecycle->markInfrastructureStatus($tenantDatabase, $actor, 'user_configured');
 
+            // DROP é necessário porque a migration baseline do Tenant remove, dentro do
+            // próprio banco da unidade, cópias vazias de tabelas que pertencem ao Core
+            // (TenantSchemaHardener::removeEmptyCoreCopies) — sem isso o provisionamento
+            // nativo trava na primeira migration. O escopo continua limitado ao banco
+            // desta unidade, nunca a `*.*`.
             $connection->unprepared(
-                "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES ON `{$databaseName}`.* TO {$account}",
+                "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES ON `{$databaseName}`.* TO {$account}",
             );
 
             return $this->lifecycle->markInfrastructureStatus($tenantDatabase, $actor, 'grants_applied');
