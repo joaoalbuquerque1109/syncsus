@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
+use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
 use App\Modules\Patients\Application\Actions\SavePatientAction;
@@ -12,6 +14,7 @@ use App\Modules\Patients\Application\Services\ResolveUnitPatientMigrationConflic
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientContact;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientUnitMigrationConflict;
+use Database\Seeders\OperationalCatalogSeeder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -77,6 +80,7 @@ final class UnitPatientMigrationTest extends TestCase
             'name' => 'Unidade B',
             'is_active' => true,
         ]);
+        $this->seed(OperationalCatalogSeeder::class);
         $unambiguous = $this->createPatient('P90000001', 'Paciente Inequívoco', $firstUnit, $user->getKey());
         $ambiguous = $this->createPatient('P90000002', 'Paciente Ambíguo', $firstUnit, $user->getKey());
         $this->insertEncounter($unambiguous, $firstUnit, (int) $user->getKey(), 'MIG-001');
@@ -162,6 +166,14 @@ final class UnitPatientMigrationTest extends TestCase
 
     private function insertEncounter(Patient $patient, HealthUnit $unit, int $userId, string $number): void
     {
+        $entryTypeId = EntryType::query()
+            ->where('organization_id', $unit->organization_id)
+            ->where('code', 'EMERGENCY')
+            ->value('id');
+        $arrivalMethodId = ArrivalMethod::query()
+            ->where('organization_id', $unit->organization_id)
+            ->where('code', 'WALK_IN')
+            ->value('id');
         DB::connection('tenant_test')->table('encounters')->insert([
             'public_id' => (string) Str::ulid(),
             'encounter_number' => $number,
@@ -169,8 +181,8 @@ final class UnitPatientMigrationTest extends TestCase
             'patient_public_id' => $patient->public_id,
             'health_unit_id' => $unit->getKey(),
             'health_unit_public_id' => $unit->public_id,
-            'entry_type_id' => 1,
-            'arrival_method_id' => 1,
+            'entry_type_id' => $entryTypeId,
+            'arrival_method_id' => $arrivalMethodId,
             'current_status' => 'registered',
             'administrative_priority' => 'none',
             'arrival_at' => now(),

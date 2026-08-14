@@ -141,6 +141,16 @@ final class CoreUnitDatabasePhase7Test extends TestCase
     /** @return array{HealthUnit, User, TenantDatabase, string} */
     private function nativeDatabase(string $code): array
     {
+        // O perfil simulado do banco nativo é sempre SQLite; TenantConnectionManager
+        // exige que LEGACY e o banco piloto usem o mesmo driver durante o double-write
+        // (guard real, não bug). Sob o job de CI que roda a suíte contra MySQL, a
+        // conexão tenant_test (LEGACY nos testes) não é sqlite, então o cenário não se
+        // aplica aqui — precisaria de um schema MySQL dedicado à parte para simular o
+        // piloto, fora do escopo desta correção.
+        if (config('database.connections.tenant_test.driver') !== 'sqlite') {
+            $this->markTestSkipped('Simulação de banco nativo usa SQLite; LEGACY nesta execução é MySQL.');
+        }
+
         $unit = $this->createHealthUnit($code);
         $unit->update(['is_active' => false]);
         app(OrganizationCatalogBootstrapper::class)->bootstrap($unit->organization, $unit);
