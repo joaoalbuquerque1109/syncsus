@@ -18,6 +18,7 @@ use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -113,7 +114,7 @@ final class FlowConfigurationController extends Controller
             'department_id' => ['required', Rule::in($departmentIds->all())],
             'specialty_id' => [
                 'nullable',
-                Rule::exists('specialties', 'id')
+                Rule::exists('core.specialties', 'id')
                     ->where('organization_id', $unit->organization_id)
                     ->where('is_active', true),
             ],
@@ -230,6 +231,7 @@ final class FlowConfigurationController extends Controller
             'institutional_message' => $data['institutional_message'] ?? null,
         ]);
         $panel->queues()->sync($data['queues']);
+        Cache::forget("syncsus:unit:{$unit->getKey()}:panel:{$panel->getKey()}:queue-ids");
         $user = $request->user();
         abort_unless($user instanceof User, 403);
         $audit->execute('panel.configuration_updated', $request, $user, ['panel' => $panel->public_id], (int) $unit->getKey());

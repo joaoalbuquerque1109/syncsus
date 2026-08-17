@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Reception\Infrastructure\Eloquent;
 
 use App\Modules\Reception\Domain\Enums\EncounterStatus;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class EncounterStatusHistory extends Model
+final class EncounterStatusHistory extends TenantModel
 {
     public $timestamps = false;
 

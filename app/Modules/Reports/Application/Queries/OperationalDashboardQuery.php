@@ -7,33 +7,97 @@ namespace App\Modules\Reports\Application\Queries;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Medical\Infrastructure\Eloquent\EncounterDestination;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
-use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
 use App\Modules\Reception\Domain\Enums\EncounterStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use App\Modules\Reports\Application\Services\EncounterCoreHydrator;
+use Illuminate\Support\Facades\Cache;
 
 final class OperationalDashboardQuery
 {
+    public function __construct(private readonly EncounterCoreHydrator $coreHydrator) {}
+
     /** @return array<string, int|string> */
     public function metrics(HealthUnit $unit): array
     {
-        $base = Encounter::query()->where('health_unit_id', $unit->getKey());
+        if (! config('sync_sus.performance_cache.enabled', true)) {
+            return $this->freshMetrics($unit);
+        }
+
+        $key = sprintf(
+            'syncsus:organization:%d:unit:%d:dashboard:metrics',
+            $unit->organization_id,
+            $unit->getKey(),
+        );
+
+        return Cache::remember(
+            $key,
+            (int) config('sync_sus.performance_cache.dashboard_seconds', 3),
+            fn (): array => $this->freshMetrics($unit),
+        );
+    }
+
+    /** @return array<string, int|string> */
+    public function freshMetrics(HealthUnit $unit): array
+    {
+        $activeStatuses = [
+            EncounterStatus::WaitingTriage,
+            EncounterStatus::InTriage,
+            EncounterStatus::WaitingMedical,
+            EncounterStatus::InMedicalCare,
+            EncounterStatus::UnderObservation,
+            EncounterStatus::AwaitingAdmission,
+        ];
+        $todayStart = today()->startOfDay();
+        $tomorrowStart = $todayStart->copy()->addDay();
+        $bindings = array_map(
+            static fn (EncounterStatus $status): string => $status->value,
+            $activeStatuses,
+        );
+        $countRow = Encounter::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where(function ($query) use ($bindings, $todayStart, $tomorrowStart): void {
+                $query->whereIn('current_status', $bindings)
+                    ->orWhere(function ($query) use ($todayStart, $tomorrowStart): void {
+                        $query->where('current_status', EncounterStatus::Discharged)
+                            ->where('closed_at', '>=', $todayStart)
+                            ->where('closed_at', '<', $tomorrowStart);
+                    });
+            })
+            ->selectRaw(
+                <<<'SQL'
+                COALESCE(SUM(CASE WHEN current_status = ? THEN 1 ELSE 0 END), 0) AS waiting_triage,
+                COALESCE(SUM(CASE WHEN current_status = ? THEN 1 ELSE 0 END), 0) AS in_triage,
+                COALESCE(SUM(CASE WHEN current_status = ? THEN 1 ELSE 0 END), 0) AS waiting_medical,
+                COALESCE(SUM(CASE WHEN current_status = ? THEN 1 ELSE 0 END), 0) AS in_medical_care,
+                COALESCE(SUM(CASE WHEN current_status = ? THEN 1 ELSE 0 END), 0) AS under_observation,
+                COALESCE(SUM(CASE WHEN current_status = ? THEN 1 ELSE 0 END), 0) AS awaiting_admission,
+                COALESCE(SUM(CASE WHEN current_status = ? AND closed_at >= ? AND closed_at < ? THEN 1 ELSE 0 END), 0) AS discharges_today
+                SQL,
+                [
+                    ...$bindings,
+                    EncounterStatus::Discharged->value,
+                    $todayStart,
+                    $tomorrowStart,
+                ],
+            )
+            ->toBase()
+            ->first();
+        $counts = $countRow === null ? [] : get_object_vars($countRow);
 
         return [
-            'waiting_triage' => (clone $base)->where('current_status', EncounterStatus::WaitingTriage)->count(),
-            'in_triage' => (clone $base)->where('current_status', EncounterStatus::InTriage)->count(),
-            'waiting_medical' => (clone $base)->where('current_status', EncounterStatus::WaitingMedical)->count(),
-            'in_medical_care' => (clone $base)->where('current_status', EncounterStatus::InMedicalCare)->count(),
-            'under_observation' => (clone $base)->where('current_status', EncounterStatus::UnderObservation)->count(),
-            'awaiting_admission' => (clone $base)->where('current_status', EncounterStatus::AwaitingAdmission)->count(),
+            'waiting_triage' => (int) ($counts['waiting_triage'] ?? 0),
+            'in_triage' => (int) ($counts['in_triage'] ?? 0),
+            'waiting_medical' => (int) ($counts['waiting_medical'] ?? 0),
+            'in_medical_care' => (int) ($counts['in_medical_care'] ?? 0),
+            'under_observation' => (int) ($counts['under_observation'] ?? 0),
+            'awaiting_admission' => (int) ($counts['awaiting_admission'] ?? 0),
             'transfers_today' => EncounterDestination::query()
                 ->whereHas('encounter', fn ($query) => $query->where('health_unit_id', $unit->getKey()))
                 ->where('destination_type', 'transfer')
-                ->whereDate('occurred_at', today())
+                ->where('occurred_at', '>=', $todayStart)
+                ->where('occurred_at', '<', $tomorrowStart)
                 ->count(),
-            'discharges_today' => (clone $base)
-                ->where('current_status', EncounterStatus::Discharged)
-                ->whereDate('closed_at', today())
-                ->count(),
+            'discharges_today' => (int) ($counts['discharges_today'] ?? 0),
             'server_time' => now()->toIso8601String(),
         ];
     }
@@ -42,7 +106,17 @@ final class OperationalDashboardQuery
     public function activeEncounters(HealthUnit $unit, bool $showPatientNames): array
     {
         $encounters = Encounter::query()
-            ->with(['patient', 'riskLevel', 'currentRoom', 'currentDepartment', 'queueEntries'])
+            ->with([
+                'currentRoom',
+                'currentDepartment',
+                'queueEntries' => fn ($query) => $query
+                    ->whereIn('status', [
+                        QueueEntryStatus::Waiting,
+                        QueueEntryStatus::Called,
+                        QueueEntryStatus::InService,
+                    ])
+                    ->orderByDesc('entered_at'),
+            ])
             ->where('health_unit_id', $unit->getKey())
             ->whereNotIn('current_status', [
                 EncounterStatus::Admitted, EncounterStatus::Discharged, EncounterStatus::Transferred,
@@ -51,20 +125,10 @@ final class OperationalDashboardQuery
             ->orderBy('arrival_at')
             ->limit(20)
             ->get();
+        $this->coreHydrator->hydrate($encounters);
 
         return $encounters->map(function (Encounter $encounter) use ($showPatientNames): array {
-            $entry = $encounter->queueEntries
-                ->filter(fn (QueueEntry $queueEntry): bool => in_array(
-                    $queueEntry->statusEnum(),
-                    [
-                        QueueEntryStatus::Waiting,
-                        QueueEntryStatus::Called,
-                        QueueEntryStatus::InService,
-                    ],
-                    true,
-                ))
-                ->sortByDesc('entered_at')
-                ->first();
+            $entry = $encounter->queueEntries->first();
 
             return [
                 'encounter' => $encounter->public_id,

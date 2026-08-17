@@ -8,11 +8,11 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class AuditLog extends Model
+final class AuditLog extends TenantModel
 {
     use HasUlids;
 

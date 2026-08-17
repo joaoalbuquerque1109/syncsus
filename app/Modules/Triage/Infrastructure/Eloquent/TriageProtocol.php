@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Triage\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class TriageProtocol extends Model
+final class TriageProtocol extends TenantModel
 {
     protected $guarded = [];
 

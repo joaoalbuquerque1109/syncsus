@@ -8,13 +8,13 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Support\Models\CoreModel;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class HealthProfessional extends Model
+final class HealthProfessional extends CoreModel
 {
     use HasPublicId;
 

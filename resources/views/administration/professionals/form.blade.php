@@ -2,6 +2,8 @@
     $editing = $professional !== null;
     $selectedUnits = old('health_unit_ids', $professional?->healthUnits?->modelKeys() ?? []);
     $selectedSpecialties = old('specialty_ids', $professional?->specialties?->modelKeys() ?? []);
+    $selectedQueues = old('queue_ids', $professional?->queues?->modelKeys() ?? []);
+    $selectedServicePoints = old('service_point_ids', $professional?->servicePoints?->modelKeys() ?? []);
     $primarySpecialty = old('primary_specialty_id', $professional?->specialties?->firstWhere('pivot.is_primary', true)?->getKey());
     $existingRegistrations = $professional?->registrations?->values() ?? collect();
 @endphp
@@ -46,6 +48,39 @@
                 <x-form.input name="identity_state" label="UF do documento" maxlength="2" :value="old('identity_state', $professional?->identity_state)" />
                 <x-form.input name="cnes_code" label="Código CNES do profissional" :value="old('cnes_code', $professional?->cnes_code)" />
                 <label class="mt-8 flex items-center gap-2 text-sm font-semibold"><input type="checkbox" name="is_active" value="1" @checked(old('is_active', $professional?->is_active ?? true))> Profissional ativo</label>
+            </div>
+        </x-card>
+
+        <x-card class="p-5 lg:p-6">
+            <h2 class="text-lg font-extrabold">Filas e pontos de atendimento</h2>
+            <p class="mt-1 text-sm text-slate-500">Defina exatamente quais filas o profissional visualiza e em quais salas ou consultórios ele pode chamar pacientes. Para separar Triagem 1 e Triagem 2, mantenha filas distintas e atribua apenas a correspondente.</p>
+            <div class="mt-4 grid gap-6 lg:grid-cols-2">
+                <div>
+                    <p class="font-bold">Filas autorizadas</p>
+                    <div class="mt-3 space-y-2">
+                        @forelse($queues as $queue)
+                            <label class="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
+                                <input class="mt-1" type="checkbox" name="queue_ids[]" value="{{ $queue->getKey() }}" @checked(in_array($queue->getKey(), array_map('intval', $selectedQueues), true))>
+                                <span class="min-w-0"><strong class="block break-words text-sm">{{ $queue->name }}</strong><span class="block text-xs text-slate-500">{{ $queue->healthUnit->name }} · {{ $queue->department->name }}@if($queue->specialty) · {{ $queue->specialty->name }}@endif</span></span>
+                            </label>
+                        @empty
+                            <p class="text-sm text-slate-500">Nenhuma fila ativa cadastrada.</p>
+                        @endforelse
+                    </div>
+                </div>
+                <div>
+                    <p class="font-bold">Pontos autorizados</p>
+                    <div class="mt-3 space-y-2">
+                        @forelse($servicePoints as $point)
+                            <label class="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
+                                <input class="mt-1" type="checkbox" name="service_point_ids[]" value="{{ $point->getKey() }}" @checked(in_array($point->getKey(), array_map('intval', $selectedServicePoints), true))>
+                                <span class="min-w-0"><strong class="block break-words text-sm">{{ $point->name }}</strong><span class="block text-xs text-slate-500">{{ $point->room->name }} · {{ $point->queues->pluck('name')->join(', ') }}</span></span>
+                            </label>
+                        @empty
+                            <p class="text-sm text-slate-500">Nenhum ponto ativo vinculado às filas.</p>
+                        @endforelse
+                    </div>
+                </div>
             </div>
         </x-card>
 

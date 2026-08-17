@@ -10,6 +10,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Reception\Domain\Enums\AdministrativePriority;
@@ -18,13 +19,13 @@ use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Database\QueryException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class TenantEntryCancellationAndVisibilityTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_patient_records_are_isolated_by_organization_and_cpf_stays_globally_unique(): void
     {
@@ -67,8 +68,8 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $user = $this->createUserWithUnit($unit);
         $user->assignRole('receptionist');
         $patient = $this->patient($unit, $user->getKey(), 'P-ENTRY-1');
-        $triageQueue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-TRIAGE')->sole();
-        $medicalQueue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
+        $triageQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $medicalQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
         $return = EntryType::query()->where('code', 'RETURN')->sole();
         $session = ['active_health_unit_id' => $unit->getKey()];
 
@@ -106,6 +107,7 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
         $nurse = $this->createUserWithUnit($unit);
         $nurse->assignRole('triage_professional');
+        $this->registerTriageProfessional($nurse, $unit);
         $doctor = $this->createUserWithUnit($unit);
         $doctor->assignRole('doctor');
         $clinical = Specialty::query()->where('code', 'CLINICA')->sole();
@@ -122,14 +124,37 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $profile->healthUnits()->attach($unit);
         $profile->specialties()->attach($clinical, ['is_primary' => true]);
 
-        $triage = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-TRIAGE')->sole();
-        $clinic = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
-        $pediatrics = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-PEDIATRICS')->sole();
+        $triage = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $triagePoint = $triage->servicePoints()->sole();
+        $triageTwo = $triage->replicate(['public_id']);
+        $triageTwo->fill(['code' => 'QUEUE-TRIAGE-2', 'name' => 'Fila de Triagem 2', 'display_order' => 2])->save();
+        $triagePointTwo = $triagePoint->replicate(['public_id']);
+        $triagePointTwo->fill(['code' => 'TRIAGE-POINT-2', 'name' => 'Ponto 02 · Triagem 02'])->save();
+        $triageTwo->servicePoints()->attach($triagePointTwo);
+        $nurseProfile = $nurse->professionalProfile()->sole();
+        $assignments = app(ProfessionalOperationalAssignments::class);
+        $assignments->sync($nurseProfile, [(int) $triage->getKey()], [(int) $triagePoint->getKey()]);
+        $clinic = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
+        $pediatrics = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-PEDIATRICS')->sole();
+        $assignments->sync(
+            $profile,
+            [(int) $clinic->getKey()],
+            $clinic->servicePoints()->pluck('service_points.id')->map(fn (mixed $id): int => (int) $id)->all(),
+        );
         $session = ['active_health_unit_id' => $unit->getKey()];
 
         $this->actingAs($nurse)->withSession($session)->get(route('queues.index'))
-            ->assertOk()->assertSee($triage->name)->assertDontSee($clinic->name);
+            ->assertOk()
+            ->assertSee($triage->name)
+            ->assertSee($triagePoint->name)
+            ->assertDontSee($triageTwo->name)
+            ->assertDontSee($triagePointTwo->name)
+            ->assertDontSee('href="'.route('triage.queue').'"', false)
+            ->assertDontSee('href="'.route('medical.queue').'"', false)
+            ->assertDontSee($clinic->name);
         $this->actingAs($nurse)->withSession($session)->get(route('queues.entries', $clinic))
+            ->assertNotFound();
+        $this->actingAs($nurse)->withSession($session)->get(route('queues.entries', $triageTwo))
             ->assertNotFound();
 
         $this->actingAs($doctor)->withSession($session)->get(route('queues.index'))

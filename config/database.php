@@ -38,10 +38,10 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
-            'transaction_mode' => 'DEFERRED',
+            'busy_timeout' => env('DB_BUSY_TIMEOUT'),
+            'journal_mode' => env('DB_JOURNAL_MODE'),
+            'synchronous' => env('DB_SYNCHRONOUS'),
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'DEFERRED'),
         ],
 
         'mysql' => [
@@ -55,6 +55,12 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            // Sem isso, a sessão MySQL assume o time_zone padrão do servidor (o
+            // container roda em UTC) enquanto o PHP manda horário já formatado em
+            // America/Fortaleza (config('app.timezone')) — colunas TIMESTAMP
+            // interpretam/convertem errado, gerando um desvio de 3h entre o que a
+            // aplicação grava e o que fica realmente armazenado.
+            'timezone' => env('DB_TIMEZONE', '-03:00'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
@@ -75,6 +81,7 @@ return [
             'unix_socket' => env('DB_SOCKET', ''),
             'charset' => env('DB_CHARSET', 'utf8mb4'),
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'timezone' => env('DB_TIMEZONE', '-03:00'),
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
@@ -112,6 +119,87 @@ return [
             'prefix_indexes' => true,
             // 'encrypt' => env('DB_ENCRYPT', 'yes'),
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
+        ],
+
+        /*
+        | Phase 0: Core and tenant connections are logical routing boundaries only.
+        | They intentionally point to the same physical database as the default
+        | connection. TenantConnectionManager owns the tenant template lifecycle.
+        */
+        'core' => [
+            'driver' => env('CORE_DB_CONNECTION', env('DB_CONNECTION', 'sqlite')),
+            'url' => env('CORE_DB_URL', env('DB_URL')),
+            'host' => env('CORE_DB_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('CORE_DB_PORT', env('DB_PORT', '3306')),
+            'database' => env('CORE_DB_DATABASE', env('DB_DATABASE', database_path('database.sqlite'))),
+            'username' => env('CORE_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('CORE_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'unix_socket' => env('CORE_DB_SOCKET', env('DB_SOCKET', '')),
+            'charset' => env('CORE_DB_CHARSET', env('DB_CHARSET', 'utf8mb4')),
+            'collation' => env('CORE_DB_COLLATION', env('DB_COLLATION', 'utf8mb4_unicode_ci')),
+            'timezone' => env('CORE_DB_TIMEZONE', env('DB_TIMEZONE', '-03:00')),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'foreign_key_constraints' => env('CORE_DB_FOREIGN_KEYS', env('DB_FOREIGN_KEYS', true)),
+            'busy_timeout' => env('DB_BUSY_TIMEOUT'),
+            'journal_mode' => env('DB_JOURNAL_MODE'),
+            'synchronous' => env('DB_SYNCHRONOUS'),
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'DEFERRED'),
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        'tenant_template' => [
+            'driver' => env('DB_CONNECTION', 'sqlite'),
+            'url' => env('DB_URL'),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '3306'),
+            'database' => env('DB_DATABASE', database_path('database.sqlite')),
+            'username' => env('DB_USERNAME', 'root'),
+            'password' => env('DB_PASSWORD', ''),
+            'unix_socket' => env('DB_SOCKET', ''),
+            'charset' => env('DB_CHARSET', 'utf8mb4'),
+            'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'timezone' => env('DB_TIMEZONE', '-03:00'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
+            'busy_timeout' => env('DB_BUSY_TIMEOUT'),
+            'journal_mode' => env('DB_JOURNAL_MODE'),
+            'synchronous' => env('DB_SYNCHRONOUS'),
+            'transaction_mode' => env('DB_TRANSACTION_MODE', 'DEFERRED'),
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        // Defaults to SQLite for the fast local/CI run. CI also runs the same suite
+        // with TENANT_TEST_DB_CONNECTION=mysql against a real MySQL service to catch
+        // the cross-connection bugs SQLite's :memory: isolation structurally hides.
+        'tenant_test' => [
+            'driver' => env('TENANT_TEST_DB_CONNECTION', 'sqlite'),
+            'url' => env('TENANT_TEST_DB_URL'),
+            'host' => env('TENANT_TEST_DB_HOST', '127.0.0.1'),
+            'port' => env('TENANT_TEST_DB_PORT', '3306'),
+            'database' => env('TENANT_TEST_DB_DATABASE', ':memory:'),
+            'username' => env('TENANT_TEST_DB_USERNAME', 'root'),
+            'password' => env('TENANT_TEST_DB_PASSWORD', ''),
+            'charset' => env('TENANT_TEST_DB_CHARSET', 'utf8mb4'),
+            'collation' => env('TENANT_TEST_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            // The transitional schema still contains legacy integer FKs that
+            // cross the future Core/Tenant boundary. Public IDs are validated
+            // in application services until those columns are retired.
+            'foreign_key_constraints' => false,
+            'transaction_mode' => 'DEFERRED',
         ],
 
     ],
@@ -160,6 +248,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
+            'timeout' => env('REDIS_CONNECT_TIMEOUT', 1.0),
+            'read_timeout' => env('REDIS_READ_TIMEOUT', 1.0),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -173,6 +263,38 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            'timeout' => env('REDIS_CONNECT_TIMEOUT', 1.0),
+            'read_timeout' => env('REDIS_READ_TIMEOUT', 1.0),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
+        'session' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_SESSION_DB', '2'),
+            'timeout' => env('REDIS_CONNECT_TIMEOUT', 1.0),
+            'read_timeout' => env('REDIS_READ_TIMEOUT', 1.0),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
+        'queue' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_QUEUE_DB', '3'),
+            'timeout' => env('REDIS_CONNECT_TIMEOUT', 1.0),
+            'read_timeout' => env('REDIS_READ_TIMEOUT', 1.0),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),

@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Preservar atendimento seguro quando o SYNC SUS, a rede local ou o servidor estiver indisponível.
+Preservar atendimento seguro quando o SYNC HOSP, a rede local ou o servidor estiver indisponível.
 Este plano deve ser adaptado e aprovado pela direção clínica, enfermagem, recepção e infraestrutura.
 
 ## Acionamento

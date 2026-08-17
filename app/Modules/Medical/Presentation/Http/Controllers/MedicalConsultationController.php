@@ -18,9 +18,9 @@ use App\Modules\Medical\Application\Actions\CreateReferralAction;
 use App\Modules\Medical\Application\Actions\SaveMedicalDraftAction;
 use App\Modules\Medical\Application\Actions\StartMedicalConsultationAction;
 use App\Modules\Medical\Application\Actions\VoidClinicalRecordAction;
+use App\Modules\Medical\Application\Services\MedicalConsultationContextLoader;
 use App\Modules\Medical\Infrastructure\Eloquent\ClinicalNote;
 use App\Modules\Medical\Infrastructure\Eloquent\Diagnosis;
-use App\Modules\Medical\Infrastructure\Eloquent\DiagnosisCode;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
 use App\Modules\Medical\Infrastructure\Eloquent\Prescription;
 use App\Modules\Medical\Presentation\Http\Requests\CompleteMedicalConsultationRequest;
@@ -71,25 +71,22 @@ final class MedicalConsultationController extends Controller
         ]);
     }
 
-    public function show(Request $request, MedicalConsultation $consultation, LogPatientAccessAction $access): View
-    {
+    public function show(
+        Request $request,
+        MedicalConsultation $consultation,
+        LogPatientAccessAction $access,
+        MedicalConsultationContextLoader $contextLoader,
+    ): View {
         [$user, $unit] = $this->context($request);
         $this->ensureUnit($consultation, $unit);
-        $consultation->load([
-            'encounter.patient.identifiers', 'encounter.patient.allergies', 'encounter.patient.conditions',
-            'encounter.patient.medications', 'encounter.patient.socialHistory',
-            'encounter.arrivalMethod', 'encounter.riskLevel', 'encounter.triageAssessment.vitalSigns',
-            'queueEntry.queue', 'professional.professionalProfile.registrations',
-            'professional.professionalProfile.specialties', 'specialty', 'room', 'physicalExam',
-            'diagnoses.diagnosedBy', 'prescriptions.items', 'examOrders.items.result.recordedBy',
-            'clinicalNotes.author', 'referrals.specialty', 'documents.currentVersion',
-            'destination.recordedBy', 'addenda.author',
-        ]);
+        if ($consultation->statusEnum()->value === 'draft') {
+            abort_unless($user->canManageClinicalRecordOwnedBy($consultation->professional_id), 403);
+        }
+        $contextLoader->load($consultation);
         $access->execute($request, $user, $consultation->encounter->patient, (int) $unit->getKey(), 'medical_record_view');
 
         return view('medical.show', [
             'consultation' => $consultation,
-            'diagnosisCodes' => DiagnosisCode::query()->where('is_active', true)->orderBy('code')->get(),
             'specialties' => Specialty::query()->where('organization_id', $unit->organization_id)
                 ->where('is_active', true)->orderBy('display_order')->get(),
         ]);
@@ -129,8 +126,12 @@ final class MedicalConsultationController extends Controller
         $this->ensureUnit($consultation, $unit);
         $prescription = $action->execute($consultation, $request->validated(), $user, $unit, $request);
 
+        $message = $prescription->parent_prescription_id
+            ? "Nova versão da prescrição {$prescription->public_id} finalizada."
+            : "Prescrição {$prescription->public_id} finalizada.";
+
         return redirect()->route('medical.show', ['consultation' => $consultation, 'tab' => 'prescriptions'])
-            ->with('success', "Prescrição {$prescription->public_id} finalizada.");
+            ->with('success', $message);
     }
 
     public function examOrder(

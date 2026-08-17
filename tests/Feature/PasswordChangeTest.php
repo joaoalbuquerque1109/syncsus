@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class PasswordChangeTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_initial_password_must_be_changed_before_dashboard_access(): void
     {
@@ -52,7 +52,7 @@ final class PasswordChangeTest extends TestCase
         $this->assertFalse($user->must_change_password);
         $this->assertTrue(Hash::check('Fresh#Password2026', (string) $user->password));
         $this->assertNotNull($user->password_changed_at);
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'user_id' => $user->getKey(),
             'action' => 'user.password_changed',
         ]);

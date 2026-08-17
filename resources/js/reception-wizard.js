@@ -6,6 +6,7 @@ export default function receptionWizard(config) {
         results: [],
         patient: config.patient,
         departmentId: config.departmentId || "",
+        queueId: config.queueId || "",
         arrivalMethodId: config.arrivalMethodId || "",
         queues: config.queues,
         arrivalMethods: config.arrivalMethods,

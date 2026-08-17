@@ -7,25 +7,33 @@ namespace App\Modules\Medical\Infrastructure\Eloquent;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class ClinicalNote extends Model
+final class ClinicalNote extends TenantModel
 {
     use HasPublicId;
 
     protected $guarded = [];
 
-    /** @return BelongsTo<User, $this> */
-    public function author(): BelongsTo
+    public function resolveAuthor(): ?User
     {
-        return $this->belongsTo(User::class, 'author_id');
+        return User::query()->find($this->author_id);
     }
 
-    /** @return BelongsTo<Specialty, $this> */
-    public function specialty(): BelongsTo
+    public function getAuthorAttribute(): ?User
     {
-        return $this->belongsTo(Specialty::class);
+        return $this->relationLoaded('author') ? $this->getRelation('author') : $this->resolveAuthor();
+    }
+
+    public function resolveSpecialty(): ?Specialty
+    {
+        return $this->resolveCoreReference(Specialty::class, 'specialty_public_id', 'specialty_id');
+    }
+
+    public function getSpecialtyAttribute(): ?Specialty
+    {
+        return $this->relationLoaded('specialty') ? $this->getRelation('specialty') : $this->resolveSpecialty();
     }
 
     /** @return BelongsTo<ClinicalNote, $this> */

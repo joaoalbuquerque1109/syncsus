@@ -8,6 +8,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Actions\CreateReceptionExamOrderAction;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Application\Services\QueueTicketService;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
@@ -28,6 +29,7 @@ final readonly class OpenEncounterAction
         private NumberSequenceService $sequences,
         private QueueTicketService $tickets,
         private RecordAuditEventAction $audit,
+        private CreateReceptionExamOrderAction $createExamOrder,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -40,6 +42,7 @@ final readonly class OpenEncounterAction
         return DB::transaction(function () use ($data, $user, $unit, $request, $requestHash): Encounter {
             $existingKey = IdempotencyKey::query()
                 ->where('user_id', $user->getKey())
+                ->where('health_unit_public_id', $unit->public_id)
                 ->where('route_name', 'reception.store')
                 ->where('idempotency_key', $data['idempotency_key'])
                 ->lockForUpdate()
@@ -184,8 +187,11 @@ final readonly class OpenEncounterAction
                 'occurred_at' => $now,
             ]);
 
+            $this->createExamOrder->execute($encounter, $data, $user, $unit, $request);
+
             IdempotencyKey::query()->create([
                 'user_id' => $user->getKey(),
+                'health_unit_public_id' => $unit->public_id,
                 'route_name' => 'reception.store',
                 'idempotency_key' => $data['idempotency_key'],
                 'request_hash' => $requestHash,
@@ -204,7 +210,12 @@ final readonly class OpenEncounterAction
                 (int) $encounter->getKey(),
             );
 
-            return $encounter->load(['patient.identifiers', 'healthUnit', 'receptionRecord', 'queueEntries.queue']);
+            $encounter->load(['receptionRecord', 'queueEntries.queue']);
+            $patient->loadMissing('identifiers');
+            $encounter->setRelation('patient', $patient);
+            $encounter->setRelation('healthUnit', $unit);
+
+            return $encounter;
         });
     }
 }

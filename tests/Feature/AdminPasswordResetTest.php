@@ -7,14 +7,14 @@ namespace Tests\Feature;
 use App\Modules\Identity\Application\Actions\ResetUserPasswordAction;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class AdminPasswordResetTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_administrator_can_reset_password_without_exposing_it_in_audit(): void
     {
@@ -24,7 +24,7 @@ final class AdminPasswordResetTest extends TestCase
         $administrator->assignRole('administrator');
         $target = $this->createUserWithUnit($unit, ['must_change_password' => false]);
 
-        DB::table('sessions')->insert([
+        DB::connection('core')->table('sessions')->insert([
             'id' => 'target-session',
             'user_id' => $target->getKey(),
             'payload' => 'test',
@@ -41,14 +41,14 @@ final class AdminPasswordResetTest extends TestCase
         $this->assertTrue($target->must_change_password);
         $this->assertTrue(Hash::check('Temporary#Password2026', (string) $target->password));
         $this->assertDatabaseMissing('sessions', ['user_id' => $target->getKey()]);
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'user_id' => $administrator->getKey(),
             'auditable_id' => $target->getKey(),
             'action' => 'user.password_reset_by_administrator',
         ]);
         $this->assertStringNotContainsString(
             'Temporary#Password2026',
-            (string) DB::table('audit_logs')->value('changed_fields'),
+            (string) DB::connection('core')->table('security_audit_logs')->value('changed_fields'),
         );
     }
 

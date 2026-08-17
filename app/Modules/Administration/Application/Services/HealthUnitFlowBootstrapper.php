@@ -17,9 +17,11 @@ final class HealthUnitFlowBootstrapper
     public function bootstrap(HealthUnit $unit): void
     {
         $definitions = [
-            ['code' => 'RECEPTION', 'name' => 'Recepcao', 'type' => 'administrative', 'clinical' => false, 'order' => 10],
+            ['code' => 'RECEPTION', 'name' => 'Recepção', 'type' => 'administrative', 'clinical' => false, 'order' => 10],
             ['code' => 'TRIAGE', 'name' => 'Triagem', 'type' => 'triage', 'clinical' => true, 'order' => 20],
-            ['code' => 'CLINIC', 'name' => 'Clinica medica', 'type' => 'medical', 'clinical' => true, 'order' => 30, 'specialty' => 'CLINICA'],
+            ['code' => 'CLINIC', 'name' => 'Clínica médica', 'type' => 'medical', 'clinical' => true, 'order' => 30, 'specialty' => 'CLINICA'],
+            ['code' => 'PEDIATRICS', 'name' => 'Pediatria', 'type' => 'medical', 'clinical' => true, 'order' => 40, 'specialty' => 'PEDIATRIA'],
+            ['code' => 'ORTHOPEDICS', 'name' => 'Ortopedia', 'type' => 'medical', 'clinical' => true, 'order' => 50, 'specialty' => 'ORTOPEDIA'],
         ];
         $queueIds = [];
         foreach ($definitions as $definition) {
@@ -55,7 +57,12 @@ final class HealthUnitFlowBootstrapper
                             ->value('id')
                         : null,
                     'name' => 'Fila de '.$definition['name'],
-                    'prefix' => $definition['type'] === 'triage' ? 'T' : 'M',
+                    'prefix' => match ($definition['code']) {
+                        'TRIAGE' => 'T',
+                        'PEDIATRICS' => 'P',
+                        'ORTHOPEDICS' => 'O',
+                        default => 'C',
+                    },
                     'ticket_length' => 3,
                     'sequence_reset_policy' => 'daily',
                     'priority_strategy' => 'priority_fifo',
@@ -72,12 +79,12 @@ final class HealthUnitFlowBootstrapper
             ['health_unit_id' => $unit->getKey(), 'name' => 'Painel principal'],
             [
                 'public_code' => 'p-'.substr(hash('sha256', (string) config('app.key').'|'.$unit->public_id), 0, 40),
-                'identification_mode' => 'ticket_only',
+                'identification_mode' => 'full_name',
                 'previous_calls_count' => 5,
                 'sound_enabled' => true,
                 'suggested_volume' => 80,
                 'theme' => 'institutional',
-                'institutional_message' => 'Aguarde sua senha e dirija-se ao local indicado.',
+                'institutional_message' => 'Aguarde a chamada pelo seu nome e dirija-se ao local indicado.',
                 'is_active' => true,
             ],
         );

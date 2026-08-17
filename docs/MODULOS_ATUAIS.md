@@ -1,4 +1,4 @@
-# Módulos atuais do SYNC SUS
+# Módulos atuais do SYNC HOSP
 
 **Versão do documento:** 1.0  
 **Data de referência:** 29/07/2026  
@@ -6,7 +6,7 @@
 
 ## 1. Visão geral
 
-O SYNC SUS é um sistema de apoio ao fluxo assistencial de unidades de saúde. Atualmente, ele cobre o percurso do paciente desde a identificação e abertura da recepção até a triagem, atendimento médico, emissão de documentos, relatórios e auditoria.
+O SYNC HOSP é um sistema de apoio ao fluxo assistencial de unidades de saúde. Atualmente, ele cobre o percurso do paciente desde a identificação e abertura da recepção até a triagem, atendimento médico, emissão de documentos, relatórios e auditoria.
 
 O fluxo principal implementado é:
 
@@ -101,6 +101,8 @@ O módulo administrativo mantém os cadastros que estruturam a organização e o
 - conselhos profissionais, número de registro, estado, emissão, validade e indicação do registro principal;
 - vínculo com locais de atuação;
 - vínculo com especialidades;
+- vínculo explícito com as filas que o profissional pode visualizar;
+- vínculo explícito com as salas, consultórios ou pontos em que pode chamar pacientes;
 - definição da especialidade principal;
 - RQE e data de registro por especialidade;
 - ativação e desativação do profissional.
@@ -132,8 +134,9 @@ O módulo administrativo mantém os cadastros que estruturam a organização e o
 - pacientes, atendimentos e catálogos assistenciais pertencem a uma organização;
 - filas, salas, setores e painéis pertencem a um local de saúde;
 - usuários comuns só acessam dados da organização à qual pertencem;
-- médicos só veem filas médicas das unidades e especialidades vinculadas ao seu cadastro;
-- profissionais de triagem veem apenas filas de triagem;
+- médicos só veem as filas médicas explicitamente vinculadas ao seu cadastro, validadas contra suas unidades e especialidades;
+- profissionais de triagem só veem as filas de triagem explicitamente vinculadas ao seu cadastro;
+- dentro de uma fila, o profissional só pode operar os pontos de atendimento que lhe foram atribuídos;
 - recepcionistas e gestores possuem a visão operacional permitida por seus papéis;
 - o administrador global pode alternar entre organizações e locais sem possuir vínculo.
 
@@ -223,11 +226,13 @@ Este módulo organiza a movimentação dos pacientes entre os pontos de atendime
 
 ### Operação das filas
 
+- página operacional única **Filas e chamadas** para médicos e profissionais de triagem;
 - visualização das filas permitidas ao perfil;
 - atualização periódica das entradas;
 - geração sequencial de senha por fila;
 - chamada e rechamada;
 - início do atendimento;
+- botão **Editar** para reabrir triagem ou consulta com estado `Em atendimento`;
 - registro de ausência;
 - retorno do paciente à fila;
 - transferência entre filas;
@@ -237,27 +242,26 @@ Este módulo organiza a movimentação dos pacientes entre os pontos de atendime
 
 Os estados suportados incluem aguardando, chamado, em atendimento, ausente, transferido, concluído e cancelado.
 
+Uma entrada em atendimento só apresenta a ação de edição ao profissional que iniciou o registro ou ao administrador global. A mesma regra é validada no servidor ao acessar a URL diretamente e ao salvar alterações.
+
 ### Separação por papel e especialidade
 
-- profissionais de triagem acessam filas vinculadas a setores de triagem;
-- médicos acessam somente filas médicas de locais e especialidades presentes no cadastro profissional;
-- um médico sem unidade ou especialidade compatível não recebe acesso à fila;
+- profissionais de triagem acessam somente as filas e os pontos de triagem atribuídos no cadastro profissional;
+- médicos acessam somente as filas e os consultórios atribuídos no cadastro profissional, dentro de seus locais e especialidades;
+- um médico ou profissional de triagem sem vínculo operacional não recebe acesso a nenhuma fila;
+- filas diferentes permitem separar destinos como **Triagem 1**, **Triagem 2**, **Clínica geral — Consultório 1** e **Clínica geral — Consultório 2**;
 - recepcionistas, gestores e administrador visualizam as filas de acordo com suas permissões administrativas.
 
 ### Painel público
 
 - endereço público próprio para cada painel;
 - atualização automática do estado;
-- exibição das chamadas atuais e recentes;
+- exibição do nome completo do paciente nas chamadas atuais e recentes;
+- locução do nome do paciente e do ponto de atendimento;
 - sinalização de chamada e rechamada;
 - heartbeat para monitorar se o painel está conectado;
 - limitação de requisições públicas;
-- modos configuráveis de identificação:
-  - somente senha;
-  - primeiro nome e inicial;
-  - nome social e inicial;
-  - primeiro e último nome;
-  - nome completo.
+- a senha continua sendo gerada, armazenada e incluída no fluxo técnico, mas sua apresentação visual e locução estão temporariamente comentadas para reativação futura.
 
 ## 8. Triagem
 
@@ -316,7 +320,6 @@ O módulo médico recebe o paciente da fila compatível e mantém o registro da 
 - cadastro profissional médico ativo;
 - vínculo com o local atual;
 - especialidade compatível com a fila;
-- check-in médico ativo no dia e no local;
 - ausência de outra consulta em rascunho atribuída ao mesmo médico.
 
 ### Registro da consulta
@@ -351,49 +354,55 @@ Cada destino possui validações próprias, como orientações de alta, institui
 
 ### Correções clínicas
 
-- registros em rascunho são protegidos por versão e só podem ser alterados pelo médico responsável;
+- registros em rascunho são protegidos por versão e só podem ser alterados pelo médico responsável ou pelo administrador global;
 - após a finalização, o conteúdo original não é sobrescrito;
 - informações complementares são registradas por adendo;
 - diagnóstico e nota clínica podem ser anulados com justificativa e preservação do histórico;
 - prescrição pode ser cancelada com justificativa;
+- todos os documentos vinculados ao atendimento, inclusive os emitidos antes da disponibilização desta função, aparecem na aba Correções e podem ser invalidados pelo médico responsável ou pelo administrador global;
+- a opção de apagar documento exige justificativa e confirmação, altera sua verificação para anulado e preserva o PDF e todas as versões para auditoria;
 - as ações geram auditoria.
+
+### Catálogo CID-10
+
+- 1.835 categorias importadas da planilha institucional fornecida, de `A00` a `Z99`;
+- busca assíncrona por código ou descrição, limitada aos registros ativos;
+- seleção canônica do catálogo para impedir alteração manual do código ou da descrição;
+- suporte adicional aos códigos detalhados já cadastrados no sistema;
+- a fonte fornecida contém categorias de três caracteres, e não todos os subcódigos decimais.
 
 ### Limite atual relativo a exames
 
 O sistema registra somente a solicitação do exame. Resultados de exames não são digitados, armazenados ou anulados manualmente nesta versão. A recepção futura de resultados deverá ocorrer por integração com o laboratório.
 
-## 10. Presença médica no plantão
+## 10. Disponibilidade médica na unidade
 
-Existe um controle simples para determinar quais médicos estão disponíveis no dia.
+Os médicos aptos a operar na unidade são determinados pelo cadastro profissional e pelos vínculos permanentes.
 
 ### Funcionalidades atuais
 
-- check-in do médico no início da atuação;
-- check-out ao encerrar a atuação;
-- registro por médico, data e local;
-- somente médicos com check-in ativo aparecem como disponíveis;
-- o médico precisa estar presente para operar a fila médica;
-- o check-out é impedido quando ainda existe consulta ativa sob responsabilidade do médico.
+- médico com usuário e cadastro profissional ativos;
+- vínculo do usuário e do cadastro profissional com a unidade;
+- papel de médico;
+- ao menos uma especialidade cadastrada;
+- filtro por especialidade quando o fluxo exigir;
+- operação imediata das filas médicas, sem check-in ou check-out.
 
 ### Limite atual
 
-Não existe escala completa de plantões, planejamento antecipado, aprovação, troca de plantão ou controle de jornada. O módulo funciona apenas como registro operacional de presença diária.
+Não existe escala de plantões, confirmação de presença, planejamento antecipado, aprovação, troca de plantão ou controle de jornada.
 
 ## 11. Documentos clínicos
 
 O módulo de documentos gera arquivos clínicos vinculados ao paciente e ao atendimento.
 
-### Tipos disponíveis
+### Organização dos tipos
 
-- atestado médico;
-- declaração de comparecimento;
-- declaração de acompanhante;
-- receita;
-- solicitação de exames;
-- encaminhamento;
-- relatório médico;
-- orientações de alta;
-- resumo do atendimento.
+- **Atestados:** possuem aba e tabela próprias, com período de afastamento, declaração clínica, informações adicionais e CID autorizado.
+- **Receitas, solicitações de exames e encaminhamentos:** são registrados nas tabelas clínicas próprias e o PDF é gerado a partir da respectiva aba, sem redigitação na aba Documentos.
+- **Documentos gerais:** declaração de comparecimento, declaração de acompanhante, relatório médico, orientações de alta e resumo do atendimento permanecem na aba Documentos com título definido automaticamente pelo sistema.
+
+Cada registro clínico estruturado pode originar somente um documento PDF. Uma nova solicitação de geração reutiliza o documento já existente, evitando duplicidade. Prescrições canceladas não podem gerar PDF e o cancelamento invalida o documento que já tenha sido gerado.
 
 ### Segurança e versionamento
 
@@ -402,11 +411,13 @@ O módulo de documentos gera arquivos clínicos vinculados ao paciente e ao aten
 - código público de verificação;
 - hash SHA-256 do conteúdo;
 - download autorizado e sem cache público;
-- histórico imutável de versões;
-- criação de nova versão sem sobrescrever a anterior;
+- histórico imutável de versões dos documentos gerais;
+- criação de nova versão de documento geral sem sobrescrever a anterior;
 - anulação do documento com motivo e preservação dos arquivos;
 - verificação pública sujeita a limite de requisições;
 - auditoria da emissão, download, nova versão e anulação.
+
+Nos atestados e relatórios médicos, o CID é pesquisado no catálogo ativo e só é incluído após confirmação da autorização expressa do paciente. Código e descrição são resolvidos novamente no servidor antes da geração do PDF; texto livre enviado pelo navegador não é aceito como CID.
 
 A anulação de documentos clínicos não significa anulação de resultado de exame. Resultados laboratoriais não fazem parte do fluxo atual.
 
@@ -501,7 +512,7 @@ O sistema está preparado para receber integrações, mas atualmente os fluxos f
 
 - API do SUS para dados e identificação dos pacientes;
 - API do Synclab para comunicação laboratorial;
-- recebimento de informações e resultados laboratoriais sem digitação manual no SYNC SUS.
+- recebimento de informações e resultados laboratoriais sem digitação manual no SYNC HOSP.
 
 ### Estado atual
 
@@ -547,7 +558,7 @@ O sistema está preparado para receber integrações, mas atualmente os fluxos f
 - não existe importação automática de pacientes pelo SUS;
 - não existe integração ativa com o Synclab;
 - resultados de exames não são registrados no sistema;
-- o plantão médico possui somente check-in e check-out do dia;
+- não existe controle de escala ou presença diária dos médicos;
 - não há agendamento assistencial ou agenda de consultas;
 - não há faturamento, estoque, farmácia ou gestão de leitos completa;
 - a criação de uma organização inteiramente nova ainda não possui um fluxo administrativo completo na interface;
@@ -566,4 +577,4 @@ Os módulos essenciais solicitados estão implementados:
 6. documentos e relatórios;
 7. revisão integrada e segurança.
 
-Além deles, o sistema já inclui administração multitenant, gestão de profissionais e especialidades, check-in médico, auditoria, continuidade operacional e backup. As próximas evoluções mais relevantes são a integração com SUS e Synclab, a configuração definitiva do banco de produção e o fluxo administrativo para provisionar novas organizações.
+Além deles, o sistema já inclui administração multitenant, gestão de profissionais e especialidades, auditoria, continuidade operacional e backup. As próximas evoluções mais relevantes são a integração com SUS e Synclab, a configuração definitiva do banco de produção e o fluxo administrativo para provisionar novas organizações.

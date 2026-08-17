@@ -11,10 +11,13 @@ use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Reception\Application\Actions\CancelEncounterAction;
 use App\Modules\Reception\Application\Actions\OpenEncounterAction;
+use App\Modules\Reception\Application\Services\ReceptionDraftService;
 use App\Modules\Reception\Domain\Enums\AdministrativePriority;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Modules\Reception\Presentation\Http\Requests\CancelEncounterRequest;
@@ -48,6 +51,28 @@ final class ReceptionController extends Controller
                 ->where('is_active', true)->orderBy('display_order')->get(),
             'queues' => Queue::query()->where('health_unit_id', $unit->getKey())->where('is_active', true)->orderBy('display_order')->get(),
             'priorities' => AdministrativePriority::cases(),
+            'examRequesters' => HealthProfessional::query()
+                ->with(['user:id,name,is_active', 'registrations'])
+                ->where('organization_id', $unit->organization_id)
+                ->where('profession_type', 'doctor')
+                ->where('is_active', true)
+                ->whereHas('healthUnits', fn ($query) => $query->whereKey($unit->getKey()))
+                ->whereHas('user', fn ($query) => $query->where('is_active', true))
+                ->orderBy('full_name')
+                ->get(),
+            'selectedExams' => LaboratoryExam::query()
+                ->whereIn('id', (array) $request->old('exam_ids', []))
+                ->whereHas('integration', fn ($query) => $query
+                    ->where('organization_id', $unit->organization_id)
+                    ->where('health_unit_id', $unit->getKey()))
+                ->get()
+                ->map(fn (LaboratoryExam $exam): array => [
+                    'id' => $exam->getKey(),
+                    'code' => $exam->external_code,
+                    'name' => $exam->name,
+                    'label' => trim(($exam->acronym ? $exam->acronym.' · ' : '').$exam->name),
+                ])
+                ->values(),
         ]);
     }
 
@@ -62,18 +87,56 @@ final class ReceptionController extends Controller
             ->with('success', 'Atendimento aberto e senha emitida com sucesso.');
     }
 
+    public function draftForPatient(Request $request, ReceptionDraftService $drafts): RedirectResponse
+    {
+        $unit = $request->attributes->get('active_health_unit');
+        abort_unless($unit instanceof HealthUnit, 403);
+        $drafts->store($request, (int) $unit->getKey());
+
+        return redirect()->route('patients.create', ['return_to_reception' => 1]);
+    }
+
+    public function draftForProvisionalPatient(Request $request, ReceptionDraftService $drafts): RedirectResponse
+    {
+        $unit = $request->attributes->get('active_health_unit');
+        abort_unless($unit instanceof HealthUnit, 403);
+        $drafts->store($request, (int) $unit->getKey());
+
+        return redirect()->route('patients.provisional.create');
+    }
+
+    public function resumeDraft(Request $request, ReceptionDraftService $drafts): RedirectResponse
+    {
+        $unit = $request->attributes->get('active_health_unit');
+        abort_unless($unit instanceof HealthUnit, 403);
+
+        return redirect()->route('reception.create')
+            ->withInput($drafts->pull($request, (int) $unit->getKey()));
+    }
+
     public function receipt(Request $request, Encounter $encounter): View
     {
         $unit = $request->attributes->get('active_health_unit');
         abort_unless($unit instanceof HealthUnit && $encounter->health_unit_id === $unit->getKey(), 404);
 
-        return view('reception.receipt', [
-            'encounter' => $encounter->load([
-                'patient.identifiers', 'healthUnit', 'entryType', 'arrivalMethod',
-                'currentDepartment', 'assignedSpecialty', 'receptionRecord', 'companions',
-                'queueEntries' => fn ($query) => $query->with('queue')->latest(),
-            ]),
+        $encounter->load([
+            'entryType', 'arrivalMethod', 'currentDepartment', 'receptionRecord', 'companions',
+            'queueEntries' => fn ($query) => $query->with('queue')->latest(),
         ]);
+        $encounter->setRelation(
+            'patient',
+            Patient::query()->with('identifiers')->findOrFail($encounter->patient_id),
+        );
+        $encounter->setRelation('healthUnit', $unit);
+        $encounter->setRelation(
+            'assignedSpecialty',
+            $encounter->assigned_specialty_id === null
+                ? null
+                : Specialty::query()
+                    ->find($encounter->assigned_specialty_id),
+        );
+
+        return view('reception.receipt', ['encounter' => $encounter]);
     }
 
     public function cancel(

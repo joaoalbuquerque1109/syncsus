@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ $title ?? 'Acesso' }} · SYNC SUS</title>
+    <title>{{ $title ?? 'Acesso' }} · SYNC HOSP</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body>
@@ -14,7 +14,7 @@
                 <div class="mb-10 flex items-center gap-3">
                     <span class="grid size-11 place-items-center rounded-xl bg-brand-600 text-2xl font-black text-white shadow-lg shadow-brand-500/25" aria-hidden="true">+</span>
                     <div>
-                        <p class="text-xl font-black tracking-wide text-navy-950">SYNC SUS</p>
+                        <p class="text-xl font-black tracking-wide text-navy-950">SYNC HOSP</p>
                         <p class="text-xs font-semibold tracking-[0.18em] text-slate-500 uppercase">Urgência e emergência</p>
                     </div>
                 </div>

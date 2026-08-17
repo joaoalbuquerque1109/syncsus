@@ -1,6 +1,6 @@
 # Demonstração local com SQLite
 
-Este modo existe para visualizar o SYNC SUS sem instalar MySQL. Ele só pode ser executado quando
+Este modo existe para visualizar o SYNC HOSP sem instalar MySQL. Ele só pode ser executado quando
 `APP_ENV` não é `production`, usa dados inteiramente sintéticos e não deve receber dados reais.
 
 ## Ambiente já preparado

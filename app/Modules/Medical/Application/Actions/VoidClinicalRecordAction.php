@@ -6,6 +6,7 @@ namespace App\Modules\Medical\Application\Actions;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
+use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Infrastructure\Eloquent\ClinicalNote;
 use App\Modules\Medical\Infrastructure\Eloquent\Diagnosis;
@@ -64,10 +65,10 @@ final readonly class VoidClinicalRecordAction
                 $locked instanceof ClinicalNote => (int) $locked->author_id,
                 default => 0,
             };
-            abort_unless($ownerId === (int) $user->getKey() || $user->hasRole('administrator'), 403);
+            abort_unless($ownerId === (int) $user->getKey() || $user->isPlatformAdministrator(), 403);
 
             if (($locked instanceof Diagnosis && $locked->status === 'voided')
-                || ($locked instanceof Prescription && $locked->status === 'cancelled')
+                || ($locked instanceof Prescription && $locked->status !== 'finalized')
                 || ($locked instanceof ClinicalNote && $locked->status === 'voided')) {
                 throw ValidationException::withMessages(['reason' => 'Este registro ja foi anulado.']);
             }
@@ -89,6 +90,17 @@ final readonly class VoidClinicalRecordAction
                 default => throw new LogicException('Tipo clinico nao suportado.'),
             };
             $locked->update($attributes);
+            if ($locked instanceof Prescription && filled($locked->document_id)) {
+                ClinicalDocument::query()
+                    ->whereKey($locked->document_id)
+                    ->where('status', 'active')
+                    ->update([
+                        'status' => 'voided',
+                        'voided_at' => $now,
+                        'voided_by' => $user->getKey(),
+                        'void_reason' => $reason,
+                    ]);
+            }
             $this->audit->execute(
                 $event,
                 $request,

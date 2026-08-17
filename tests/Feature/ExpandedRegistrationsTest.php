@@ -7,18 +7,21 @@ namespace Tests\Feature;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Queues\Infrastructure\Eloquent\Queue;
+use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class ExpandedRegistrationsTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_administrator_can_register_a_professional_with_council_specialty_and_unit(): void
     {
         $unit = $this->createHealthUnit();
-        $this->seed(RolePermissionSeeder::class);
+        $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
         $administrator = $this->createPlatformAdministrator();
         $administrator->assignRole('administrator');
         $professionalUser = $this->createUserWithUnit($unit, ['email' => 'doctor@example.test']);
@@ -29,6 +32,9 @@ final class ExpandedRegistrationsTest extends TestCase
             'name' => 'Cardiologia',
             'is_active' => true,
         ]);
+        $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
+        $queue->update(['specialty_id' => $specialty->getKey()]);
+        $servicePoint = $queue->servicePoints()->sole();
 
         $this->actingAs($administrator)
             ->withSession(['active_health_unit_id' => $unit->getKey()])
@@ -44,6 +50,8 @@ final class ExpandedRegistrationsTest extends TestCase
                 'specialty_ids' => [$specialty->getKey()],
                 'primary_specialty_id' => $specialty->getKey(),
                 'specialty_rqe' => [$specialty->getKey() => 'RQE-123'],
+                'queue_ids' => [$queue->getKey()],
+                'service_point_ids' => [$servicePoint->getKey()],
                 'registrations' => [[
                     'council_type' => 'CRM',
                     'registration_number' => '998877',
@@ -67,6 +75,12 @@ final class ExpandedRegistrationsTest extends TestCase
             'specialty_id' => $specialty->getKey(),
             'rqe_number' => 'RQE-123',
             'is_primary' => true,
+        ]);
+        $this->assertDatabaseHas('health_professional_queue', [
+            'queue_id' => $queue->getKey(),
+        ]);
+        $this->assertDatabaseHas('health_professional_service_point', [
+            'service_point_id' => $servicePoint->getKey(),
         ]);
         $this->actingAs($administrator)
             ->withSession(['active_health_unit_id' => $unit->getKey()])
@@ -96,6 +110,7 @@ final class ExpandedRegistrationsTest extends TestCase
         $session = ['active_health_unit_id' => $unit->getKey()];
 
         $this->actingAs($receptionist)->withSession($session)->post(route('patients.store'), [
+            'idempotency_key' => (string) Str::ulid(),
             'full_name' => 'Maria da Silva',
             'birth_date' => '1987-06-14',
             'sex' => 'female',

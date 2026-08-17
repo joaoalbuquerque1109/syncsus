@@ -36,7 +36,7 @@ final readonly class CompleteTriageAction
     {
         return DB::transaction(function () use ($assessment, $data, $user, $unit, $request): QueueEntry {
             $locked = TriageAssessment::query()
-                ->with(['encounter.patient', 'queueEntry.queue'])
+                ->with(['encounter', 'queueEntry.queue'])
                 ->whereKey($assessment->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -67,7 +67,8 @@ final readonly class CompleteTriageAction
             }
 
             $sourceEntry = QueueEntry::query()->whereKey($locked->queue_entry_id)->lockForUpdate()->firstOrFail();
-            if ($sourceEntry->statusEnum() !== QueueEntryStatus::InService || $sourceEntry->assigned_user_id !== $user->getKey()) {
+            if ($sourceEntry->statusEnum() !== QueueEntryStatus::InService
+                || ($sourceEntry->assigned_user_id !== $user->getKey() && ! $user->isPlatformAdministrator())) {
                 throw ValidationException::withMessages(['queue_entry' => 'A entrada da fila não está mais atribuída a este profissional.']);
             }
 
@@ -179,8 +180,8 @@ final readonly class CompleteTriageAction
         if ($assessment->statusEnum() !== TriageAssessmentStatus::Draft) {
             throw ValidationException::withMessages(['status' => 'Esta triagem já foi finalizada.']);
         }
-        if ($assessment->professional_id !== $user->getKey()) {
-            throw ValidationException::withMessages(['professional' => 'Somente o profissional responsável pode finalizar a triagem.']);
+        if (! $user->canManageClinicalRecordOwnedBy($assessment->professional_id)) {
+            throw ValidationException::withMessages(['professional' => 'Somente o profissional responsável ou o administrador pode finalizar a triagem.']);
         }
         if ($assessment->version() !== $version) {
             throw ValidationException::withMessages(['version' => 'A triagem foi atualizada. Recarregue a página antes de finalizar.']);

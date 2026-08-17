@@ -14,6 +14,8 @@ use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
+use App\Support\Tenancy\TenantConnectionManager;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Seeder;
 
 final class OperationalCatalogSeeder extends Seeder
@@ -22,6 +24,8 @@ final class OperationalCatalogSeeder extends Seeder
     {
         $organizationIds = HealthUnit::query()->distinct()->pluck('organization_id');
         foreach ($organizationIds as $organizationId) {
+            $unit = HealthUnit::query()->where('organization_id', $organizationId)->firstOrFail();
+            $this->activate($unit);
             foreach ([
                 ['code' => 'CLINICA', 'name' => 'Clínica médica', 'display_order' => 10],
                 ['code' => 'PEDIATRIA', 'name' => 'Pediatria', 'display_order' => 20],
@@ -57,6 +61,7 @@ final class OperationalCatalogSeeder extends Seeder
         }
 
         foreach (HealthUnit::query()->get() as $unit) {
+            $this->activate($unit);
             $this->seedUnit($unit);
             $this->seedPanel($unit);
         }
@@ -67,6 +72,8 @@ final class OperationalCatalogSeeder extends Seeder
             ['code' => 'RETURN', 'name' => 'Retorno', 'requires_triage' => false, 'allows_provisional_patient' => false, 'display_order' => 30],
         ] as $item) {
             foreach ($organizationIds as $organizationId) {
+                $unit = HealthUnit::query()->where('organization_id', $organizationId)->firstOrFail();
+                $this->activate($unit);
                 EntryType::query()->updateOrCreate(
                     ['organization_id' => $organizationId, 'code' => $item['code']],
                     [...$item, 'is_active' => true],
@@ -137,15 +144,22 @@ final class OperationalCatalogSeeder extends Seeder
             ['health_unit_id' => $unit->getKey(), 'name' => 'Painel principal'],
             [
                 'public_code' => 'p-'.substr(hash('sha256', (string) config('app.key').'|'.$unit->public_id), 0, 40),
-                'identification_mode' => 'ticket_only',
+                'identification_mode' => 'social_first_initial',
                 'previous_calls_count' => 5,
                 'sound_enabled' => true,
                 'suggested_volume' => 80,
                 'theme' => 'institutional',
-                'institutional_message' => 'Aguarde sua senha e dirija-se ao local indicado.',
+                'institutional_message' => 'Aguarde a chamada pelo seu nome e dirija-se ao local indicado.',
                 'is_active' => true,
             ],
         );
         $panel->queues()->sync(Queue::query()->where('health_unit_id', $unit->getKey())->pluck('id')->all());
+    }
+
+    private function activate(HealthUnit $unit): void
+    {
+        $context = app(TenantContext::class);
+        $context->reset();
+        $context->resolve($unit, app(TenantConnectionManager::class)->connectionName($unit));
     }
 }

@@ -9,7 +9,6 @@ use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Domain\Enums\MedicalConsultationStatus;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
-use App\Modules\Professionals\Application\Services\MedicalDutyService;
 use App\Modules\Queues\Application\Services\QueueVisibilityService;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
@@ -23,7 +22,6 @@ final readonly class StartMedicalConsultationAction
     public function __construct(
         private RecordAuditEventAction $audit,
         private QueueVisibilityService $visibility,
-        private MedicalDutyService $medicalDuty,
     ) {}
 
     public function execute(
@@ -34,9 +32,8 @@ final readonly class StartMedicalConsultationAction
         Request $request,
     ): MedicalConsultation {
         return DB::transaction(function () use ($entry, $expectedVersion, $user, $unit, $request): MedicalConsultation {
-            $this->medicalDuty->ensureCheckedIn($user, $unit);
             $locked = QueueEntry::query()
-                ->with(['queue.department', 'servicePoint.room', 'assignedUser', 'encounter.medicalConsultation'])
+                ->with(['queue.department', 'servicePoint.room', 'encounter.medicalConsultation'])
                 ->whereKey($entry->getKey())
                 ->whereHas('queue', fn ($query) => $query->where('health_unit_id', $unit->getKey()))
                 ->lockForUpdate()
@@ -45,6 +42,7 @@ final readonly class StartMedicalConsultationAction
                 throw ValidationException::withMessages(['entry' => 'A entrada selecionada não pertence a uma fila médica.']);
             }
             $this->visibility->ensureCanAccess($locked->queue, $user);
+            $this->visibility->ensureCanAccessEntry($locked, $user);
             if ($locked->version() !== $expectedVersion) {
                 throw ValidationException::withMessages(['version' => 'A fila foi atualizada. Recarregue antes de iniciar o atendimento.']);
             }

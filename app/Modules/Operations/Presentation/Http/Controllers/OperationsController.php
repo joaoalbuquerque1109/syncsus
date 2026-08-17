@@ -10,13 +10,14 @@ use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Operations\Infrastructure\Eloquent\BackupLog;
 use App\Modules\Operations\Infrastructure\Eloquent\BackupVerification;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
+use App\Modules\Reports\Application\Queries\NetworkOperationalSnapshotQuery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 final class OperationsController extends Controller
 {
-    public function __invoke(Request $request): View
+    public function __invoke(Request $request, NetworkOperationalSnapshotQuery $snapshots): View
     {
         $user = $request->user();
         abort_unless($user instanceof User && $user->isPlatformAdministrator(), 403);
@@ -30,12 +31,15 @@ final class OperationsController extends Controller
             'latestVerification' => BackupVerification::query()->with('verifiedBy')->latest('finished_at')->first(),
             'backups' => BackupLog::query()->latest('started_at')->limit(20)->get(),
             'verifications' => BackupVerification::query()->with('verifiedBy')->latest('started_at')->limit(20)->get(),
-            'failedJobs' => DB::table('failed_jobs')->count(),
-            'pendingJobs' => DB::table('jobs')->count(),
+            'failedJobs' => DB::connection((string) config('queue.failed.database', 'core'))
+                ->table('failed_jobs')->count(),
+            'pendingJobs' => DB::connection((string) config('queue.connections.database.connection', 'core'))
+                ->table('jobs')->count(),
             'connectedPanels' => Panel::query()
                 ->where('health_unit_id', $unit->getKey())
                 ->where('last_heartbeat_at', '>=', now()->subMinute())->count(),
             'freeStorageBytes' => $freeBytes === false ? null : $freeBytes,
+            'unitSnapshots' => $snapshots->current(),
         ]);
     }
 }

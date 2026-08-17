@@ -7,10 +7,10 @@ namespace App\Modules\Patients\Infrastructure\Eloquent;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class PatientAccessLog extends Model
+final class PatientAccessLog extends TenantModel
 {
     public $timestamps = false;
 

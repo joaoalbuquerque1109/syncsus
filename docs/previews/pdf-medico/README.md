@@ -3,7 +3,7 @@
 Estas prévias foram geradas em 29/07/2026 com:
 
 - o template Blade atual de documentos clínicos;
-- o renderizador PDF atual do SYNC SUS;
+- o renderizador PDF atual do SYNC HOSP;
 - a identidade visual e os dados demonstrativos presentes no SQLite local;
 - conteúdos clínicos inteiramente fictícios.
 

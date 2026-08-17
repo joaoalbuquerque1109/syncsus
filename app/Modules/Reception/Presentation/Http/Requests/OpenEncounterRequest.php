@@ -31,7 +31,7 @@ final class OpenEncounterRequest extends FormRequest
 
         return [
             'idempotency_key' => ['required', 'string', 'max:64'],
-            'patient_public_id' => ['required', 'exists:patients,public_id'],
+            'patient_public_id' => ['required', 'exists:core.patients,public_id'],
             'entry_type_id' => [
                 'required', 'integer',
                 Rule::exists('entry_types', 'id')
@@ -51,7 +51,7 @@ final class OpenEncounterRequest extends FormRequest
             'department_id' => ['nullable', 'integer', Rule::exists('departments', 'id')->where('health_unit_id', $unitId)->where('is_active', true)],
             'specialty_id' => [
                 'nullable', 'integer',
-                Rule::exists('specialties', 'id')
+                Rule::exists('core.specialties', 'id')
                     ->where('organization_id', $organizationId)->where('is_active', true),
             ],
             'queue_id' => ['nullable', 'integer', Rule::exists('queues', 'id')->where('health_unit_id', $unitId)->where('is_active', true)],
@@ -60,6 +60,13 @@ final class OpenEncounterRequest extends FormRequest
             'companion_phone' => ['nullable', 'string', 'max:32'],
             'companion_relationship' => ['nullable', 'string', 'max:64'],
             'companion_is_guardian' => ['nullable', 'boolean'],
+            'request_exams' => ['nullable', 'boolean'],
+            'exam_requester_id' => ['nullable', 'required_if:request_exams,1', 'integer', 'exists:core.users,id'],
+            'exam_priority' => ['nullable', 'required_if:request_exams,1', Rule::in(['routine', 'urgent', 'emergency'])],
+            'exam_clinical_indication' => ['nullable', 'required_if:request_exams,1', 'string', 'min:5', 'max:4000'],
+            'exam_notes' => ['nullable', 'string', 'max:4000'],
+            'exam_ids' => ['nullable', 'required_if:request_exams,1', 'array', 'min:1', 'max:30'],
+            'exam_ids.*' => ['required', 'integer', 'distinct', 'exists:laboratory_exams,id'],
         ];
     }
 
@@ -137,6 +144,7 @@ final class OpenEncounterRequest extends FormRequest
         $this->merge([
             'companion_cpf' => NormalizesBrazilianData::digits($this->input('companion_cpf')),
             'companion_is_guardian' => $this->boolean('companion_is_guardian'),
+            'request_exams' => $this->boolean('request_exams'),
         ]);
     }
 }

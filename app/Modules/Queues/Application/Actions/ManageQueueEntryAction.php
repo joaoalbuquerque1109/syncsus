@@ -8,7 +8,6 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
-use App\Modules\Professionals\Application\Services\MedicalDutyService;
 use App\Modules\Queues\Application\Services\QueueTicketService;
 use App\Modules\Queues\Application\Services\QueueVisibilityService;
 use App\Modules\Queues\Domain\Enums\QueueCallType;
@@ -27,7 +26,6 @@ final readonly class ManageQueueEntryAction
         private RecordAuditEventAction $audit,
         private QueueTicketService $tickets,
         private QueueVisibilityService $visibility,
-        private MedicalDutyService $medicalDuty,
     ) {}
 
     public function call(
@@ -49,7 +47,7 @@ final readonly class ManageQueueEntryAction
                 $this->invalidStatus($locked, $recall ? 'rechamar' : 'chamar');
             }
 
-            $servicePoint = $this->resolveServicePoint($locked->queue, $servicePointPublicId);
+            $servicePoint = $this->resolveServicePoint($locked->queue, $servicePointPublicId, $user);
             $now = now();
             $callNumber = (int) $locked->call_count + 1;
             $locked->update([
@@ -336,14 +334,12 @@ final readonly class ManageQueueEntryAction
             ]);
         }
         $this->visibility->ensureCanAccess($locked->queue, $user);
-        if ((string) $locked->queue->department->type === 'medical' && $user->hasRole('doctor')) {
-            $this->medicalDuty->ensureCheckedIn($user, $unit);
-        }
+        $this->visibility->ensureCanAccessEntry($locked, $user);
 
         return $locked;
     }
 
-    private function resolveServicePoint(Queue $queue, string $publicId): ServicePoint
+    private function resolveServicePoint(Queue $queue, string $publicId, User $user): ServicePoint
     {
         $point = $queue->servicePoints()
             ->where('service_points.public_id', $publicId)
@@ -352,6 +348,7 @@ final readonly class ManageQueueEntryAction
         if (! $point instanceof ServicePoint) {
             throw ValidationException::withMessages(['service_point' => 'O ponto de atendimento não está autorizado para esta fila.']);
         }
+        $this->visibility->ensureCanUseServicePoint($queue, $point, $user);
 
         return $point;
     }
@@ -419,9 +416,12 @@ final readonly class ManageQueueEntryAction
 
     private function reload(QueueEntry $entry): QueueEntry
     {
-        return $entry->fresh([
-            'queue.department', 'servicePoint', 'assignedUser',
-            'encounter.patient', 'encounter.arrivalMethod',
+        $entry = $entry->fresh([
+            'queue.department', 'servicePoint', 'encounter.arrivalMethod',
         ]) ?? $entry;
+        $entry->setRelation('assignedUser', $entry->resolveAssignedUser());
+        $entry->encounter->setRelation('patient', $entry->encounter->resolvePatient());
+
+        return $entry;
     }
 }

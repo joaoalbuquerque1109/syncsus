@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\App;
@@ -37,7 +36,6 @@ final class AdminUserSeeder extends Seeder
             );
         }
 
-        $unit = HealthUnit::query()->where('code', 'URGENCIA-CENTRAL')->firstOrFail();
         $user = User::query()->where('platform_admin_slot', 1)->first()
             ?? User::query()->where('email', $email)->orderBy('id')->first()
             ?? new User(['email' => $email]);

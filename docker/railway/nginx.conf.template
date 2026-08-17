@@ -12,6 +12,20 @@ server {
     access_log /dev/stdout;
     error_log /dev/stderr warn;
 
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_comp_level 5;
+    gzip_types
+        application/javascript
+        application/json
+        application/xml
+        image/svg+xml
+        text/css
+        text/javascript
+        text/plain
+        text/xml;
+
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
@@ -31,6 +45,15 @@ server {
         fastcgi_param HTTP_HOST $http_host;
         fastcgi_pass 127.0.0.1:9000;
         fastcgi_read_timeout 120s;
+    }
+
+    location ~ ^/(?:fpm-status|fpm-ping)$ {
+        allow 127.0.0.1;
+        allow ::1;
+        deny all;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass 127.0.0.1:9000;
     }
 
     location ~ /\.(?!well-known).* {

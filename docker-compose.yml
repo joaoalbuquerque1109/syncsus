@@ -23,6 +23,9 @@ services:
       context: .
       target: app
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
     volumes:
       - private-files:/var/www/html/storage/app/private
       - backups:/backups:ro
@@ -57,7 +60,12 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       TZ: UTC
-    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    # 130 workers PHP-FPM x até 2 conexões simultâneas (Core + banco da unidade ativa)
+    # + queue-worker/scheduler/backup: 300 dá margem sem chegar perto do limite.
+    command:
+      - "--character-set-server=utf8mb4"
+      - "--collation-server=utf8mb4_0900_ai_ci"
+      - "--max-connections=300"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -71,10 +79,40 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
+  redis:
+    image: redis:8-alpine
+    # noeviction: sessão e fila também vivem aqui agora, não só cache. Sob
+    # allkeys-lru, o Redis apagaria silenciosamente job na fila ou sessão ativa
+    # pra abrir espaço. Com noeviction, escrita falha alto (erro) em vez de
+    # perder dado calado — cache tem fallback automático pro banco (CACHE_STORE
+    # failover) e absorve isso; sessão/fila não têm fallback, por isso não podem
+    # depender de eviction silenciosa.
+    command:
+      - redis-server
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - noeviction
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   queue-worker:
     image: sync-sus-app:local
     command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--timeout=120"]
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
     volumes:
       - private-files:/var/www/html/storage/app/private
       - app-logs:/var/www/html/storage/logs
@@ -98,6 +136,9 @@ services:
     image: sync-sus-app:local
     command: ["php", "artisan", "schedule:work"]
     env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
     volumes:
       - private-files:/var/www/html/storage/app/private
       - app-logs:/var/www/html/storage/logs

@@ -15,10 +15,10 @@
         @csrf
         <x-form.input
             name="unit_code"
-            label="Código da unidade"
+            label="CNES da unidade"
             :value="old('unit_code')"
             autocomplete="organization"
-            placeholder="Ex.: URGENCIA-CENTRAL"
+            placeholder="Ex.: 6612547"
             required
             autofocus
         />
@@ -39,7 +39,7 @@
             autocomplete="current-password"
             required
         />
-        <x-button.primary class="w-full">Entrar no SYNC SUS</x-button.primary>
+        <x-button.primary class="w-full">Entrar no SYNC HOSP</x-button.primary>
     </form>
 
     <p class="mt-6 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">

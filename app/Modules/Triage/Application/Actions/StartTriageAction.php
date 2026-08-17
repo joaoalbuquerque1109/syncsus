@@ -33,7 +33,7 @@ final readonly class StartTriageAction
     ): TriageAssessment {
         return DB::transaction(function () use ($entry, $expectedVersion, $user, $unit, $request): TriageAssessment {
             $locked = QueueEntry::query()
-                ->with(['queue.department', 'servicePoint', 'assignedUser', 'encounter.triageAssessment'])
+                ->with(['queue.department', 'servicePoint', 'encounter.triageAssessment'])
                 ->whereKey($entry->getKey())
                 ->whereHas('queue', fn ($query) => $query->where('health_unit_id', $unit->getKey()))
                 ->lockForUpdate()
@@ -42,6 +42,7 @@ final readonly class StartTriageAction
                 throw ValidationException::withMessages(['entry' => 'A entrada selecionada não pertence a uma fila de triagem.']);
             }
             $this->visibility->ensureCanAccess($locked->queue, $user);
+            $this->visibility->ensureCanAccessEntry($locked, $user);
             if ($locked->version() !== $expectedVersion) {
                 throw ValidationException::withMessages(['version' => 'A fila foi atualizada. Atualize a tela antes de iniciar a triagem.']);
             }
@@ -49,7 +50,7 @@ final readonly class StartTriageAction
             $existing = $locked->encounter->triageAssessment;
             if ($existing instanceof TriageAssessment) {
                 if ($existing->professional_id !== $user->getKey()) {
-                    $name = $existing->professional->name ?? 'outro profissional';
+                    $name = User::query()->whereKey($existing->professional_id)->value('name') ?? 'outro profissional';
                     throw ValidationException::withMessages([
                         'entry' => "Esta triagem já foi iniciada por {$name}. Atualize a fila.",
                     ]);
@@ -64,7 +65,7 @@ final readonly class StartTriageAction
                 ]);
             }
             if ($locked->statusEnum() === QueueEntryStatus::InService && $locked->assigned_user_id !== $user->getKey()) {
-                $name = $locked->assignedUser->name ?? 'outro profissional';
+                $name = User::query()->whereKey($locked->assigned_user_id)->value('name') ?? 'outro profissional';
                 throw ValidationException::withMessages([
                     'entry' => "Este paciente já está em atendimento por {$name}. Atualize a fila.",
                 ]);

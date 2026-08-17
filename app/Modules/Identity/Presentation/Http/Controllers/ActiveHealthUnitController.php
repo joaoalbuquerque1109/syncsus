@@ -25,6 +25,10 @@ final class ActiveHealthUnitController extends Controller
             $request,
         );
 
-        return back()->with('success', "Unidade ativa alterada para {$unit->name}.");
+        $redirect = $user->isPlatformAdministrator()
+            ? redirect()->route('dashboard')
+            : back();
+
+        return $redirect->with('success', "Unidade ativa alterada para {$unit->name}.");
     }
 }

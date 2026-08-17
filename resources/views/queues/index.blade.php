@@ -8,6 +8,7 @@
         <div
             x-data="queueBoard({
                 entriesUrl: @js(route('queues.entries', $selectedQueue)),
+                pollMs: {{ max(2, (int) config('sync_sus.queue_poll_seconds', 5)) * 1000 }},
                 defaultServicePoint: @js($selectedQueue->servicePoints->first()?->public_id),
                 actions: {
                     call: @js(route('queue-entries.call', ['entry' => '__ENTRY__'])),
@@ -28,6 +29,9 @@
                     <p class="text-sm font-semibold text-brand-700">{{ $activeHealthUnit->name }}</p>
                     <h1 class="text-2xl font-extrabold text-slate-950">Filas e chamadas</h1>
                     <p class="mt-1 text-sm text-slate-600">{{ $selectedQueue->department->name }} · atualização automática</p>
+                    @if($restrictedOperationalView)
+                        <p class="mt-1 text-xs font-semibold text-brand-700">Exibindo somente suas filas e pontos de atendimento autorizados.</p>
+                    @endif
                 </div>
                 <div class="flex flex-wrap gap-2">
                     @foreach($panels as $panel)
@@ -67,12 +71,17 @@
                     </div>
                     <div>
                         <label class="field-label" for="service-point">Ponto de atendimento</label>
-                        <select id="service-point" class="field-control" x-model="servicePoint">
-                            <option value="">Selecione</option>
-                            @foreach($selectedQueue->servicePoints as $point)
-                                <option value="{{ $point->public_id }}">{{ $point->name }} · {{ $point->room->name }}</option>
-                            @endforeach
-                        </select>
+                        @if($selectedQueue->servicePoints->count() === 1)
+                            @php($point = $selectedQueue->servicePoints->first())
+                            <div id="service-point" class="field-control flex items-center bg-slate-50 font-semibold text-slate-700">{{ $point->name }} · {{ $point->room->name }}</div>
+                        @else
+                            <select id="service-point" class="field-control" x-model="servicePoint">
+                                <option value="">Selecione</option>
+                                @foreach($selectedQueue->servicePoints as $point)
+                                    <option value="{{ $point->public_id }}">{{ $point->name }} · {{ $point->room->name }}</option>
+                                @endforeach
+                            </select>
+                        @endif
                     </div>
                 </div>
                 @can('queues.transfer')
@@ -123,7 +132,23 @@
                         <tbody class="divide-y divide-slate-100">
                             <template x-for="entry in entries" :key="entry.public_id">
                                 <tr class="hover:bg-brand-50/30">
-                                    <td class="px-4 py-4 text-lg font-black text-slate-950" x-text="entry.ticket"></td>
+                                    <td class="relative py-4 pl-6 pr-4 text-lg font-black text-slate-950">
+                                        <span
+                                            class="absolute inset-y-0 left-0 w-2"
+                                            :class="{
+                                                'bg-red-600': entry.risk_color === 'red',
+                                                'bg-orange-500': entry.risk_color === 'orange',
+                                                'bg-yellow-400': entry.risk_color === 'yellow',
+                                                'bg-green-600': entry.risk_color === 'green',
+                                                'bg-blue-600': entry.risk_color === 'blue',
+                                                'bg-slate-300': !entry.risk_color
+                                            }"
+                                            :title="entry.risk ? `Prioridade ${entry.risk}` : 'Prioridade ainda não classificada'"
+                                            :aria-label="entry.risk ? `Prioridade ${entry.risk}` : 'Prioridade ainda não classificada'"
+                                            role="img"
+                                        ></span>
+                                        <span x-text="entry.ticket"></span>
+                                    </td>
                                     <td class="px-4 py-4">
                                         <strong class="block text-slate-900" x-text="entry.patient"></strong>
                                         <span class="text-xs text-slate-500" x-text="`${entry.medical_record_number} · ${entry.arrival_method}`"></span>
@@ -143,6 +168,7 @@
                                     </td>
                                     <td class="px-4 py-4">
                                         <div class="flex justify-end gap-2">
+                                            <a x-show="entry.can_edit" x-cloak :href="entry.edit_url" class="rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white hover:bg-brand-700">Editar</a>
                                             @can('queues.call')
                                                 <button type="button" x-show="entry.can_call" @click="call(entry)" :disabled="busyEntry === entry.public_id" class="rounded-lg border border-brand-300 px-3 py-2 text-xs font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-50">Chamar</button>
                                                 <button type="button" x-show="entry.can_recall" @click="call(entry, true)" :disabled="busyEntry === entry.public_id" class="rounded-lg border border-brand-300 px-3 py-2 text-xs font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-50">Rechamar</button>

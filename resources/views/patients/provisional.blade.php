@@ -20,7 +20,7 @@
                 </div>
                 <x-form.textarea name="provisional_description" label="Características e contexto da identificação" required>{{ old('provisional_description') }}</x-form.textarea>
                 <div class="flex justify-end gap-3">
-                    <a href="{{ route('reception.create') }}" class="inline-flex items-center rounded-lg border border-slate-300 px-4 text-sm font-bold">Cancelar</a>
+                    <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.resume') }}" class="inline-flex items-center rounded-lg border border-slate-300 px-4 text-sm font-bold">Cancelar</button>
                     <x-button.primary>Criar e continuar</x-button.primary>
                 </div>
             </form>

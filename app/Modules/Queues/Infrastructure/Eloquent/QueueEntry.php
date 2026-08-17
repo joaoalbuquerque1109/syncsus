@@ -9,12 +9,12 @@ use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class QueueEntry extends Model
+final class QueueEntry extends TenantModel
 {
     use HasPublicId;
 
@@ -38,10 +38,14 @@ final class QueueEntry extends Model
         return $this->belongsTo(ServicePoint::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function assignedUser(): BelongsTo
+    public function resolveAssignedUser(): ?User
     {
-        return $this->belongsTo(User::class, 'assigned_user_id');
+        return $this->assigned_user_id === null ? null : User::query()->find($this->assigned_user_id);
+    }
+
+    public function getAssignedUserAttribute(): ?User
+    {
+        return $this->relationLoaded('assignedUser') ? $this->getRelation('assignedUser') : $this->resolveAssignedUser();
     }
 
     /** @return HasMany<QueueCall, $this> */

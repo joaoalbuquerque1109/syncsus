@@ -1,0 +1,315 @@
+name: CI
+
+on:
+  push:
+    branches: [master, dev]
+  pull_request:
+
+# Cancel superseded runs on the same branch/PR to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PHP_VERSION: "8.5"
+  NODE_VERSION: "22"
+
+jobs:
+  lint:
+    name: Lint (Pint, ESLint, Prettier)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo_sqlite, pdo_mysql, redis, gd, zip, intl
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+      - run: npm ci
+
+      - name: Pint
+        run: vendor/bin/pint --test
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+  static-analysis:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo_sqlite, pdo_mysql, redis, gd, zip, intl
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+
+  security-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+      - run: npm ci
+
+      # A API de advisories do Packagist já deu 502 transitório aqui; retry evita
+      # falha de CI por instabilidade externa em vez de vulnerabilidade real.
+      # Precisa propagar falha de verdade se todas as tentativas esgotarem
+      # (composer audit && break || sleep N sozinho mascararia CVE real, porque
+      # o exit code do step seria o do último sleep, não o do composer audit).
+      - name: composer audit
+        run: |
+          for i in 1 2 3; do
+            if composer audit; then
+              exit 0
+            fi
+            echo "Tentativa $i falhou, tentando novamente em 10s..."
+            sleep 10
+          done
+          exit 1
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+  image-scan:
+    name: Container image scan (Trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build app image
+        run: docker build --target app -t sync-sus-app:ci .
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: sync-sus-app:ci
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+
+  test-sqlite:
+    name: Tests (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo_sqlite, pdo_mysql, redis, gd, zip, intl
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+      - run: npm ci
+      - run: npm run build
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Test suite (SQLite)
+        run: php artisan test
+
+  test-mysql:
+    name: Tests (MySQL — paridade com produção)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: sync_hosp_core_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo_sqlite, pdo_mysql, redis, gd, zip, intl
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+      - run: npm ci
+      - run: npm run build
+
+      - name: Create tenant_test database
+        run: mysql -h127.0.0.1 -uroot -proot -e "CREATE DATABASE IF NOT EXISTS sync_hosp_tenant_test;"
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      # A conexão core e a conexão tenant_test viram dois bancos MySQL reais e
+      # fisicamente separados (não dois :memory: isolados) — é a única forma de
+      # exercitar em CI a mesma classe de bug cross-connection já encontrada
+      # nesta base de código (transação sem conexão explícita, migration que
+      # apaga em vez de copiar etc.) contra o motor real de produção.
+      - name: Test suite (MySQL)
+        env:
+          CORE_DB_CONNECTION: mysql
+          CORE_DB_HOST: 127.0.0.1
+          CORE_DB_PORT: 3306
+          CORE_DB_DATABASE: sync_hosp_core_test
+          CORE_DB_USERNAME: root
+          CORE_DB_PASSWORD: root
+          CORE_DB_FOREIGN_KEYS: "true"
+          TENANT_TEST_DB_CONNECTION: mysql
+          TENANT_TEST_DB_HOST: 127.0.0.1
+          TENANT_TEST_DB_PORT: 3306
+          TENANT_TEST_DB_DATABASE: sync_hosp_tenant_test
+          TENANT_TEST_DB_USERNAME: root
+          TENANT_TEST_DB_PASSWORD: root
+        run: php artisan test
+
+  browser:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo_sqlite, pdo_mysql, redis, gd, zip, intl
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+
+      - run: composer install --prefer-dist --no-progress --no-interaction
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          touch database/database.sqlite
+
+      # .env.example aponta pra MySQL (template de produção); aqui não há
+      # serviço MySQL, então core/tenant/legacy ficam todos no mesmo arquivo
+      # SQLite local, como no LEGACY state real (Core e unidade compartilhando
+      # um banco físico só). APP_ENV=local + SYNC_SUS_SEED_DEMO=true liberam o
+      # DemoDataSeeder (admin@syncsus.local / CNES ADMIN), que o teste de login
+      # do Playwright espera encontrar; AdminUserSeeder só lança exceção com
+      # SYNC_SUS_ADMIN_* vazias em produção, então local evita isso também.
+      # --database=core é obrigatório: sem ele, migrate roda contra a conexão
+      # 'sqlite' (nome, não 'core'), e migrations guardadas por
+      # DB::connection()->getName() === 'core' (ex.: split_security_audit_logs)
+      # nunca criam a tabela, mesmo apontando pro mesmo arquivo físico.
+      - name: Run migrations and seed (SQLite)
+        env:
+          APP_ENV: local
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+          CORE_DB_CONNECTION: sqlite
+          CORE_DB_DATABASE: database/database.sqlite
+          TENANT_LEGACY_CONNECTION: sqlite
+          SYNC_SUS_REQUIRE_HTTPS: "false"
+          SYNC_SUS_SEED_DEMO: "true"
+        run: |
+          php artisan migrate --force --database=core
+          php artisan db:seed --force
+
+      # SYNC_SUS_REQUIRE_HTTPS=true (padrão de .env.example) faz o EnforceHttps
+      # middleware devolver 308 pra https://, que não existe no servidor PHP de
+      # teste (só HTTP) — o navegador segue o redirect e recebe connection
+      # closed.
+      - name: Browser tests
+        env:
+          APP_ENV: local
+          DB_CONNECTION: sqlite
+          DB_DATABASE: database/database.sqlite
+          CORE_DB_CONNECTION: sqlite
+          CORE_DB_DATABASE: database/database.sqlite
+          TENANT_LEGACY_CONNECTION: sqlite
+          SYNC_SUS_REQUIRE_HTTPS: "false"
+          SYNC_SUS_SEED_DEMO: "true"
+        run: npm run test:browser

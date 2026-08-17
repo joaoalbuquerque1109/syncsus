@@ -55,6 +55,33 @@
 
     <section class="app-card mt-5 overflow-hidden">
         <div class="border-b border-slate-200 px-5 py-4">
+            <h2 class="font-extrabold">Eventos de identidade e segurança</h2>
+            <p class="text-xs text-slate-500">Trilha Core de autenticação, usuários, vínculos e administração global.</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[800px] text-left text-sm">
+                <thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="px-4 py-3">Quando</th><th class="px-4 py-3">Ação</th><th class="px-4 py-3">Usuário</th><th class="px-4 py-3">IP</th><th class="px-4 py-3">Correlação</th><th class="px-4 py-3">Contexto seguro</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                    @forelse($securityEvents as $event)
+                        <tr>
+                            <td class="whitespace-nowrap px-4 py-3">{{ $event->occurred_at->format('d/m/Y H:i:s') }}</td>
+                            <td class="px-4 py-3 font-mono text-xs font-bold">{{ $event->action }}</td>
+                            <td class="px-4 py-3">{{ $event->user?->name ?? 'Sistema' }}</td>
+                            <td class="px-4 py-3 font-mono text-xs">{{ $event->ip_address ?? '—' }}</td>
+                            <td class="px-4 py-3 font-mono text-xs">{{ $event->correlation_id }}</td>
+                            <td class="max-w-sm px-4 py-3"><code class="break-all text-xs">{{ $event->context === null ? '—' : json_encode($event->context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) }}</code></td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="px-5 py-10 text-center text-slate-500">Nenhum evento de segurança encontrado.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="border-t border-slate-200 p-4">{{ $securityEvents->links() }}</div>
+    </section>
+
+    <section class="app-card mt-5 overflow-hidden">
+        <div class="border-b border-slate-200 px-5 py-4">
             <h2 class="font-extrabold">Eventos do sistema</h2>
             <p class="text-xs text-slate-500">A trilha é append-only e não possui ações de alteração ou exclusão.</p>
         </div>

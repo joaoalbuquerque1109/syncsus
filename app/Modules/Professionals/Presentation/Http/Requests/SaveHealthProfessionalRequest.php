@@ -6,6 +6,7 @@ namespace App\Modules\Professionals\Presentation\Http\Requests;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
+use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Rules\ValidCpf;
 use App\Support\Text\NormalizesBrazilianData;
 use Illuminate\Foundation\Http\FormRequest;
@@ -25,16 +26,50 @@ final class SaveHealthProfessionalRequest extends FormRequest
         $professionalId = $professional instanceof HealthProfessional ? $professional->getKey() : null;
         $unit = $this->attributes->get('active_health_unit');
         $organizationId = $unit instanceof HealthUnit ? $unit->organization_id : 0;
+        $professionType = (string) $this->input('profession_type');
+        $requiresOperationalAssignment = filled($this->input('user_id'))
+            && in_array($professionType, ['doctor', 'nurse', 'technician'], true);
+        $unitIds = $this->integerList('health_unit_ids');
+        $specialtyIds = $this->integerList('specialty_ids');
+        $allowedUnitIds = HealthUnit::query()
+            ->where('organization_id', $organizationId)
+            ->whereIn('id', $unitIds)
+            ->pluck('id')
+            ->all();
+        $allowedQueues = Queue::query()
+            ->whereIn('health_unit_id', $allowedUnitIds)
+            ->where('is_active', true);
+        if ($professionType === 'doctor') {
+            $allowedQueues->whereHas('department', fn ($query) => $query->where('type', 'medical'))
+                ->whereIn('specialty_id', $specialtyIds);
+        } elseif (in_array($professionType, ['nurse', 'technician'], true)) {
+            $allowedQueues->whereHas('department', fn ($query) => $query->where('type', 'triage'));
+        } else {
+            $allowedQueues->whereRaw('1 = 0');
+        }
+        $allowedQueueIds = $allowedQueues->pluck('id')->map(static fn (mixed $id): int => (int) $id)->all();
+        $selectedQueueIds = $this->integerList('queue_ids');
+        $allowedServicePointIds = Queue::query()
+            ->whereIn('id', $selectedQueueIds)
+            ->with('servicePoints:id,is_active')
+            ->get()
+            ->flatMap->servicePoints
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
 
         return [
             'user_id' => [
                 'nullable', 'integer',
-                Rule::exists('users', 'id')->where('organization_id', $organizationId),
-                Rule::unique('health_professionals', 'user_id')->ignore($professionalId),
+                Rule::exists('core.users', 'id')->where('organization_id', $organizationId),
+                Rule::unique('core.health_professionals', 'user_id')->ignore($professionalId),
             ],
             'institutional_code' => [
                 'required', 'string', 'max:32',
-                Rule::unique('health_professionals', 'institutional_code')
+                Rule::unique('core.health_professionals', 'institutional_code')
                     ->where('organization_id', $organizationId)
                     ->ignore($professionalId),
             ],
@@ -44,7 +79,7 @@ final class SaveHealthProfessionalRequest extends FormRequest
             'social_name' => ['nullable', 'string', 'max:255'],
             'cpf' => [
                 'nullable', new ValidCpf,
-                Rule::unique('health_professionals', 'cpf')
+                Rule::unique('core.health_professionals', 'cpf')
                     ->where('organization_id', $organizationId)
                     ->ignore($professionalId),
             ],
@@ -72,21 +107,25 @@ final class SaveHealthProfessionalRequest extends FormRequest
             'health_unit_ids' => ['required', 'array', 'min:1'],
             'health_unit_ids.*' => [
                 'integer', 'distinct',
-                Rule::exists('health_units', 'id')->where('organization_id', $organizationId),
+                Rule::exists('core.health_units', 'id')->where('organization_id', $organizationId),
             ],
             'specialty_ids' => ['nullable', 'array'],
             'specialty_ids.*' => [
                 'integer', 'distinct',
-                Rule::exists('specialties', 'id')->where('organization_id', $organizationId),
+                Rule::exists('core.specialties', 'id')->where('organization_id', $organizationId),
             ],
             'primary_specialty_id' => [
                 'nullable', 'integer',
-                Rule::exists('specialties', 'id')->where('organization_id', $organizationId),
+                Rule::exists('core.specialties', 'id')->where('organization_id', $organizationId),
             ],
             'specialty_rqe' => ['nullable', 'array'],
             'specialty_rqe.*' => ['nullable', 'string', 'max:32'],
             'specialty_registered_at' => ['nullable', 'array'],
             'specialty_registered_at.*' => ['nullable', 'date', 'before_or_equal:today'],
+            'queue_ids' => [Rule::requiredIf($requiresOperationalAssignment), 'array', $requiresOperationalAssignment ? 'min:1' : 'nullable'],
+            'queue_ids.*' => ['integer', 'distinct', Rule::in($allowedQueueIds)],
+            'service_point_ids' => [Rule::requiredIf($requiresOperationalAssignment), 'array', $requiresOperationalAssignment ? 'min:1' : 'nullable'],
+            'service_point_ids.*' => ['integer', 'distinct', Rule::in($allowedServicePointIds)],
             'registrations' => [
                 Rule::requiredIf(fn (): bool => in_array($this->input('profession_type'), ['doctor', 'nurse'], true)),
                 'array',
@@ -113,5 +152,17 @@ final class SaveHealthProfessionalRequest extends FormRequest
             'is_active' => $this->boolean('is_active'),
             'registrations' => $registrations,
         ]);
+    }
+
+    /** @return list<int> */
+    private function integerList(string $key): array
+    {
+        $input = $this->input($key, []);
+
+        return collect(is_array($input) ? $input : [])
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter()
+            ->values()
+            ->all();
     }
 }

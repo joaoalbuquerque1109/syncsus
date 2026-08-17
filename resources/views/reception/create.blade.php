@@ -7,7 +7,8 @@
         'is_provisional' => $patient->is_provisional,
         'identifiers' => $patient->identifiers->map(fn ($identifier) => ['type' => $identifier->type->value, 'value' => $identifier->maskedValue()])->values(),
     ] : null;
-    $errorStep = $errors->hasAny(['patient_public_id']) ? 2 : ($errors->any() ? 3 : 1);
+    $restoredStep = max(1, min(3, (int) old('_reception_step', $patient ? 2 : 1)));
+    $errorStep = $errors->hasAny(['patient_public_id']) ? 2 : ($errors->any() ? 3 : $restoredStep);
 @endphp
 
 <x-layout.app title="Abrir atendimento">
@@ -19,6 +20,7 @@
             queues: @js($queues),
             arrivalMethods: @js($arrivalMethods),
             departmentId: @js(old('department_id', '')),
+            queueId: @js(old('queue_id', '')),
             arrivalMethodId: @js(old('arrival_method_id', '')),
             step: {{ $errorStep }}
         })"
@@ -43,6 +45,7 @@
             @csrf
             <input type="hidden" name="idempotency_key" value="{{ old('idempotency_key', $idempotencyKey) }}">
             <input type="hidden" name="patient_public_id" :value="patient?.public_id || ''">
+            <input type="hidden" name="_reception_step" :value="step">
 
             <x-card class="p-5 lg:p-7" x-show="step === 1">
                 <h2 class="text-lg font-extrabold text-slate-900">Dados da chegada</h2>
@@ -84,8 +87,8 @@
                         </template>
                     </div>
                     <p class="mt-5 text-sm text-slate-600">Não encontrou?
-                        <a class="font-bold text-brand-700 underline" href="{{ route('patients.create', ['return_to_reception' => 1]) }}">Cadastrar paciente</a>
-                        ou <a class="font-bold text-amber-700 underline" href="{{ route('patients.provisional.create') }}">criar identificação provisória</a>.
+                        <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.patient') }}" formnovalidate class="font-bold text-brand-700 underline">Cadastrar paciente</button>
+                        ou <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.provisional') }}" formnovalidate class="font-bold text-amber-700 underline">criar identificação provisória</button>.
                     </p>
                 </div>
                 <div x-show="patient" class="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5">
@@ -105,7 +108,7 @@
                         <option value="">Selecione</option>
                         @foreach($departments->where('is_clinical', true) as $department)<option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>@endforeach
                     </x-form.select>
-                    <x-form.select name="queue_id" label="Fila inicial" required>
+                    <x-form.select name="queue_id" label="Fila inicial" required x-model="queueId">
                         <option value="">Selecione o setor primeiro</option>
                         <template x-for="queue in filteredQueues" :key="queue.id"><option :value="queue.id" x-text="queue.name"></option></template>
                     </x-form.select>
@@ -113,6 +116,62 @@
                         <option value="">Não definida</option>
                         @foreach($specialties as $specialty)<option value="{{ $specialty->id }}" @selected((string) old('specialty_id') === (string) $specialty->id)>{{ $specialty->name }}</option>@endforeach
                     </x-form.select>
+                </div>
+                <div
+                    class="mt-6 rounded-xl border border-brand-200 bg-brand-50/40 p-5"
+                    x-data="{ requestExams: @js((bool) old('request_exams', false)) }"
+                >
+                    <label class="flex items-start gap-3">
+                        <input type="checkbox" name="request_exams" value="1" x-model="requestExams" class="mt-1" @checked(old('request_exams'))>
+                        <span><strong class="block text-slate-900">Registrar requisição de exames laboratoriais</strong><small class="text-slate-600">A requisição será vinculada a este atendimento e preparada para o Synclab.</small></span>
+                    </label>
+                    <div x-show="requestExams" x-cloak class="mt-5 space-y-4">
+                        <div class="grid gap-4 md:grid-cols-2">
+                            <x-form.select name="exam_requester_id" label="Médico solicitante" ::required="requestExams">
+                                <option value="">Selecione</option>
+                                @foreach($examRequesters as $requester)
+                                    <option value="{{ $requester->user_id }}" @selected((string) old('exam_requester_id') === (string) $requester->user_id)>{{ $requester->institutional_code }} · {{ $requester->displayName() }}{{ $requester->primaryRegistrationLabel() ? ' · '.$requester->primaryRegistrationLabel() : '' }}</option>
+                                @endforeach
+                            </x-form.select>
+                            <x-form.select name="exam_priority" label="Prioridade da requisição" ::required="requestExams">
+                                <option value="routine" @selected(old('exam_priority', 'routine') === 'routine')>Rotina</option>
+                                <option value="urgent" @selected(old('exam_priority') === 'urgent')>Urgente</option>
+                                <option value="emergency" @selected(old('exam_priority') === 'emergency')>Emergência</option>
+                            </x-form.select>
+                            <div class="md:col-span-2"><x-form.textarea name="exam_clinical_indication" label="Indicação clínica informada" rows="3" ::required="requestExams">{{ old('exam_clinical_indication') }}</x-form.textarea></div>
+                            <div class="md:col-span-2"><x-form.textarea name="exam_notes" label="Observações da requisição" rows="2">{{ old('exam_notes') }}</x-form.textarea></div>
+                        </div>
+                        <div
+                            class="relative"
+                            x-data="laboratoryExamSelector({ searchUrl: @js(route('laboratory.exams.search')), initial: @js($selectedExams) })"
+                        >
+                            <label class="field-label" for="reception_exam_search">Exames *</label>
+                            <input id="reception_exam_search" type="search" x-model="query" @input.debounce.250ms="search()" @keydown.escape="open = false" autocomplete="off" class="field-control" placeholder="Pesquise por código, sigla ou nome">
+                            <p x-show="searching" class="mt-1 text-xs text-slate-500">Buscando na tabela de exames...</p>
+                            <div x-show="open" @click.outside="open = false" class="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+                                <template x-for="exam in results" :key="exam.id">
+                                    <button type="button" @click="add(exam)" class="block w-full border-b border-slate-100 px-3 py-3 text-left last:border-0 hover:bg-brand-50">
+                                        <span class="block text-sm font-bold" x-text="exam.label"></span>
+                                        <span class="mt-1 block text-xs text-slate-500" x-text="[exam.material, exam.container].filter(Boolean).join(' · ')"></span>
+                                    </button>
+                                </template>
+                                <p x-show="!searching && results.length === 0" class="p-3 text-sm text-slate-500">Nenhum exame encontrado nesta unidade.</p>
+                            </div>
+                            <div class="mt-3 space-y-2">
+                                <template x-for="(exam, index) in selected" :key="exam.id">
+                                    <div class="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                        <input type="hidden" name="exam_ids[]" :value="exam.id">
+                                        <span class="min-w-0 safe-wrap text-sm font-bold" x-text="exam.label"></span>
+                                        <button type="button" @click="remove(index)" class="grid size-8 shrink-0 place-items-center rounded-lg border border-red-200 text-red-700" aria-label="Remover exame"><x-icons.trash /></button>
+                                    </div>
+                                </template>
+                            </div>
+                            <p x-show="selected.length === 0" class="mt-2 text-xs font-semibold text-amber-700">Selecione pelo menos um exame.</p>
+                            @error('exam_ids')<p class="mt-2 text-sm font-bold text-red-700">{{ $message }}</p>@enderror
+                            @error('exam_ids.*')<p class="mt-2 text-sm font-bold text-red-700">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                    @error('request_exams')<p class="mt-2 text-sm font-bold text-red-700">{{ $message }}</p>@enderror
                 </div>
                 <div class="mt-6 border-t border-slate-200 pt-5">
                     <p class="mb-4 text-sm font-extrabold text-slate-700">Acompanhante (opcional)</p>

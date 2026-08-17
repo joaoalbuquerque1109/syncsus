@@ -17,6 +17,7 @@ use App\Modules\Triage\Application\Actions\CreateTriageAddendumAction;
 use App\Modules\Triage\Application\Actions\RecordVitalSignsAction;
 use App\Modules\Triage\Application\Actions\SaveTriageDraftAction;
 use App\Modules\Triage\Application\Actions\StartTriageAction;
+use App\Modules\Triage\Application\Services\TriageAssessmentContextLoader;
 use App\Modules\Triage\Infrastructure\Eloquent\TriageAssessment;
 use App\Modules\Triage\Infrastructure\Eloquent\TriageProtocol;
 use App\Modules\Triage\Presentation\Http\Requests\CompleteTriageRequest;
@@ -58,16 +59,18 @@ final class TriageController extends Controller
         ]);
     }
 
-    public function show(Request $request, TriageAssessment $triage, LogPatientAccessAction $access): View
-    {
+    public function show(
+        Request $request,
+        TriageAssessment $triage,
+        LogPatientAccessAction $access,
+        TriageAssessmentContextLoader $contextLoader,
+    ): View {
         [$user, $unit] = $this->context($request);
         abort_unless($triage->encounter()->where('health_unit_id', $unit->getKey())->exists(), 404);
-        $triage->load([
-            'encounter.patient.identifiers', 'encounter.patient.allergies', 'encounter.arrivalMethod',
-            'queueEntry.queue', 'professional', 'servicePoint.room', 'protocol', 'flowchart',
-            'discriminator', 'riskLevel', 'destinationQueue', 'vitalSigns.recordedBy',
-            'addenda.author',
-        ]);
+        if ($triage->statusEnum()->value === 'draft') {
+            abort_unless($user->canManageClinicalRecordOwnedBy($triage->professional_id), 403);
+        }
+        $contextLoader->load($triage);
         $access->execute($request, $user, $triage->encounter->patient, (int) $unit->getKey(), 'triage_record_view');
 
         return view('triage.show', [

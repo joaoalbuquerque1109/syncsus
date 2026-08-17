@@ -1,0 +1,170 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Laboratory\Application\Services;
+
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\Organization;
+use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Application\Data\LaboratoryOrderPayload;
+use App\Modules\Laboratory\Application\Exceptions\InvalidLaboratoryOrder;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
+use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
+use App\Modules\Patients\Domain\Enums\PatientSex;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
+use DateTimeInterface;
+use Illuminate\Support\Str;
+
+final class SynclabOrderPayloadBuilder
+{
+    public function __construct(private readonly SynclabOutboundContract $contract) {}
+
+    public function build(
+        ExamOrder $order,
+        LaboratoryIntegration $integration,
+        string $externalOrderNumber,
+    ): LaboratoryOrderPayload {
+        $order->loadMissing(['encounter.currentDepartment', 'items.laboratoryExam']);
+        if (! $order->encounter->relationLoaded('patient')) {
+            $order->encounter->setRelation(
+                'patient',
+                Patient::query()->with('identifiers')->findOrFail($order->encounter->patient_id),
+            );
+        }
+        if (! $order->encounter->relationLoaded('healthUnit')) {
+            $order->encounter->setRelation(
+                'healthUnit',
+                HealthUnit::query()->with('organization')->findOrFail($order->encounter->health_unit_id),
+            );
+        }
+        if (! $order->relationLoaded('requestedBy')) {
+            $order->setRelation(
+                'requestedBy',
+                User::query()
+                    ->with('professionalProfile.registrations')
+                    ->findOrFail($order->requested_by),
+            );
+        }
+
+        $patient = $order->encounter->patient;
+        $identifiers = $patient->identifiers->keyBy(
+            static fn ($identifier): string => $identifier->typeValue(),
+        );
+        $cpf = $identifiers->get(PatientIdentifierType::Cpf->value)?->normalized_value;
+        $cns = $identifiers->get(PatientIdentifierType::Cns->value)?->normalized_value;
+
+        if (trim((string) $patient->full_name) === '') {
+            throw new InvalidLaboratoryOrder('O nome do paciente e obrigatorio para o Synclab.');
+        }
+        if ($cpf === null && $cns === null) {
+            throw new InvalidLaboratoryOrder('O paciente precisa possuir CPF ou Cartao Nacional de Saude.');
+        }
+        $patientId = (string) $patient->getKey();
+        if ($patientId === '' || ! ctype_digit($patientId)) {
+            throw new InvalidLaboratoryOrder('O paciente precisa possuir um ID numerico para o Synclab.');
+        }
+        $includePublicIdentifiers = $this->contract->includesPublicIdentifiers();
+        $patientPublicId = (string) $patient->public_id;
+        $orderPublicId = (string) $order->public_id;
+        if ($includePublicIdentifiers && (! Str::isUlid($patientPublicId) || ! Str::isUlid($orderPublicId))) {
+            throw new InvalidLaboratoryOrder('Paciente e pedido precisam possuir ULIDs validos no contrato Synclab transitório.');
+        }
+
+        $items = $order->items
+            ->where('laboratory_integration_id', $integration->getKey())
+            ->values();
+        if ($items->isEmpty()) {
+            throw new InvalidLaboratoryOrder('A ordem nao possui exames destinados a esta integracao.');
+        }
+
+        $exams = $items->map(function ($item): array {
+            $code = trim((string) ($item->external_exam_code ?: $item->laboratoryExam?->external_code));
+            if ($code === '') {
+                throw new InvalidLaboratoryOrder('Todo exame laboratorial precisa de um codigo externo.');
+            }
+
+            // Synclab requires both collections in each exam even when sample
+            // identification and components are deferred. They intentionally
+            // remain empty in the current outbound-only integration scope.
+            return [
+                'codigo' => ctype_digit($code) ? (int) $code : $code,
+                'amostras' => [],
+                'descricao' => (string) $item->exam_name,
+                'itens' => [],
+            ];
+        })->all();
+
+        $unit = $order->encounter->healthUnit;
+        $organization = $unit->getRelationValue('organization');
+        $cnes = ($organization instanceof Organization ? $organization->tenantIdentifier() : null)
+            ?? preg_replace('/\D/', '', (string) $unit->cnes_code);
+        if (strlen($cnes) !== 7) {
+            throw new InvalidLaboratoryOrder('A unidade precisa possuir um codigo CNES valido com 7 digitos.');
+        }
+        $requestedBy = $order->getRelation('requestedBy');
+        if (! $requestedBy instanceof User) {
+            throw new InvalidLaboratoryOrder('O solicitante do pedido não foi encontrado no Core.');
+        }
+        $profileValue = $requestedBy->getRelationValue('professionalProfile');
+        $professionalName = (string) $requestedBy->name;
+        $registration = null;
+        if ($profileValue instanceof HealthProfessional) {
+            $professionalName = $profileValue->displayName();
+            $registration = $profileValue->registrations->firstWhere('is_primary', true)
+                ?? $profileValue->registrations->first();
+        }
+        $creatorId = (string) ($order->created_by ?: $order->requested_by);
+        $birthDate = $patient->getAttribute('birth_date');
+        $requestedAt = $order->getAttribute('requested_at');
+        $patientData = array_filter([
+            'codigo' => $patientId,
+            ...($includePublicIdentifiers ? ['identificador_externo' => $patientPublicId] : []),
+            'nome' => (string) $patient->full_name,
+            'sexo' => $this->synclabSex($patient),
+            'dt_nascimento' => $birthDate instanceof DateTimeInterface ? $birthDate->format('Y-m-d') : null,
+            'cpf' => $cpf,
+            'cns' => $cns,
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+
+        return new LaboratoryOrderPayload([
+            'ordem_servico' => $externalOrderNumber,
+            'codigo_pedido' => $externalOrderNumber,
+            'identificador' => 'SYNC HOSP',
+            // Synclab does not define a separate receptionist object. The
+            // documented web-user field identifies who entered the order,
+            // while pedido.profissional identifies the ordering doctor.
+            'usuario_web_id' => $creatorId,
+            'pedido' => array_filter([
+                'codigo' => $externalOrderNumber,
+                'ordem_servico' => $externalOrderNumber,
+                ...($includePublicIdentifiers ? ['identificador_externo' => $orderPublicId] : []),
+                'origem' => (string) $unit->name,
+                'profissional' => $professionalName,
+                'ufconselho' => $registration?->state,
+                'orgaoemissor' => $registration?->council_type,
+                'numconselho' => $registration?->registration_number,
+                'posto' => (string) ($order->encounter->currentDepartment->name ?? $unit->name),
+                'urgente' => $order->priority === 'routine' ? 'N' : 'S',
+                'cnesUnidadeExecutante' => (int) $cnes,
+                'convenio' => (string) data_get($integration->settings, 'agreement', 'SUS'),
+                'observacao' => $order->notes,
+                'datahora' => $requestedAt instanceof DateTimeInterface ? $requestedAt->format('Y-m-d H:i') : null,
+            ], static fn (mixed $value): bool => $value !== null && $value !== ''),
+            'paciente' => $patientData,
+            'exames' => $exams,
+        ]);
+    }
+
+    private function synclabSex(Patient $patient): string
+    {
+        return match ($patient->sexEnum()) {
+            PatientSex::Female => 'F',
+            PatientSex::Male => 'M',
+            PatientSex::Intersex => 'I',
+            PatientSex::Unknown => '',
+        };
+    }
+}

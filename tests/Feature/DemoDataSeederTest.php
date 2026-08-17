@@ -9,17 +9,18 @@ use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reports\Application\Queries\OperationalDashboardQuery;
 use Database\Seeders\DatabaseSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class DemoDataSeederTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_demo_seed_creates_a_complete_idempotent_synthetic_journey(): void
     {
+        $this->travelTo(today()->addHours(12));
         config()->set('sync_sus.seed_demo_data', true);
         config()->set('sync_sus.admin', ['name' => null, 'email' => null, 'password' => null]);
         Storage::fake('local_private');

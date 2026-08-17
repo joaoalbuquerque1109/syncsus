@@ -12,18 +12,28 @@ export default function queueBoard(config) {
         updatedAt: "",
         timer: null,
         errorTimer: null,
-        minimumAlertDurationMs: 5000,
+        refreshing: false,
+        // The extra rendering margin guarantees at least five visible seconds
+        // after Alpine has painted the alert.
+        minimumAlertDurationMs: 5500,
 
         init() {
-            this.refresh();
-            this.timer = window.setInterval(() => {
-                if (!document.hidden && !this.busyEntry) this.refresh();
-            }, 5000);
+            this.refresh().finally(() => this.schedule());
         },
 
         destroy() {
-            window.clearInterval(this.timer);
+            window.clearTimeout(this.timer);
             window.clearTimeout(this.errorTimer);
+        },
+
+        schedule() {
+            window.clearTimeout(this.timer);
+            const baseDelay = Math.max(2000, Number(config.pollMs) || 5000);
+            const jitter = Math.floor(Math.random() * 1000);
+            this.timer = window.setTimeout(async () => {
+                if (!document.hidden && !this.busyEntry) await this.refresh();
+                this.schedule();
+            }, baseDelay + jitter);
         },
 
         showError(message) {
@@ -36,6 +46,8 @@ export default function queueBoard(config) {
         },
 
         async refresh() {
+            if (this.refreshing) return;
+            this.refreshing = true;
             this.loading = true;
             try {
                 const response = await window.axios.get(config.entriesUrl, {
@@ -52,6 +64,7 @@ export default function queueBoard(config) {
                 );
             } finally {
                 this.loading = false;
+                this.refreshing = false;
             }
         },
 

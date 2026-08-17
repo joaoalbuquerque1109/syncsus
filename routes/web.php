@@ -5,19 +5,27 @@ declare(strict_types=1);
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HealthController;
 use App\Modules\Administration\Presentation\Http\Controllers\CatalogManagementController;
+use App\Modules\Administration\Presentation\Http\Controllers\TenantProvisioningController;
 use App\Modules\Administration\Presentation\Http\Controllers\UserManagementController;
 use App\Modules\Audit\Presentation\Http\Controllers\AuditTrailController;
 use App\Modules\Documents\Presentation\Http\Controllers\ClinicalDocumentController;
+use App\Modules\Documents\Presentation\Http\Controllers\MedicalCertificateController;
+use App\Modules\Documents\Presentation\Http\Controllers\SourceClinicalDocumentController;
 use App\Modules\Identity\Presentation\Http\Controllers\ActiveHealthUnitController;
 use App\Modules\Identity\Presentation\Http\Controllers\AuthenticatedSessionController;
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
+use App\Modules\Laboratory\Presentation\Http\Controllers\ExamGroupManagementController;
+use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
+use App\Modules\Laboratory\Presentation\Http\Controllers\SynclabIntegrationController;
+use App\Modules\Medical\Presentation\Http\Controllers\DiagnosisCodeSearchController;
+use App\Modules\Medical\Presentation\Http\Controllers\LaboratoryExamSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\MedicalConsultationController;
+use App\Modules\Medical\Presentation\Http\Controllers\SusProcedureSearchController;
 use App\Modules\Operations\Presentation\Http\Controllers\OperationsController;
 use App\Modules\Patients\Presentation\Http\Controllers\PatientClinicalHistoryController;
 use App\Modules\Patients\Presentation\Http\Controllers\PatientController;
 use App\Modules\Patients\Presentation\Http\Controllers\ProvisionalPatientController;
 use App\Modules\Professionals\Presentation\Http\Controllers\HealthProfessionalController;
-use App\Modules\Professionals\Presentation\Http\Controllers\MedicalDutyController;
 use App\Modules\Queues\Presentation\Http\Controllers\FlowConfigurationController;
 use App\Modules\Queues\Presentation\Http\Controllers\PublicPanelController;
 use App\Modules\Queues\Presentation\Http\Controllers\QueueController;
@@ -50,17 +58,20 @@ Route::middleware(['auth', 'active'])->group(function (): void {
     Route::get('/password/change', [PasswordController::class, 'edit'])->name('password.edit');
     Route::put('/password/change', [PasswordController::class, 'update'])->name('password.update');
 
+    Route::middleware('password.changed')->prefix('administration/tenants')
+        ->name('administration.tenants.')
+        ->group(function (): void {
+            Route::get('/', [TenantProvisioningController::class, 'index'])->name('index');
+            Route::post('/', [TenantProvisioningController::class, 'store'])->name('store');
+        });
+
     Route::middleware(['password.changed', 'active.unit'])->group(function (): void {
         Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        Route::get('/dashboard/state', [DashboardController::class, 'state'])->name('dashboard.state');
         Route::get('/dashboard/metrics', [DashboardController::class, 'metrics'])->name('dashboard.metrics');
         Route::get('/dashboard/active-encounters', [DashboardController::class, 'activeEncounters'])->name('dashboard.active-encounters');
         Route::put('/active-health-unit', [ActiveHealthUnitController::class, 'update'])
             ->name('active-health-unit.update');
-        Route::prefix('medical-duty')->name('medical-duty.')->group(function (): void {
-            Route::post('/check-in', [MedicalDutyController::class, 'checkIn'])->name('check-in');
-            Route::post('/check-out', [MedicalDutyController::class, 'checkOut'])->name('check-out');
-        });
-
         Route::prefix('patients')->name('patients.')->group(function (): void {
             Route::get('/', [PatientController::class, 'index'])->middleware('permission:patients.view')->name('index');
             Route::get('/search', [PatientController::class, 'search'])->middleware('permission:patients.view')->name('search');
@@ -82,12 +93,24 @@ Route::middleware(['auth', 'active'])->group(function (): void {
         Route::prefix('reception')->name('reception.')->middleware('permission:encounters.open')->group(function (): void {
             Route::get('/open', [ReceptionController::class, 'create'])->name('create');
             Route::post('/open', [ReceptionController::class, 'store'])->name('store');
+            Route::post('/draft/patient', [ReceptionController::class, 'draftForPatient'])->name('draft.patient');
+            Route::post('/draft/provisional', [ReceptionController::class, 'draftForProvisionalPatient'])->name('draft.provisional');
+            Route::post('/draft/resume', [ReceptionController::class, 'resumeDraft'])->name('draft.resume');
             Route::get('/receipt/{encounter}', [ReceptionController::class, 'receipt'])->name('receipt');
         });
         Route::post('/reception/encounters/{encounter}/cancel', [ReceptionController::class, 'cancel'])
             ->name('reception.cancel');
 
         Route::get('/queues', [QueueController::class, 'index'])->middleware('permission:queues.view')->name('queues.index');
+        Route::get('/laboratory/exams/search', LaboratoryExamSearchController::class)
+            ->middleware('permission:laboratory.orders.create')
+            ->name('laboratory.exams.search');
+        Route::prefix('laboratory/orders')->name('laboratory.orders.')->group(function (): void {
+            Route::get('/', [LaboratoryOrderController::class, 'index'])->middleware('permission:laboratory.orders.view')->name('index');
+            Route::get('/{order}', [LaboratoryOrderController::class, 'show'])->middleware('permission:laboratory.orders.view')->name('show');
+            Route::post('/{order}/cancel', [LaboratoryOrderController::class, 'cancel'])->middleware('permission:laboratory.orders.cancel')->name('cancel');
+            Route::post('/{order}/retry', [LaboratoryOrderController::class, 'retry'])->middleware('permission:administration.manage')->name('retry');
+        });
         Route::get('/queues/{queue}/entries', [QueueController::class, 'entries'])->middleware('permission:queues.view')->name('queues.entries');
         Route::prefix('queue-entries/{entry}')->name('queue-entries.')->group(function (): void {
             Route::post('/call', [QueueEntryController::class, 'call'])->middleware('permission:queues.call')->name('call');
@@ -111,6 +134,15 @@ Route::middleware(['auth', 'active'])->group(function (): void {
         Route::get('/administration/operations', OperationsController::class)
             ->middleware('permission:administration.manage')
             ->name('administration.operations');
+        Route::prefix('administration/integrations/synclab')
+            ->name('administration.synclab.')
+            ->middleware('permission:administration.manage')
+            ->group(function (): void {
+                Route::get('/', [SynclabIntegrationController::class, 'edit'])->name('edit');
+                Route::put('/', [SynclabIntegrationController::class, 'update'])->name('update');
+                Route::post('/result-token', [SynclabIntegrationController::class, 'rotateResultToken'])
+                    ->name('result-token.rotate');
+            });
         Route::prefix('administration/professionals')
             ->name('administration.professionals.')
             ->middleware('permission:administration.manage')
@@ -137,6 +169,16 @@ Route::middleware(['auth', 'active'])->group(function (): void {
                 Route::post('/{catalog}', [CatalogManagementController::class, 'store'])->name('store');
                 Route::put('/{catalog}/{record}', [CatalogManagementController::class, 'update'])->name('update');
             });
+        Route::prefix('administration/exam-groups')
+            ->name('administration.exam-groups.')
+            ->middleware('permission:administration.manage')
+            ->group(function (): void {
+                Route::get('/search-exams', [ExamGroupManagementController::class, 'searchExams'])
+                    ->name('search-exams');
+                Route::get('/', [ExamGroupManagementController::class, 'index'])->name('index');
+                Route::post('/', [ExamGroupManagementController::class, 'store'])->name('store');
+                Route::put('/{examGroup}', [ExamGroupManagementController::class, 'update'])->name('update');
+            });
 
         Route::prefix('triage')->name('triage.')->group(function (): void {
             Route::get('/queue', [TriageController::class, 'queue'])->middleware('permission:triage.view')->name('queue');
@@ -150,6 +192,9 @@ Route::middleware(['auth', 'active'])->group(function (): void {
 
         Route::prefix('medical')->name('medical.')->group(function (): void {
             Route::get('/queue', [MedicalConsultationController::class, 'queue'])->middleware('permission:medical.view')->name('queue');
+            Route::get('/cid-codes/search', DiagnosisCodeSearchController::class)->middleware('permission:medical.view')->name('cid-codes.search');
+            Route::get('/sus-procedures/search', SusProcedureSearchController::class)->middleware('permission:medical.view')->name('sus-procedures.search');
+            Route::get('/laboratory-exams/search', LaboratoryExamSearchController::class)->middleware('permission:medical.view')->name('laboratory-exams.search');
             Route::post('/queue-entries/{entry}/start', [MedicalConsultationController::class, 'start'])->middleware('permission:medical.start')->name('start');
             Route::get('/consultations/{consultation}', [MedicalConsultationController::class, 'show'])->middleware('permission:medical.view')->name('show');
             Route::put('/consultations/{consultation}/draft', [MedicalConsultationController::class, 'draft'])->name('draft');
@@ -159,6 +204,10 @@ Route::middleware(['auth', 'active'])->group(function (): void {
             Route::post('/consultations/{consultation}/clinical-notes', [MedicalConsultationController::class, 'clinicalNote'])->name('clinical-notes');
             Route::post('/consultations/{consultation}/referrals', [MedicalConsultationController::class, 'referral'])->name('referrals');
             Route::post('/consultations/{consultation}/documents', [ClinicalDocumentController::class, 'store'])->name('documents');
+            Route::post('/consultations/{consultation}/medical-certificates', [MedicalCertificateController::class, 'store'])->name('medical-certificates.store');
+            Route::post('/consultations/{consultation}/prescriptions/{prescription}/document', [SourceClinicalDocumentController::class, 'prescription'])->middleware('permission:medical.issue_documents')->name('prescriptions.document');
+            Route::post('/consultations/{consultation}/exam-orders/{order}/document', [SourceClinicalDocumentController::class, 'examOrder'])->middleware('permission:medical.issue_documents')->name('exam-orders.document');
+            Route::post('/consultations/{consultation}/referrals/{referral}/document', [SourceClinicalDocumentController::class, 'referral'])->middleware('permission:medical.issue_documents')->name('referrals.document');
             Route::post('/consultations/{consultation}/complete', [MedicalConsultationController::class, 'complete'])->name('complete');
             Route::post('/consultations/{consultation}/addendum', [MedicalConsultationController::class, 'addendum'])->name('addendum');
             Route::post('/consultations/{consultation}/diagnoses/{diagnosis}/void', [MedicalConsultationController::class, 'voidDiagnosis'])->name('diagnoses.void');

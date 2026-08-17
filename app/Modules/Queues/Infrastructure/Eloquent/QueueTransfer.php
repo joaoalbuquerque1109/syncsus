@@ -7,10 +7,10 @@ namespace App\Modules\Queues\Infrastructure\Eloquent;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class QueueTransfer extends Model
+final class QueueTransfer extends TenantModel
 {
     use HasPublicId;
 
@@ -34,10 +34,9 @@ final class QueueTransfer extends Model
         return $this->belongsTo(QueueEntry::class, 'destination_entry_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function transferredBy(): BelongsTo
+    public function resolveTransferredBy(): ?User
     {
-        return $this->belongsTo(User::class, 'transferred_by');
+        return User::query()->find($this->transferred_by);
     }
 
     protected function casts(): array

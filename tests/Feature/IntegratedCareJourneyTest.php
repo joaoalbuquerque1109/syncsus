@@ -23,14 +23,14 @@ use Database\Seeders\MedicalCatalogSeeder;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\TriageCatalogSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class IntegratedCareJourneyTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_fictitious_patient_completes_reception_triage_medical_discharge_and_document_flow(): void
     {
@@ -46,9 +46,10 @@ final class IntegratedCareJourneyTest extends TestCase
         $receptionist->assignRole('receptionist');
         $triageProfessional = $this->createUserWithUnit($unit, ['name' => 'Enfermeira Teste', 'must_change_password' => false]);
         $triageProfessional->assignRole('triage_professional');
+        $this->registerTriageProfessional($triageProfessional, $unit);
         $doctor = $this->createUserWithUnit($unit, ['name' => 'Médico Teste', 'must_change_password' => false]);
         $doctor->assignRole('doctor');
-        $this->checkInDoctor($doctor, $unit);
+        $this->registerDoctor($doctor, $unit);
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,
             'medical_record_number' => 'P00000888',

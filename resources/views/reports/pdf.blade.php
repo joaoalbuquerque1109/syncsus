@@ -4,20 +4,22 @@
     <meta charset="utf-8">
     <style>
         @page { margin: 18mm 12mm; }
+        html, body { max-width: 100%; overflow-wrap: break-word; word-wrap: break-word; }
         body { font-family: "DejaVu Sans", sans-serif; color: #172033; font-size: 8pt; }
+        h1, p, td, th, strong { max-width: 100%; overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; }
         h1 { margin: 0; font-size: 16pt; color: #0b3558; }
         .subtitle { color: #53657b; margin: 4px 0 18px; }
-        .metrics { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+        .metrics { width: 100%; table-layout: fixed; border-collapse: collapse; margin-bottom: 18px; }
         .metrics td { width: 25%; border: 1px solid #d9e2ec; padding: 8px; }
         .metrics strong { display: block; font-size: 14pt; }
-        table.data { width: 100%; border-collapse: collapse; }
+        table.data { width: 100%; table-layout: fixed; border-collapse: collapse; }
         .data th { background: #eaf3fb; text-align: left; padding: 6px; }
-        .data td { border-bottom: 1px solid #d9e2ec; padding: 5px 6px; vertical-align: top; }
-        .footer { position: fixed; bottom: -8mm; left: 0; right: 0; color: #53657b; border-top: 1px solid #d9e2ec; padding-top: 5px; }
+        .data td { border-bottom: 1px solid #d9e2ec; padding: 5px 6px; vertical-align: top; overflow-wrap: break-word; word-wrap: break-word; word-break: break-all; }
+        .footer { position: fixed; bottom: -8mm; left: 0; right: 0; color: #53657b; border-top: 1px solid #d9e2ec; padding-top: 5px; overflow-wrap: break-word; word-wrap: break-word; word-break: break-all; }
     </style>
 </head>
 <body>
-    <h1>SYNC SUS · Relatório de atendimentos</h1>
+    <h1>SYNC HOSP · Relatório de atendimentos</h1>
     <p class="subtitle">{{ $unit->organization->trade_name }} · {{ $unit->name }} · período {{ \Illuminate\Support\Carbon::parse($filters['date_from'])->format('d/m/Y') }} a {{ \Illuminate\Support\Carbon::parse($filters['date_to'])->format('d/m/Y') }}</p>
     <table class="metrics"><tr><td><strong>{{ $summary['total'] }}</strong>Total</td><td><strong>{{ $summary['average_triage_wait_minutes'] ?? '—' }}</strong>Espera triagem (min)</td><td><strong>{{ $summary['average_medical_wait_minutes'] ?? '—' }}</strong>Espera médica (min)</td><td><strong>{{ $summary['average_total_minutes'] ?? '—' }}</strong>Tempo total (min)</td></tr></table>
     <table class="data">

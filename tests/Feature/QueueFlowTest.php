@@ -5,11 +5,18 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
+use App\Modules\Administration\Infrastructure\Eloquent\Department;
 use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
+use App\Modules\Administration\Infrastructure\Eloquent\Room;
+use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
+use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Patients\Infrastructure\Eloquent\PatientIdentifier;
+use App\Modules\Professionals\Application\Services\ProfessionalOperationalAssignments;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
@@ -19,25 +26,32 @@ use App\Modules\Reception\Domain\Enums\EncounterStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class QueueFlowTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_authorized_professional_can_call_recall_and_start_with_version_conflict_protection(): void
     {
         [$unit, $user, $entry, $point] = $this->context();
         $session = ['active_health_unit_id' => $unit->getKey()];
+        $risk = RiskLevel::query()->where('code', 'YELLOW')->sole();
+        $entry->encounter->update(['risk_level_id' => $risk->getKey()]);
 
         $this->actingAs($user)->withSession($session)->get(route('queues.index'))
             ->assertOk()
             ->assertSee('Filas e chamadas');
         $this->actingAs($user)->withSession($session)->getJson(route('queues.entries', $entry->queue))
             ->assertOk()
-            ->assertJsonPath('data.0.ticket', 'T001');
+            ->assertJsonPath('data.0.ticket', 'T001')
+            ->assertJsonPath('data.0.risk', 'Amarelo')
+            ->assertJsonPath('data.0.risk_color', 'yellow');
 
         $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
             'version' => 1,
@@ -113,7 +127,7 @@ final class QueueFlowTest extends TestCase
         $this->assertDatabaseHas('queue_entry_history', ['queue_entry_id' => $destination->getKey(), 'action' => 'entered_by_transfer']);
     }
 
-    public function test_public_panel_payload_is_incremental_and_contains_no_sensitive_or_clinical_data(): void
+    public function test_public_panel_calls_by_name_without_exposing_clinical_or_document_data(): void
     {
         [$unit, $user, $entry, $point, $patient] = $this->context();
         $session = ['active_health_unit_id' => $unit->getKey()];
@@ -125,6 +139,7 @@ final class QueueFlowTest extends TestCase
             'is_primary' => true,
         ]);
         $panel = Panel::query()->where('health_unit_id', $unit->getKey())->sole();
+        $panel->update(['identification_mode' => 'full_name']);
 
         $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
             'version' => 1,
@@ -135,12 +150,12 @@ final class QueueFlowTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.ticket', 'T001')
-            ->assertJsonPath('data.0.person_label', null)
+            ->assertJsonPath('data.0.person_label', $patient->full_name)
             ->assertJsonMissingPath('data.0.patient')
             ->assertJsonMissingPath('data.0.medical_record_number')
             ->assertJsonMissingPath('data.0.cpf')
             ->assertJsonMissingPath('data.0.risk');
-        $state->assertDontSee($patient->full_name)
+        $state->assertSee($patient->full_name)
             ->assertDontSee($patient->medical_record_number)
             ->assertDontSee('52998224725');
         $cursor = $state->json('data.0.event');
@@ -156,6 +171,14 @@ final class QueueFlowTest extends TestCase
 
         $this->postJson(route('panels.heartbeat', $panel))->assertOk()->assertJsonPath('ok', true);
         $this->assertNotNull($panel->fresh()?->last_heartbeat_at);
+        $this->assertSame(1, $panel->fresh()?->heartbeat_count);
+
+        $this->postJson(route('panels.heartbeat', $panel))->assertOk();
+        $this->assertSame(1, $panel->fresh()?->heartbeat_count);
+
+        $this->travel(16)->seconds();
+        $this->postJson(route('panels.heartbeat', $panel))->assertOk();
+        $this->assertSame(2, $panel->fresh()?->heartbeat_count);
     }
 
     public function test_user_without_call_permission_cannot_change_queue_state(): void
@@ -183,6 +206,8 @@ final class QueueFlowTest extends TestCase
         $panel = Panel::query()->where('health_unit_id', $unit->getKey())->sole();
         $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
         $session = ['active_health_unit_id' => $unit->getKey()];
+        $cacheKey = "syncsus:unit:{$unit->getKey()}:panel:{$panel->getKey()}:queue-ids";
+        Cache::put($cacheKey, [-1], 60);
 
         $this->actingAs($administrator)->withSession($session)
             ->get(route('administration.flow.index'))
@@ -201,6 +226,7 @@ final class QueueFlowTest extends TestCase
             ])
             ->assertRedirect();
 
+        $this->assertNull(Cache::get($cacheKey));
         $this->assertDatabaseHas('panels', [
             'id' => $panel->getKey(),
             'name' => 'Painel da recepção',
@@ -244,6 +270,173 @@ final class QueueFlowTest extends TestCase
         );
     }
 
+    public function test_queue_index_query_count_is_constant_for_broad_access(): void
+    {
+        [$unit] = $this->context();
+        Queue::query()->where('health_unit_id', $unit->getKey())->update(['is_active' => false]);
+        $fixture = $this->performanceQueues($unit);
+        $manager = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $manager->assignRole('manager');
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($manager)->withSession($session)->get(route('queues.index'))->assertOk();
+
+        $this->activateQueues($fixture['queues'], 3);
+        [$threeQueues, $threeQueryCount] = $this->measuredQueueIndex($manager, $unit);
+        $threeQueues->assertOk()
+            ->assertSee('Fila de desempenho 01')
+            ->assertSee('Ponto de desempenho 01 A')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->count() === 3
+                && $queues->every(fn (Queue $queue): bool => $queue->relationLoaded('servicePoints')
+                    && $queue->servicePoints->count() === 2
+                    && $queue->servicePoints->every(fn (ServicePoint $point): bool => $point->relationLoaded('room'))));
+
+        $this->activateQueues($fixture['queues'], 8);
+        [$eightQueues, $eightQueryCount] = $this->measuredQueueIndex($manager, $unit);
+        $eightQueues->assertOk()
+            ->assertSee('Fila de desempenho 08')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->count() === 8
+                && $queues->every(fn (Queue $queue): bool => $queue->servicePoints->count() === 2));
+
+        $this->assertLessThanOrEqual(8, $threeQueryCount);
+        $this->assertSame($threeQueryCount, $eightQueryCount);
+    }
+
+    public function test_queue_index_eager_load_preserves_restricted_professional_visibility(): void
+    {
+        [$unit, $professionalUser] = $this->context();
+        Queue::query()->where('health_unit_id', $unit->getKey())->update(['is_active' => false]);
+        $fixture = $this->performanceQueues($unit);
+        $profile = $professionalUser->professionalProfile()->sole();
+        $allowedIndexes = [0, 2, 7];
+        app(ProfessionalOperationalAssignments::class)->sync(
+            $profile,
+            collect($allowedIndexes)
+                ->map(fn (int $index): int => (int) $fixture['queues'][$index]->getKey())
+                ->all(),
+            collect($allowedIndexes)
+                ->map(fn (int $index): int => (int) $fixture['primaryPoints'][$index]->getKey())
+                ->all(),
+        );
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($professionalUser)->withSession($session)->get(route('queues.index'))->assertOk();
+
+        $this->activateQueues($fixture['queues'], 3);
+        [$threeQueues, $threeQueryCount] = $this->measuredQueueIndex($professionalUser, $unit);
+        $threeQueues->assertOk()
+            ->assertSee('Fila de desempenho 01')
+            ->assertSee('Fila de desempenho 03')
+            ->assertDontSee('Fila de desempenho 02')
+            ->assertSee('Ponto de desempenho 01 A')
+            ->assertDontSee('Ponto de desempenho 01 B')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->pluck('code')->all() === [
+                'PERF-QUEUE-01',
+                'PERF-QUEUE-03',
+            ] && $queues->every(fn (Queue $queue): bool => $queue->servicePoints->count() === 1
+                && $queue->servicePoints->first()?->name === sprintf(
+                    'Ponto de desempenho %02d A',
+                    (int) str_replace('PERF-QUEUE-', '', $queue->code),
+                )));
+
+        $this->activateQueues($fixture['queues'], 8);
+        [$eightQueues, $eightQueryCount] = $this->measuredQueueIndex($professionalUser, $unit);
+        $eightQueues->assertOk()
+            ->assertSee('Fila de desempenho 08')
+            ->assertDontSee('Fila de desempenho 07')
+            ->assertViewHas('queues', fn (Collection $queues): bool => $queues->pluck('code')->all() === [
+                'PERF-QUEUE-01',
+                'PERF-QUEUE-03',
+                'PERF-QUEUE-08',
+            ] && $queues->every(fn (Queue $queue): bool => $queue->servicePoints->count() === 1));
+
+        $this->assertLessThanOrEqual(8, $threeQueryCount);
+        $this->assertSame($threeQueryCount, $eightQueryCount);
+    }
+
+    /**
+     * @return array{
+     *     queues: Collection<int, Queue>,
+     *     primaryPoints: Collection<int, ServicePoint>
+     * }
+     */
+    private function performanceQueues(HealthUnit $unit): array
+    {
+        $department = Department::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('code', 'TRIAGE')
+            ->sole();
+        $queues = new Collection;
+        $primaryPoints = new Collection;
+
+        foreach (range(1, 8) as $index) {
+            $room = Room::query()->create([
+                'department_id' => $department->getKey(),
+                'code' => sprintf('PERF-ROOM-%02d', $index),
+                'name' => sprintf('Sala de desempenho %02d', $index),
+                'room_type' => 'triage',
+                'is_active' => true,
+            ]);
+            $primaryPoint = ServicePoint::query()->create([
+                'room_id' => $room->getKey(),
+                'code' => 'PERF-A',
+                'name' => sprintf('Ponto de desempenho %02d A', $index),
+                'type' => 'triage',
+                'is_active' => true,
+            ]);
+            $secondaryPoint = ServicePoint::query()->create([
+                'room_id' => $room->getKey(),
+                'code' => 'PERF-B',
+                'name' => sprintf('Ponto de desempenho %02d B', $index),
+                'type' => 'triage',
+                'is_active' => true,
+            ]);
+            $queue = Queue::query()->create([
+                'health_unit_id' => $unit->getKey(),
+                'department_id' => $department->getKey(),
+                'code' => sprintf('PERF-QUEUE-%02d', $index),
+                'name' => sprintf('Fila de desempenho %02d', $index),
+                'prefix' => 'P',
+                'sequence_reset_policy' => 'daily',
+                'priority_strategy' => 'priority_fifo',
+                'minimum_calls_before_absent' => 1,
+                'ticket_length' => 3,
+                'is_active' => false,
+                'display_order' => 100 + $index,
+            ]);
+            $queue->servicePoints()->attach([$primaryPoint->getKey(), $secondaryPoint->getKey()]);
+            $queues->push($queue);
+            $primaryPoints->push($primaryPoint);
+        }
+
+        return ['queues' => $queues, 'primaryPoints' => $primaryPoints];
+    }
+
+    /** @param Collection<int, Queue> $queues */
+    private function activateQueues(Collection $queues, int $activeCount): void
+    {
+        $queues->each(function (Queue $queue, int $index) use ($activeCount): void {
+            $queue->update(['is_active' => $index < $activeCount]);
+        });
+    }
+
+    /** @return array{0: TestResponse, 1: int} */
+    private function measuredQueueIndex(User $user, HealthUnit $unit): array
+    {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $response = $this->actingAs($user)
+                ->withSession(['active_health_unit_id' => $unit->getKey()])
+                ->get(route('queues.index'));
+            $queryCount = count(DB::getQueryLog());
+        } finally {
+            DB::disableQueryLog();
+        }
+
+        return [$response, $queryCount];
+    }
+
     /** @return array{0: mixed, 1: mixed, 2: QueueEntry, 3: mixed, 4: Patient} */
     private function context(): array
     {
@@ -251,6 +444,7 @@ final class QueueFlowTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
         $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         $user->assignRole('triage_professional');
+        $this->registerTriageProfessional($user, $unit);
 
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,

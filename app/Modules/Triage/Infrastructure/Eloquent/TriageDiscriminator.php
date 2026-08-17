@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Triage\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class TriageDiscriminator extends Model
+final class TriageDiscriminator extends TenantModel
 {
     protected $guarded = [];
 

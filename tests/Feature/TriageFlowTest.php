@@ -26,18 +26,19 @@ use App\Modules\Triage\Infrastructure\Eloquent\TriageProtocol;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\TriageCatalogSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class TriageFlowTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_only_one_professional_can_start_the_called_triage(): void
     {
         [$unit, $professional, $entry] = $this->context();
         $otherProfessional = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         $otherProfessional->assignRole('triage_professional');
+        $this->registerTriageProfessional($otherProfessional, $unit);
         $session = ['active_health_unit_id' => $unit->getKey()];
 
         $response = $this->actingAs($professional)->withSession($session)
@@ -76,6 +77,50 @@ final class TriageFlowTest extends TestCase
             'action' => 'triage_started',
         ]);
         $this->assertDatabaseHas('audit_logs', ['action' => 'triage.started']);
+    }
+
+    public function test_responsible_professional_and_administrator_can_edit_active_triage_from_queue(): void
+    {
+        [$unit, $professional, $entry] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $assessment = $this->start($unit, $professional, $entry);
+        $otherProfessional = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $otherProfessional->assignRole('triage_professional');
+        $this->registerTriageProfessional($otherProfessional, $unit);
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+
+        $this->actingAs($professional)->withSession($session)
+            ->getJson(route('queues.entries', $entry->queue))
+            ->assertOk()
+            ->assertJsonPath('data.0.can_edit', true)
+            ->assertJsonPath('data.0.edit_url', route('triage.show', $assessment));
+
+        $this->actingAs($otherProfessional)->withSession($session)
+            ->getJson(route('queues.entries', $entry->queue))
+            ->assertOk()
+            ->assertJsonPath('data.0.can_edit', false)
+            ->assertJsonPath('data.0.edit_url', null);
+        $this->actingAs($otherProfessional)->withSession($session)
+            ->get(route('triage.show', $assessment))
+            ->assertForbidden();
+
+        $this->actingAs($administrator)->withSession($session)
+            ->getJson(route('queues.entries', $entry->queue))
+            ->assertOk()
+            ->assertJsonPath('data.0.can_edit', true)
+            ->assertJsonPath('data.0.edit_url', route('triage.show', $assessment));
+        $this->actingAs($administrator)->withSession($session)
+            ->get(route('triage.show', $assessment))
+            ->assertOk();
+        $this->actingAs($administrator)->withSession($session)
+            ->put(route('triage.draft', $assessment), [
+                'version' => 1,
+                'chief_complaint' => 'Triagem revisada pelo administrador global.',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('Triagem revisada pelo administrador global.', $assessment->fresh()?->chief_complaint);
     }
 
     public function test_vital_signs_are_historical_validated_and_never_choose_the_risk(): void
@@ -263,6 +308,67 @@ final class TriageFlowTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'triage.addendum_created']);
     }
 
+    public function test_platform_administrator_can_finalize_triage_assigned_to_another_professional(): void
+    {
+        [$unit, $professional, $entry] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $assessment = $this->start($unit, $professional, $entry);
+
+        $this->actingAs($professional)->withSession($session)
+            ->put(route('triage.draft', $assessment), [
+                'version' => 1,
+                'chief_complaint' => 'Paciente com mal-estar e tontura.',
+                'brief_history' => 'Sintomas iniciados hoje, sem perda de consciência.',
+                'has_reported_allergies' => false,
+                'uses_medications' => false,
+                'requires_isolation' => false,
+                'violence_signs' => false,
+            ])
+            ->assertRedirect();
+
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $protocol = TriageProtocol::query()->where('code', 'SYNC-TRIAGE')->sole();
+        $flowchart = TriageFlowchart::query()
+            ->where('triage_protocol_id', $protocol->getKey())
+            ->where('code', 'RESPIRATORY')
+            ->sole();
+        $discriminator = TriageDiscriminator::query()
+            ->where('triage_flowchart_id', $flowchart->getKey())
+            ->where('code', 'MODERATE')
+            ->sole();
+        $risk = RiskLevel::query()->where('code', 'YELLOW')->sole();
+        $destination = Queue::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('code', 'QUEUE-CLINIC')
+            ->sole();
+
+        $this->actingAs($administrator)->withSession($session)
+            ->post(route('triage.complete', $assessment), [
+                'version' => 2,
+                'triage_protocol_id' => $protocol->getKey(),
+                'triage_flowchart_id' => $flowchart->getKey(),
+                'triage_discriminator_id' => $discriminator->getKey(),
+                'risk_level_id' => $risk->getKey(),
+                'risk_justification' => 'Administrador confirmou a classificação registrada.',
+                'destination_queue_id' => $destination->getKey(),
+                'professional_confirmation' => true,
+            ])
+            ->assertRedirect(route('triage.show', $assessment));
+
+        $this->assertDatabaseHas('triage_assessments', [
+            'id' => $assessment->getKey(),
+            'status' => 'finalized',
+            'professional_id' => $professional->getKey(),
+            'finalized_by' => $administrator->getKey(),
+        ]);
+        $this->assertDatabaseHas('queue_entries', [
+            'encounter_id' => $entry->encounter_id,
+            'queue_id' => $destination->getKey(),
+            'status' => 'waiting',
+        ]);
+    }
+
     public function test_triage_permissions_protect_start_and_clinical_record(): void
     {
         [$unit, $professional, $entry] = $this->context();
@@ -306,6 +412,7 @@ final class TriageFlowTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class, TriageCatalogSeeder::class]);
         $professional = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         $professional->assignRole('triage_professional');
+        $this->registerTriageProfessional($professional, $unit);
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,
             'medical_record_number' => 'P00000044',

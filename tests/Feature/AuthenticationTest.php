@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Modules\Audit\Infrastructure\Eloquent\AuditLog;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use App\Modules\Audit\Infrastructure\Eloquent\SecurityAuditLog;
 use Illuminate\Support\Facades\Hash;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class AuthenticationTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_login_screen_is_available_to_guests(): void
     {
@@ -26,7 +26,7 @@ final class AuthenticationTest extends TestCase
         $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
 
         $response = $this->post('/login', [
-            'unit_code' => $unit->organization->code,
+            'unit_code' => $unit->organization->cnes_code,
             'email' => $user->email,
             'password' => 'Initial#Password2026',
         ]);
@@ -34,7 +34,7 @@ final class AuthenticationTest extends TestCase
         $response->assertRedirect('/dashboard');
         $this->assertAuthenticatedAs($user);
         $this->assertSame($unit->getKey(), session('active_health_unit_id'));
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'user_id' => $user->getKey(),
             'action' => 'user.logged_in',
         ]);
@@ -50,7 +50,7 @@ final class AuthenticationTest extends TestCase
         ])->assertSessionHasErrors('email');
 
         $this->assertGuest();
-        $audit = AuditLog::query()->where('action', 'user.login_failed')->firstOrFail();
+        $audit = SecurityAuditLog::query()->where('action', 'user.login_failed')->firstOrFail();
         $this->assertNull($audit->user_id);
         $this->assertSame('invalid_credentials', $audit->context['reason']);
     }
@@ -67,7 +67,7 @@ final class AuthenticationTest extends TestCase
         ])->assertSessionHasErrors('email');
 
         $this->assertGuest();
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'user_id' => $user->getKey(),
             'action' => 'user.login_failed',
         ]);
@@ -94,7 +94,7 @@ final class AuthenticationTest extends TestCase
             'Muitas tentativas',
             (string) session('errors')?->first('email'),
         );
-        $this->assertDatabaseCount('audit_logs', 5);
+        $this->assertDatabaseCount('security_audit_logs', 5);
     }
 
     public function test_authenticated_user_can_logout_and_event_is_audited(): void
@@ -108,7 +108,7 @@ final class AuthenticationTest extends TestCase
             ->assertRedirect('/login');
 
         $this->assertGuest();
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('security_audit_logs', [
             'user_id' => $user->getKey(),
             'action' => 'user.logged_out',
             'health_unit_id' => $unit->getKey(),
@@ -126,12 +126,12 @@ final class AuthenticationTest extends TestCase
             'password' => 'Initial#Password2026',
         ]);
 
-        $auditPayload = AuditLog::query()->get()->toJson();
+        $auditPayload = SecurityAuditLog::query()->get()->toJson();
         $this->assertStringNotContainsString('Initial#Password2026', $auditPayload);
         $this->assertTrue(Hash::check('Initial#Password2026', (string) $user->password));
     }
 
-    public function test_same_email_can_authenticate_in_distinct_units_using_unit_code(): void
+    public function test_same_email_can_authenticate_in_distinct_units_using_cnes(): void
     {
         $firstUnit = $this->createHealthUnit('UNIT-A');
         $secondUnit = $this->createHealthUnit('UNIT-B');
@@ -143,7 +143,7 @@ final class AuthenticationTest extends TestCase
         ]);
 
         $this->post('/login', [
-            'unit_code' => 'unit-b',
+            'unit_code' => $secondUnit->organization->cnes_code,
             'email' => $email,
             'password' => 'Initial#Password2026',
         ])->assertRedirect('/dashboard');

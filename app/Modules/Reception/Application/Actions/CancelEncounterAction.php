@@ -9,6 +9,7 @@ use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Domain\Enums\MedicalConsultationStatus;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
+use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Reception\Domain\Enums\EncounterStatus;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
@@ -32,7 +33,7 @@ final readonly class CancelEncounterAction
     ): Encounter {
         return DB::transaction(function () use ($encounter, $expectedVersion, $reason, $user, $unit, $request): Encounter {
             $locked = Encounter::query()
-                ->with(['patient', 'queueEntries', 'triageAssessment', 'medicalConsultation'])
+                ->with(['queueEntries', 'triageAssessment', 'medicalConsultation'])
                 ->whereKey($encounter->getKey())
                 ->where('health_unit_id', $unit->getKey())
                 ->lockForUpdate()
@@ -125,12 +126,22 @@ final readonly class CancelEncounterAction
                 (int) $locked->getKey(),
             );
 
-            return $locked->fresh(['patient', 'queueEntries.queue']) ?? $locked;
+            $cancelled = $locked->fresh(['queueEntries.queue']) ?? $locked;
+            $cancelled->setRelation(
+                'patient',
+                Patient::query()->findOrFail($cancelled->patient_id),
+            );
+
+            return $cancelled;
         });
     }
 
     private function authorizeCancellation(Encounter $encounter, EncounterStatus $status, User $user): void
     {
+        if ($user->isPlatformAdministrator()) {
+            return;
+        }
+
         $administrativeStatuses = [
             EncounterStatus::Opened,
             EncounterStatus::WaitingTriage,

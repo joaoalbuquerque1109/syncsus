@@ -34,7 +34,13 @@ final readonly class AuthenticateUserAction
         );
         $organization = $isAdministrativeAccess
             ? null
-            : Organization::query()->where('code', $unitCode)->where('is_active', true)->first();
+            : Organization::query()
+                ->where('is_active', true)
+                ->where(function ($query) use ($unitCode): void {
+                    $query->where('cnes_code', preg_replace('/\D/', '', $unitCode))
+                        ->orWhere('code', $unitCode);
+                })
+                ->first();
         $user = $isAdministrativeAccess
             ? User::query()
                 ->where('platform_admin_slot', 1)
@@ -73,7 +79,7 @@ final readonly class AuthenticateUserAction
             ]);
         }
 
-        DB::transaction(function () use ($request, $user, $auditHealthUnitId): void {
+        DB::connection('core')->transaction(function () use ($request, $user, $auditHealthUnitId): void {
             $user->forceFill(['last_login_at' => now()])->save();
             $this->recordAuditEvent->execute(
                 'user.logged_in',

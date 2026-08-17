@@ -6,11 +6,56 @@ namespace Database\Seeders;
 
 use App\Modules\Medical\Infrastructure\Eloquent\DiagnosisCode;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 final class MedicalCatalogSeeder extends Seeder
 {
     public function run(): void
     {
+        $now = now();
+        $catalog = [];
+
+        foreach (glob(database_path('data/cid10/*.csv')) ?: [] as $file) {
+            $handle = fopen($file, 'rb');
+            if ($handle === false) {
+                throw new RuntimeException("Não foi possível ler o catálogo CID: {$file}");
+            }
+
+            try {
+                fgetcsv($handle, 0, ',', '"', '');
+
+                while (($row = fgetcsv($handle, 0, ',', '"', '')) !== false) {
+                    if (count($row) < 2 || blank($row[0]) || blank($row[1])) {
+                        continue;
+                    }
+
+                    $catalog[] = [
+                        'code' => trim((string) $row[0]),
+                        'description' => trim((string) $row[1]),
+                        'is_active' => true,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ];
+                }
+            } finally {
+                fclose($handle);
+            }
+        }
+
+        if (count($catalog) !== 1835) {
+            throw new RuntimeException('O catálogo CID-10 deve conter os 1.835 registros da fonte fornecida.');
+        }
+
+        foreach (array_chunk($catalog, 500) as $chunk) {
+            DB::connection('core')->table('diagnosis_codes')->upsert(
+                $chunk,
+                ['code'],
+                ['description', 'is_active', 'updated_at'],
+            );
+        }
+
+        // Mantém códigos detalhados já utilizados pelo sistema, além das categorias da planilha.
         foreach ([
             ['code' => 'R52', 'description' => 'Dor não classificada em outra parte'],
             ['code' => 'R50.9', 'description' => 'Febre não especificada'],

@@ -4,26 +4,21 @@ declare(strict_types=1);
 
 namespace App\Modules\Operations\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Concerns\HasUlids;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\CoreModel;
+use App\Support\Models\HasPublicId;
 
-final class BackupLog extends Model
+final class BackupLog extends CoreModel
 {
-    use HasUlids;
+    use HasPublicId;
 
     protected $guarded = [];
-
-    /** @return list<string> */
-    public function uniqueIds(): array
-    {
-        return ['public_id'];
-    }
 
     protected function casts(): array
     {
         return [
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
+            'core_reference_at' => 'immutable_datetime',
         ];
     }
 }

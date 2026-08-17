@@ -7,6 +7,15 @@ namespace Tests\Feature;
 use App\Modules\Administration\Infrastructure\Eloquent\ArrivalMethod;
 use App\Modules\Administration\Infrastructure\Eloquent\Department;
 use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Laboratory\Domain\Enums\ExamMappingMatchType;
+use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
+use App\Modules\Laboratory\Infrastructure\Eloquent\HealthUnitExam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
+use App\Modules\Patients\Domain\Enums\PatientIdentifierType;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
@@ -14,13 +23,13 @@ use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class ReceptionOpeningTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_reception_opening_is_atomic_audited_and_idempotent(): void
     {
@@ -97,7 +106,289 @@ final class ReceptionOpeningTest extends TestCase
         $this->assertDatabaseCount('encounters', 0);
     }
 
-    /** @return array{0: mixed, 1: mixed, 2: Patient} */
+    public function test_reception_creates_idempotent_multi_exam_request_and_grid_entry(): void
+    {
+        [$unit, $receptionist, $patient] = $this->context();
+        $doctor = $this->createUserWithUnit($unit, ['name' => 'Dra. Solicitante', 'must_change_password' => false]);
+        $doctor->assignRole('doctor');
+        $this->registerDoctor($doctor, $unit);
+        $patient->identifiers()->create([
+            'type' => PatientIdentifierType::Cpf,
+            'normalized_value' => '52998224725',
+            'display_value' => '529.982.247-25',
+            'is_primary' => true,
+        ]);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $hemogram = $integration->exams()->create(['external_code' => '127', 'name' => 'Hemograma completo']);
+        $glucose = $integration->exams()->create(['external_code' => '128', 'name' => 'Glicose']);
+        $this->setLaboratoryExamAvailability($unit, $integration, $hemogram);
+        $this->setLaboratoryExamAvailability($unit, $integration, $glucose);
+        $payload = [
+            ...$this->payload($patient),
+            'request_exams' => '1',
+            'exam_requester_id' => $doctor->getKey(),
+            'exam_priority' => 'routine',
+            'exam_clinical_indication' => 'Investigação laboratorial registrada na recepção.',
+            'exam_ids' => [$hemogram->getKey(), $glucose->getKey()],
+        ];
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.store'), $payload)
+            ->assertRedirect();
+
+        $order = ExamOrder::query()->with('items')->sole();
+        $this->assertSame('reception', $order->origin);
+        $this->assertSame($doctor->getKey(), $order->requested_by);
+        $this->assertSame($receptionist->getKey(), $order->created_by);
+        $this->assertNull($order->medical_consultation_id);
+        $this->assertSame(['Hemograma completo', 'Glicose'], $order->items->pluck('exam_name')->all());
+        $this->assertDatabaseHas('laboratory_order_transmissions', [
+            'exam_order_id' => $order->getKey(),
+            'status' => 'awaiting_configuration',
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.order_created_at_reception']);
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.store'), $payload)
+            ->assertRedirect();
+        $this->assertDatabaseCount('exam_orders', 1);
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('laboratory.orders.index'))
+            ->assertForbidden();
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create'))
+            ->assertOk()
+            ->assertDontSee('href="'.route('laboratory.orders.index').'"', false);
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('laboratory.orders.index'))
+            ->assertForbidden();
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('laboratory.orders.show', $order))
+            ->assertOk()
+            ->assertSee('Voltar ao fluxo');
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('laboratory.orders.show', $order))
+            ->assertOk();
+        $otherDoctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $otherDoctor->assignRole('doctor');
+        $this->actingAs($otherDoctor)->withSession($session)
+            ->get(route('laboratory.orders.show', $order))
+            ->assertForbidden();
+
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $this->actingAs($administrator)->withSession($session)
+            ->get(route('laboratory.orders.index'))
+            ->assertOk()
+            ->assertSee('Requisições de exames')
+            ->assertSee('Paciente Demonstrativo')
+            ->assertSee('Dra. Solicitante')
+            ->assertSee('href="'.route('laboratory.orders.index').'"', false)
+            ->assertSee('min-w-[1280px]', false)
+            ->assertSee('min-w-24 items-center justify-center whitespace-nowrap', false)
+            ->assertSee('2');
+
+        $otherUnit = $this->createHealthUnit('NORTH');
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $otherUnit->getKey()])
+            ->get(route('laboratory.orders.index'))
+            ->assertOk()
+            ->assertDontSee('Paciente Demonstrativo');
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $otherUnit->getKey()])
+            ->get(route('laboratory.orders.show', $order))
+            ->assertNotFound();
+    }
+
+    public function test_reception_cancels_pending_order_without_deleting_history(): void
+    {
+        [$unit, $receptionist, $patient] = $this->context();
+        $doctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $doctor->assignRole('doctor');
+        $this->registerDoctor($doctor, $unit);
+        $patient->identifiers()->create([
+            'type' => PatientIdentifierType::Cns,
+            'normalized_value' => '898001160025192',
+            'display_value' => '898 0011 6002 5192',
+            'is_primary' => true,
+        ]);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $exam = $integration->exams()->create(['external_code' => '127', 'name' => 'Hemograma completo']);
+        $this->setLaboratoryExamAvailability($unit, $integration, $exam);
+        $payload = [
+            ...$this->payload($patient),
+            'request_exams' => true,
+            'exam_requester_id' => $doctor->getKey(),
+            'exam_priority' => 'urgent',
+            'exam_clinical_indication' => 'Investigação clínica urgente informada.',
+            'exam_ids' => [$exam->getKey()],
+        ];
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $this->actingAs($receptionist)->withSession($session)->post(route('reception.store'), $payload);
+        $order = ExamOrder::query()->sole();
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('laboratory.orders.cancel', $order), [
+                'reason' => 'Solicitação cancelada antes da coleta por orientação do solicitante.',
+                'confirmation' => '1',
+            ])
+            ->assertRedirect(route('reception.receipt', $order->encounter_id));
+
+        $this->assertSame('cancelled', $order->fresh()?->status);
+        $this->assertDatabaseCount('exam_orders', 1);
+        $this->assertDatabaseHas('exam_order_items', ['exam_order_id' => $order->getKey(), 'status' => 'cancelled']);
+        $this->assertDatabaseHas('laboratory_order_transmissions', [
+            'exam_order_id' => $order->getKey(),
+            'status' => 'cancelled',
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.order_cancelled']);
+    }
+
+    public function test_disabled_catalog_exam_cannot_be_requested_by_direct_reception_post(): void
+    {
+        [$unit, $receptionist, $patient] = $this->context();
+        $doctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $doctor->assignRole('doctor');
+        $this->registerDoctor($doctor, $unit);
+        $patient->identifiers()->create([
+            'type' => PatientIdentifierType::Cpf,
+            'normalized_value' => '52998224725',
+            'display_value' => '529.982.247-25',
+            'is_primary' => true,
+        ]);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $exam = $integration->exams()->create([
+            'external_code' => 'DISABLED-127',
+            'name' => 'Exame desabilitado',
+        ]);
+        $this->setLaboratoryExamAvailability($unit, $integration, $exam, false);
+        $payload = [
+            ...$this->payload($patient),
+            'request_exams' => true,
+            'exam_requester_id' => $doctor->getKey(),
+            'exam_priority' => 'routine',
+            'exam_clinical_indication' => 'Tentativa direta com exame desabilitado.',
+            'exam_ids' => [$exam->getKey()],
+        ];
+
+        $this->actingAs($receptionist)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->postJson(route('reception.store'), $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('exam_ids');
+
+        $this->assertDatabaseCount('encounters', 0);
+        $this->assertDatabaseCount('exam_orders', 0);
+        $this->assertDatabaseCount('exam_order_items', 0);
+        $this->assertDatabaseCount('laboratory_order_transmissions', 0);
+    }
+
+    public function test_reception_draft_is_restored_after_creating_a_provisional_patient(): void
+    {
+        [$unit, $receptionist] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $department = Department::query()->where('code', 'TRIAGE')->sole();
+        $queueId = Queue::query()->where('department_id', $department->getKey())->value('id');
+        $idempotencyKey = (string) Str::ulid();
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.draft.provisional'), [
+                'idempotency_key' => $idempotencyKey,
+                'entry_type_id' => EntryType::query()->where('code', 'EMERGENCY')->value('id'),
+                'arrival_method_id' => ArrivalMethod::query()->where('code', 'WALK_IN')->value('id'),
+                'arrival_at' => '2026-08-03T14:30',
+                'origin' => 'Unidade de origem informada',
+                'entry_reason' => 'Dor persistente informada na chegada',
+                'reception_notes' => 'Observacao que nao pode ser perdida.',
+                'administrative_priority' => 'elderly',
+                'department_id' => $department->getKey(),
+                'queue_id' => $queueId,
+                'companion_name' => 'Acompanhante preservado',
+                'companion_relationship' => 'Filha',
+                'request_exams' => '1',
+                'exam_priority' => 'urgent',
+                'exam_clinical_indication' => 'Indicacao clinica preservada no rascunho.',
+                'exam_ids' => [11, 12],
+                '_reception_step' => 2,
+            ])
+            ->assertRedirect(route('patients.provisional.create'));
+
+        $response = $this->actingAs($receptionist)->withSession($session)
+            ->post(route('patients.provisional.store'), [
+                'full_name' => 'Paciente temporario',
+                'sex' => 'unknown',
+                'estimated_age' => 70,
+                'estimated_age_range' => 'elderly',
+                'provisional_description' => 'Paciente sem documentos durante o acolhimento.',
+            ]);
+
+        $patient = Patient::query()->where('full_name', 'Paciente temporario')->sole();
+        $response->assertRedirect(route('reception.create', ['patient' => $patient->public_id]));
+        $response->assertSessionHas('_old_input.idempotency_key', $idempotencyKey);
+        $response->assertSessionHas('_old_input.entry_reason', 'Dor persistente informada na chegada');
+        $response->assertSessionHas('_old_input.reception_notes', 'Observacao que nao pode ser perdida.');
+        $response->assertSessionHas('_old_input.department_id', $department->getKey());
+        $response->assertSessionHas('_old_input.queue_id', $queueId);
+        $response->assertSessionHas('_old_input.companion_name', 'Acompanhante preservado');
+        $response->assertSessionHas('_old_input.request_exams', true);
+        $response->assertSessionHas('_old_input.exam_ids', [11, 12]);
+        $response->assertSessionHas('_old_input._reception_step', 2);
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create', ['patient' => $patient->public_id]))
+            ->assertOk()
+            ->assertSee('Paciente temporario')
+            ->assertSee('Dor persistente informada na chegada')
+            ->assertSee('Observacao que nao pode ser perdida.')
+            ->assertSee('Acompanhante preservado')
+            ->assertSee('step: 2', false);
+    }
+
+    private function setLaboratoryExamAvailability(
+        HealthUnit $unit,
+        LaboratoryIntegration $integration,
+        LaboratoryExam $laboratoryExam,
+        bool $enabled = true,
+    ): void {
+        $exam = Exam::query()->create([
+            'organization_id' => $unit->organization_id,
+            'name' => $laboratoryExam->name,
+            'sus_procedure_code' => $laboratoryExam->sus_procedure_code,
+        ]);
+        ExamMapping::query()->create([
+            'exam_id' => $exam->getKey(),
+            'laboratory_integration_id' => $integration->getKey(),
+            'external_code' => $laboratoryExam->external_code,
+            'external_name_snapshot' => $laboratoryExam->name,
+            'match_type' => ExamMappingMatchType::Exact,
+            'mapped_at' => now(),
+        ]);
+        HealthUnitExam::query()->create([
+            'exam_id' => $exam->getKey(),
+            'health_unit_id' => $unit->getKey(),
+            'is_enabled' => $enabled,
+            'enabled_at' => $enabled ? now() : null,
+        ]);
+    }
+
+    /** @return array{0: HealthUnit, 1: mixed, 2: Patient} */
     private function context(): array
     {
         $unit = $this->createHealthUnit();

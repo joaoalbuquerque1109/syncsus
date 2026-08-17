@@ -19,6 +19,8 @@ final class StorePrescriptionRequest extends FormRequest
     {
         return [
             'version' => ['required', 'integer', 'min:1'],
+            'replaces_prescription_id' => ['nullable', 'ulid', 'exists:prescriptions,public_id'],
+            'replacement_reason' => ['nullable', 'required_with:replaces_prescription_id', 'string', 'min:10', 'max:2000'],
             'prescription_type' => ['required', Rule::in(['hospital', 'home'])],
             'general_instructions' => ['nullable', 'string', 'max:4000'],
             'items' => ['required', 'array', 'min:1', 'max:30'],
@@ -34,9 +36,6 @@ final class StorePrescriptionRequest extends FormRequest
             'items.*.duration_unit' => ['nullable', 'required_with:items.*.duration_value', 'string', 'max:32'],
             'items.*.quantity' => ['nullable', 'string', 'max:64'],
             'items.*.instructions' => ['nullable', 'string', 'max:4000'],
-            'items.*.is_immediate' => ['nullable', 'boolean'],
-            'items.*.is_as_needed' => ['nullable', 'boolean'],
-            'items.*.as_needed_condition' => ['nullable', 'required_if:items.*.is_as_needed,1', 'string', 'max:1000'],
             'items.*.dilution' => ['nullable', 'string', 'max:1000'],
             'items.*.infusion_rate' => ['nullable', 'string', 'max:255'],
         ];

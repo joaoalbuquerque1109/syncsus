@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Application\Actions\AuthenticateUserAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
@@ -26,7 +27,9 @@ final class AuthenticatedSessionController extends Controller
         $user = $authenticate->execute($request);
         $destination = $user->must_change_password && ! $user->isPlatformAdministrator()
             ? 'password.edit'
-            : 'dashboard';
+            : ($user->isPlatformAdministrator() && ! HealthUnit::query()->where('is_active', true)->exists()
+                ? 'administration.tenants.index'
+                : 'dashboard');
 
         return redirect()->intended(route($destination, absolute: false));
     }

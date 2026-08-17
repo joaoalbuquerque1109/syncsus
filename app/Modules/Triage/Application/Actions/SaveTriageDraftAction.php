@@ -53,8 +53,8 @@ final readonly class SaveTriageDraftAction
         if ($assessment->statusEnum() !== TriageAssessmentStatus::Draft) {
             throw ValidationException::withMessages(['status' => 'A triagem foi finalizada e não pode ser editada. Registre um adendo.']);
         }
-        if ($assessment->professional_id !== $user->getKey()) {
-            throw ValidationException::withMessages(['professional' => 'Somente o profissional responsável pode alterar este rascunho.']);
+        if (! $user->canManageClinicalRecordOwnedBy($assessment->professional_id)) {
+            throw ValidationException::withMessages(['professional' => 'Somente o profissional responsável ou o administrador pode alterar este rascunho.']);
         }
         if ($assessment->version() !== $version) {
             throw ValidationException::withMessages(['version' => 'O rascunho foi atualizado em outra sessão. Recarregue a página.']);

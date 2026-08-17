@@ -1,4 +1,4 @@
-# Plano de implementação do SYNC SUS
+# Plano de implementação do SYNC HOSP
 
 ## Estratégia
 

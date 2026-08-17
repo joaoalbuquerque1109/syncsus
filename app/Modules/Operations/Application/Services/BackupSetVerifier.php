@@ -4,15 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Operations\Application\Services;
 
+use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Operations\Infrastructure\Eloquent\BackupVerification;
+use Illuminate\Support\Carbon;
 use RuntimeException;
 use Throwable;
 
 final class BackupSetVerifier
 {
-    public function verify(string $backupSet, ?User $actor = null): BackupVerification
-    {
+    public function verify(
+        string $backupSet,
+        ?User $actor = null,
+        ?TenantDatabase $tenantDatabase = null,
+    ): BackupVerification {
         $root = realpath((string) config('sync_sus.backup_path'));
         $path = realpath($backupSet);
         if ($root === false || $path === false || ! is_dir($path) || ! $this->isWithin($path, $root)) {
@@ -20,6 +25,9 @@ final class BackupSetVerifier
         }
 
         $verification = BackupVerification::query()->create([
+            'tenant_database_id' => $tenantDatabase?->getKey(),
+            'health_unit_id' => $tenantDatabase?->health_unit_id,
+            'backup_scope' => $tenantDatabase === null ? 'core' : 'tenant',
             'backup_set' => basename($path),
             'status' => 'running',
             'verified_by' => $actor?->getKey(),
@@ -28,9 +36,13 @@ final class BackupSetVerifier
 
         try {
             $checks = $this->runChecks($path);
+            $continuity = $tenantDatabase === null
+                ? ['core_reference_at' => null, 'restore_point_at' => null, 'restore_compatible' => null]
+                : $this->verifyTenantMetadata($path, $tenantDatabase);
             $verification->update([
                 'status' => 'completed',
-                'checks' => $checks,
+                'checks' => [...$checks, ...$continuity],
+                ...$continuity,
                 'finished_at' => now(),
             ]);
         } catch (Throwable $exception) {
@@ -87,6 +99,46 @@ final class BackupSetVerifier
             'database_archive' => $database,
             'files_archive' => $privateFiles,
             'encrypted' => $encrypted,
+        ];
+    }
+
+    /** @return array{core_reference_at: string, restore_point_at: string, restore_compatible: true} */
+    private function verifyTenantMetadata(string $path, TenantDatabase $tenantDatabase): array
+    {
+        $metadataPath = $path.DIRECTORY_SEPARATOR.'TENANT_BACKUP.json';
+        if (! is_file($metadataPath) || ! is_readable($metadataPath)) {
+            throw new RuntimeException('Metadados TENANT_BACKUP.json ausentes para o backup da unidade.');
+        }
+        $contents = file_get_contents($metadataPath);
+        $metadata = is_string($contents) ? json_decode($contents, true) : null;
+        if (! is_array($metadata)) {
+            throw new RuntimeException('Metadados do backup da unidade são inválidos.');
+        }
+        $unit = $tenantDatabase->healthUnit()->firstOrFail();
+        if (($metadata['tenant_database_public_id'] ?? null) !== $tenantDatabase->public_id
+            || ($metadata['health_unit_public_id'] ?? null) !== $unit->public_id) {
+            throw new RuntimeException('O conjunto de backup pertence a outra unidade ou banco Tenant.');
+        }
+        $coreReferenceValue = $metadata['core_reference_at'] ?? null;
+        $restorePointValue = $metadata['restore_point_at'] ?? null;
+        if (! is_string($coreReferenceValue) || trim($coreReferenceValue) === ''
+            || ! is_string($restorePointValue) || trim($restorePointValue) === '') {
+            throw new RuntimeException('As referências temporais do backup da unidade são inválidas.');
+        }
+        try {
+            $coreReference = Carbon::parse($coreReferenceValue);
+            $restorePoint = Carbon::parse($restorePointValue);
+        } catch (Throwable) {
+            throw new RuntimeException('As referências temporais do backup da unidade são inválidas.');
+        }
+        if ($restorePoint->lt($coreReference)) {
+            throw new RuntimeException('O ponto de restore é anterior à referência Core declarada.');
+        }
+
+        return [
+            'core_reference_at' => $coreReference->toIso8601String(),
+            'restore_point_at' => $restorePoint->toIso8601String(),
+            'restore_compatible' => true,
         ];
     }
 

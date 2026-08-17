@@ -24,17 +24,23 @@ final class SavePatientRequest extends FormRequest
         $patientId = $patient instanceof Patient ? $patient->getKey() : null;
 
         return [
+            'idempotency_key' => [
+                Rule::requiredIf($this->route('patient') === null),
+                'nullable',
+                'string',
+                'max:64',
+            ],
             'full_name' => ['required', 'string', 'min:3', 'max:255'],
             'social_name' => ['nullable', 'string', 'max:255'],
             'birth_date' => ['required', 'date', 'before_or_equal:today'],
             'sex' => ['required', Rule::in(['female', 'male', 'intersex', 'unknown'])],
-            'cpf' => ['nullable', new ValidCpf, Rule::unique('patient_identifiers', 'normalized_value')->where('type', 'cpf')->ignore($patientId, 'patient_id')],
-            'cns' => ['nullable', 'digits:15', Rule::unique('patient_identifiers', 'normalized_value')->where('type', 'cns')->ignore($patientId, 'patient_id')],
-            'rg' => ['nullable', 'string', 'max:32', Rule::unique('patient_identifiers', 'normalized_value')->where('type', 'rg')->ignore($patientId, 'patient_id')],
+            'cpf' => ['nullable', new ValidCpf, Rule::unique('core.patient_identifiers', 'normalized_value')->where('type', 'cpf')->ignore($patientId, 'patient_id')],
+            'cns' => ['nullable', 'digits:15', Rule::unique('core.patient_identifiers', 'normalized_value')->where('type', 'cns')->ignore($patientId, 'patient_id')],
+            'rg' => ['nullable', 'string', 'max:32', Rule::unique('core.patient_identifiers', 'normalized_value')->where('type', 'rg')->ignore($patientId, 'patient_id')],
             'rg_issuer' => ['nullable', 'string', 'max:64'],
             'rg_issuer_state' => ['nullable', 'string', 'size:2'],
             'rg_issued_at' => ['nullable', 'date', 'before_or_equal:today'],
-            'passport' => ['nullable', 'string', 'max:32', Rule::unique('patient_identifiers', 'normalized_value')->where('type', 'passport')->ignore($patientId, 'patient_id')],
+            'passport' => ['nullable', 'string', 'max:32', Rule::unique('core.patient_identifiers', 'normalized_value')->where('type', 'passport')->ignore($patientId, 'patient_id')],
             'passport_issuer' => ['nullable', 'string', 'max:64'],
             'passport_issuer_state' => ['nullable', 'string', 'size:2'],
             'passport_issued_at' => ['nullable', 'date', 'before_or_equal:today'],

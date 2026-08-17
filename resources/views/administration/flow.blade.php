@@ -100,9 +100,13 @@
                     <form method="POST" action="{{ route('administration.flow.panels.store') }}" class="mt-4 space-y-3">
                         @csrf
                         <x-form.input name="name" label="Nome" required />
+                        <input type="hidden" name="identification_mode" value="full_name">
+                        <p class="rounded-lg bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-800">Identificação pública: nome completo</p>
+                        {{-- Seletor de identificação por nome parcial ou senha preservado para reativação futura.
                         <x-form.select name="identification_mode" label="Identificacao publica" required>
                             @foreach($identificationModes as $mode)<option value="{{ $mode->value }}">{{ $mode->label() }}</option>@endforeach
                         </x-form.select>
+                        --}}
                         <fieldset>
                             <legend class="field-label">Filas exibidas</legend>
                             @foreach($queues as $queue)
@@ -167,9 +171,16 @@
                             </div>
                             <x-form.input name="name" label="Nome" :value="$panel->name" required />
                             <div class="grid gap-4 sm:grid-cols-2">
+                                <div>
+                                    <input type="hidden" name="identification_mode" value="full_name">
+                                    <span class="field-label">Identificação pública</span>
+                                    <p class="field-control flex items-center bg-slate-50 font-semibold">Nome completo</p>
+                                </div>
+                                {{-- Seletor de identificação por nome parcial ou senha preservado para reativação futura.
                                 <x-form.select name="identification_mode" label="Identificação pública" required>
                                     @foreach($identificationModes as $mode)<option value="{{ $mode->value }}" @selected($panel->identificationMode() === $mode)>{{ $mode->label() }}</option>@endforeach
                                 </x-form.select>
+                                --}}
                                 <x-form.input name="previous_calls_count" label="Chamadas anteriores" type="number" min="1" max="20" :value="$panel->previous_calls_count" required />
                                 <x-form.input name="suggested_volume" label="Volume sugerido (%)" type="number" min="0" max="100" :value="$panel->suggested_volume" required />
                                 <label class="mt-8 flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="sound_enabled" value="1" @checked($panel->sound_enabled)> Áudio habilitado</label>

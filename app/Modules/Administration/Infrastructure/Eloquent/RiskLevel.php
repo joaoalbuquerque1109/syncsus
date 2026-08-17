@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Administration\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\CoreModel;
 
-final class RiskLevel extends Model
+final class RiskLevel extends CoreModel
 {
     protected $guarded = [];
 

@@ -4,14 +4,15 @@ declare(strict_types=1);
 
 namespace App\Modules\Medical\Infrastructure\Eloquent;
 
+use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class Prescription extends Model
+final class Prescription extends TenantModel
 {
     use HasPublicId;
 
@@ -29,10 +30,14 @@ final class Prescription extends Model
         return $this->belongsTo(Encounter::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function professional(): BelongsTo
+    public function resolveProfessional(): ?User
     {
-        return $this->belongsTo(User::class, 'professional_id');
+        return User::query()->find($this->professional_id);
+    }
+
+    public function getProfessionalAttribute(): ?User
+    {
+        return $this->relationLoaded('professional') ? $this->getRelation('professional') : $this->resolveProfessional();
     }
 
     /** @return HasMany<PrescriptionItem, $this> */
@@ -41,11 +46,30 @@ final class Prescription extends Model
         return $this->hasMany(PrescriptionItem::class)->orderBy('display_order');
     }
 
+    /** @return BelongsTo<ClinicalDocument, $this> */
+    public function document(): BelongsTo
+    {
+        return $this->belongsTo(ClinicalDocument::class);
+    }
+
+    /** @return BelongsTo<Prescription, $this> */
+    public function parentPrescription(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_prescription_id');
+    }
+
+    /** @return HasMany<Prescription, $this> */
+    public function replacements(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_prescription_id');
+    }
+
     protected function casts(): array
     {
         return [
             'finalized_at' => 'immutable_datetime',
             'cancelled_at' => 'immutable_datetime',
+            'replaced_at' => 'immutable_datetime',
         ];
     }
 }

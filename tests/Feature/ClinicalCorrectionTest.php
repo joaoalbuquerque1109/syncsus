@@ -20,12 +20,12 @@ use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\MedicalCatalogSeeder;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class ClinicalCorrectionTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
     public function test_author_can_void_clinical_records_without_deleting_original_content(): void
     {
@@ -33,7 +33,7 @@ final class ClinicalCorrectionTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class, MedicalCatalogSeeder::class]);
         $doctor = $this->createUserWithUnit($unit);
         $doctor->assignRole('doctor');
-        $this->checkInDoctor($doctor, $unit);
+        $this->registerDoctor($doctor, $unit);
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,
             'medical_record_number' => 'P-CORRECTION-1',
@@ -45,7 +45,7 @@ final class ClinicalCorrectionTest extends TestCase
             'reference_health_unit_id' => $unit->getKey(),
             'created_by' => $doctor->getKey(),
         ]);
-        $queue = Queue::query()->whereBelongsTo($unit)->where('code', 'QUEUE-CLINIC')->sole();
+        $queue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-CLINIC')->sole();
         $encounter = Encounter::query()->create([
             'encounter_number' => 'CORRECTION-0001',
             'patient_id' => $patient->getKey(),

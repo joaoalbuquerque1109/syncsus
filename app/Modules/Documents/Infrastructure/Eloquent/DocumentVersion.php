@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Modules\Documents\Infrastructure\Eloquent;
 
 use App\Modules\Identity\Infrastructure\Eloquent\User;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class DocumentVersion extends Model
+final class DocumentVersion extends TenantModel
 {
     protected $guarded = [];
 
@@ -18,10 +18,9 @@ final class DocumentVersion extends Model
         return $this->belongsTo(ClinicalDocument::class, 'document_id');
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function creator(): BelongsTo
+    public function resolveCreator(): ?User
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return User::query()->find($this->created_by);
     }
 
     protected function casts(): array

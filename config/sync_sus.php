@@ -13,7 +13,15 @@ return [
     'backup_retention_days' => (int) env('SYNC_SUS_BACKUP_RETENTION_DAYS', 14),
     'backup_path' => env('SYNC_SUS_BACKUP_PATH', storage_path('app/backups')),
     'panel_poll_seconds' => (int) env('SYNC_SUS_PANEL_POLL_SECONDS', 2),
+    'panel_heartbeat_seconds' => max(5, (int) env('SYNC_SUS_PANEL_HEARTBEAT_SECONDS', 15)),
+    'queue_poll_seconds' => max(2, (int) env('SYNC_SUS_QUEUE_POLL_SECONDS', 5)),
     'dashboard_poll_seconds' => (int) env('SYNC_SUS_DASHBOARD_POLL_SECONDS', 15),
+    'performance_cache' => [
+        'enabled' => (bool) env('SYNC_SUS_PERFORMANCE_CACHE_ENABLED', true),
+        'dashboard_seconds' => max(1, (int) env('SYNC_SUS_DASHBOARD_CACHE_SECONDS', 3)),
+        'navigation_seconds' => max(5, (int) env('SYNC_SUS_NAVIGATION_CACHE_SECONDS', 60)),
+        'panel_configuration_seconds' => max(5, (int) env('SYNC_SUS_PANEL_CONFIGURATION_CACHE_SECONDS', 60)),
+    ],
     'vite_dev_server_origins' => array_values(array_filter(array_map(
         'trim',
         explode(',', (string) env(
@@ -31,4 +39,30 @@ return [
         explode(',', (string) env('SYNC_SUS_TRUSTED_PROXIES', '')),
     ))),
     'max_concurrent_sessions' => max(1, (int) env('SYNC_SUS_MAX_CONCURRENT_SESSIONS', 1)),
+    'synclab' => [
+        'enabled' => (bool) env('SYNC_SUS_SYNCLAB_ENABLED', false),
+        // Enable only after the Synclab operator has approved the additive
+        // public identifier fields documented in synclab_contract.php.
+        'public_identifiers_enabled' => (bool) env('SYNC_SUS_SYNCLAB_PUBLIC_IDENTIFIERS_ENABLED', false),
+        'catalog_path' => env('SYNC_SUS_SYNCLAB_CATALOG_PATH', database_path('data/synclab_exams.csv')),
+        'base_url' => env('SYNC_SUS_SYNCLAB_BASE_URL', 'https://synclabweb.unisync.com.br'),
+        'unit_code' => env('SYNC_SUS_SYNCLAB_UNIT_CODE'),
+        'cnes' => env('SYNC_SUS_SYNCLAB_CNES'),
+        'username' => env('SYNC_SUS_SYNCLAB_USERNAME'),
+        'password' => env('SYNC_SUS_SYNCLAB_PASSWORD'),
+        'queue' => env('SYNC_SUS_SYNCLAB_QUEUE', 'integrations'),
+        'connect_timeout_seconds' => max(1, (int) env('SYNC_SUS_SYNCLAB_CONNECT_TIMEOUT', 5)),
+        'timeout_seconds' => max(5, (int) env('SYNC_SUS_SYNCLAB_TIMEOUT', 30)),
+        // Inbound result reception remains disabled until the Synclab operator
+        // has configured the authenticated webhook for this installation.
+        'results_enabled' => (bool) env('SYNC_SUS_SYNCLAB_RESULTS_ENABLED', false),
+        // Off by default: the static bearer token alone proves possession but not
+        // payload authenticity. Enable only after Synclab starts sending
+        // X-Synclab-Result-Signature (HMAC-SHA256 of the raw body, same shared
+        // token as key) — turning this on before that breaks real result intake.
+        'require_result_signature' => (bool) env('SYNC_SUS_SYNCLAB_REQUIRE_RESULT_SIGNATURE', false),
+        // Future outbound phases remain explicitly disabled.
+        'samples_enabled' => false,
+        'barcodes_enabled' => false,
+    ],
 ];

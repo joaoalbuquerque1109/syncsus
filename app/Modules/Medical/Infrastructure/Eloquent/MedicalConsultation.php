@@ -7,17 +7,18 @@ namespace App\Modules\Medical\Infrastructure\Eloquent;
 use App\Modules\Administration\Infrastructure\Eloquent\Room;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Documents\Infrastructure\Eloquent\ClinicalDocument;
+use App\Modules\Documents\Infrastructure\Eloquent\MedicalCertificate;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Domain\Enums\MedicalConsultationStatus;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-final class MedicalConsultation extends Model
+final class MedicalConsultation extends TenantModel
 {
     use HasPublicId;
 
@@ -35,16 +36,24 @@ final class MedicalConsultation extends Model
         return $this->belongsTo(QueueEntry::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function professional(): BelongsTo
+    public function resolveProfessional(): ?User
     {
-        return $this->belongsTo(User::class, 'professional_id');
+        return User::query()->find($this->professional_id);
     }
 
-    /** @return BelongsTo<Specialty, $this> */
-    public function specialty(): BelongsTo
+    public function getProfessionalAttribute(): ?User
     {
-        return $this->belongsTo(Specialty::class);
+        return $this->relationLoaded('professional') ? $this->getRelation('professional') : $this->resolveProfessional();
+    }
+
+    public function resolveSpecialty(): ?Specialty
+    {
+        return $this->resolveCoreReference(Specialty::class, 'specialty_public_id', 'specialty_id');
+    }
+
+    public function getSpecialtyAttribute(): ?Specialty
+    {
+        return $this->relationLoaded('specialty') ? $this->getRelation('specialty') : $this->resolveSpecialty();
     }
 
     /** @return BelongsTo<Room, $this> */
@@ -105,6 +114,12 @@ final class MedicalConsultation extends Model
     public function documents(): HasMany
     {
         return $this->hasMany(ClinicalDocument::class, 'medical_consultation_id');
+    }
+
+    /** @return HasMany<MedicalCertificate, $this> */
+    public function medicalCertificates(): HasMany
+    {
+        return $this->hasMany(MedicalCertificate::class, 'medical_consultation_id');
     }
 
     public function statusEnum(): MedicalConsultationStatus

@@ -4,15 +4,28 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Triage\Infrastructure\Eloquent\TriageDiscriminator;
 use App\Modules\Triage\Infrastructure\Eloquent\TriageFlowchart;
 use App\Modules\Triage\Infrastructure\Eloquent\TriageProtocol;
 use App\Modules\Triage\Infrastructure\Eloquent\VitalSignRange;
+use App\Support\Tenancy\TenantConnectionManager;
+use App\Support\Tenancy\TenantContext;
 use Illuminate\Database\Seeder;
 
 final class TriageCatalogSeeder extends Seeder
 {
     public function run(): void
+    {
+        foreach (HealthUnit::query()->get() as $unit) {
+            $context = app(TenantContext::class);
+            $context->reset();
+            $context->resolve($unit, app(TenantConnectionManager::class)->connectionName($unit));
+            $this->seedUnit();
+        }
+    }
+
+    private function seedUnit(): void
     {
         $protocol = TriageProtocol::query()->updateOrCreate(
             ['code' => 'SYNC-TRIAGE', 'version' => '2026.1'],

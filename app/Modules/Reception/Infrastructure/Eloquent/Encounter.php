@@ -12,6 +12,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Administration\Infrastructure\Eloquent\Room;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Medical\Infrastructure\Eloquent\EncounterDestination;
+use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
@@ -19,29 +20,37 @@ use App\Modules\Reception\Domain\Enums\AdministrativePriority;
 use App\Modules\Reception\Domain\Enums\EncounterStatus;
 use App\Modules\Triage\Infrastructure\Eloquent\TriageAssessment;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Carbon\CarbonImmutable;
 use DateTimeInterface;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-final class Encounter extends Model
+final class Encounter extends TenantModel
 {
     use HasPublicId;
 
     protected $guarded = [];
 
-    /** @return BelongsTo<Patient, $this> */
-    public function patient(): BelongsTo
+    public function resolvePatient(): ?Patient
     {
-        return $this->belongsTo(Patient::class);
+        return $this->resolveCoreReference(Patient::class, 'patient_public_id', 'patient_id');
     }
 
-    /** @return BelongsTo<HealthUnit, $this> */
-    public function healthUnit(): BelongsTo
+    public function getPatientAttribute(): ?Patient
     {
-        return $this->belongsTo(HealthUnit::class);
+        return $this->relationLoaded('patient') ? $this->getRelation('patient') : $this->resolvePatient();
+    }
+
+    public function resolveHealthUnit(): ?HealthUnit
+    {
+        return $this->resolveCoreReference(HealthUnit::class, 'health_unit_public_id', 'health_unit_id');
+    }
+
+    public function getHealthUnitAttribute(): ?HealthUnit
+    {
+        return $this->relationLoaded('healthUnit') ? $this->getRelation('healthUnit') : $this->resolveHealthUnit();
     }
 
     /** @return BelongsTo<EntryType, $this> */
@@ -56,10 +65,20 @@ final class Encounter extends Model
         return $this->belongsTo(ArrivalMethod::class);
     }
 
-    /** @return BelongsTo<Specialty, $this> */
-    public function assignedSpecialty(): BelongsTo
+    public function resolveAssignedSpecialty(): ?Specialty
     {
-        return $this->belongsTo(Specialty::class, 'assigned_specialty_id');
+        return $this->resolveCoreReference(
+            Specialty::class,
+            'assigned_specialty_public_id',
+            'assigned_specialty_id',
+        );
+    }
+
+    public function getAssignedSpecialtyAttribute(): ?Specialty
+    {
+        return $this->relationLoaded('assignedSpecialty')
+            ? $this->getRelation('assignedSpecialty')
+            : $this->resolveAssignedSpecialty();
     }
 
     /** @return BelongsTo<Department, $this> */
@@ -74,10 +93,14 @@ final class Encounter extends Model
         return $this->belongsTo(Room::class, 'current_room_id');
     }
 
-    /** @return BelongsTo<RiskLevel, $this> */
-    public function riskLevel(): BelongsTo
+    public function resolveRiskLevel(): ?RiskLevel
     {
-        return $this->belongsTo(RiskLevel::class);
+        return $this->risk_level_id === null ? null : RiskLevel::query()->find($this->risk_level_id);
+    }
+
+    public function getRiskLevelAttribute(): ?RiskLevel
+    {
+        return $this->relationLoaded('riskLevel') ? $this->getRelation('riskLevel') : $this->resolveRiskLevel();
     }
 
     /** @return HasOne<ReceptionRecord, $this> */
@@ -120,6 +143,12 @@ final class Encounter extends Model
     public function destination(): HasOne
     {
         return $this->hasOne(EncounterDestination::class);
+    }
+
+    /** @return HasMany<ExamOrder, $this> */
+    public function examOrders(): HasMany
+    {
+        return $this->hasMany(ExamOrder::class);
     }
 
     public function administrativePriorityEnum(): AdministrativePriority

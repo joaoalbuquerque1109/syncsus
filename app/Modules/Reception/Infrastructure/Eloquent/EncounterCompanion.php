@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Reception\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class EncounterCompanion extends Model
+final class EncounterCompanion extends TenantModel
 {
     protected $guarded = [];
 

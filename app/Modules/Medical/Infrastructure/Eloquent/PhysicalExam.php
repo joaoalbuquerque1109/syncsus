@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Medical\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class PhysicalExam extends Model
+final class PhysicalExam extends TenantModel
 {
     protected $guarded = [];
 

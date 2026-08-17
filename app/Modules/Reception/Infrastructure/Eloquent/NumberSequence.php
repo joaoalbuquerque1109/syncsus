@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Modules\Reception\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 
-final class NumberSequence extends Model
+final class NumberSequence extends TenantModel
 {
     protected $guarded = [];
 }

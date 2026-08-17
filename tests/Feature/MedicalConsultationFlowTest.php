@@ -10,8 +10,17 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\RiskLevel;
 use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Domain\Enums\ExamMappingMatchType;
+use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
+use App\Modules\Laboratory\Infrastructure\Eloquent\HealthUnitExam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryOrderTransmission;
 use App\Modules\Medical\Infrastructure\Eloquent\DiagnosisCode;
+use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
 use App\Modules\Medical\Infrastructure\Eloquent\MedicalConsultation;
+use App\Modules\Medical\Infrastructure\Eloquent\Prescription;
 use App\Modules\Patients\Domain\Enums\PatientSex;
 use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
@@ -24,15 +33,16 @@ use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\MedicalCatalogSeeder;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
 final class MedicalConsultationFlowTest extends TestCase
 {
-    use RefreshDatabase;
+    use RefreshCoreAndTenantDatabase;
 
-    public function test_platform_administrator_starts_medical_care_without_check_in(): void
+    public function test_platform_administrator_starts_medical_care_without_professional_registration(): void
     {
         [$unit, , $entry] = $this->context();
         $administrator = $this->createPlatformAdministrator();
@@ -49,10 +59,6 @@ final class MedicalConsultationFlowTest extends TestCase
             'professional_id' => $administrator->getKey(),
             'status' => 'draft',
         ]);
-        $this->assertDatabaseMissing('medical_shift_attendances', [
-            'user_id' => $administrator->getKey(),
-            'health_unit_id' => $unit->getKey(),
-        ]);
     }
 
     public function test_only_one_doctor_starts_called_patient_and_record_is_protected(): void
@@ -60,7 +66,7 @@ final class MedicalConsultationFlowTest extends TestCase
         [$unit, $doctor, $entry] = $this->context();
         $otherDoctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         $otherDoctor->assignRole('doctor');
-        $this->checkInDoctor($otherDoctor, $unit);
+        $this->registerDoctor($otherDoctor, $unit);
         $receptionist = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         $receptionist->assignRole('receptionist');
         $session = ['active_health_unit_id' => $unit->getKey()];
@@ -86,6 +92,9 @@ final class MedicalConsultationFlowTest extends TestCase
             ->assertSee('Atendimento médico')
             ->assertSee('Paciente do Atendimento')
             ->assertSee('Prescrição')
+            ->assertSee('Adicionar medicamento')
+            ->assertDontSee('Administração imediata')
+            ->assertDontSee('Se necessário')
             ->assertSee('Destinação');
         $this->assertDatabaseHas('queue_entries', [
             'id' => $entry->getKey(),
@@ -109,6 +118,122 @@ final class MedicalConsultationFlowTest extends TestCase
             ])
             ->assertNotFound();
         $this->assertNull($consultation->fresh()?->chief_complaint);
+    }
+
+    public function test_responsible_doctor_and_administrator_can_edit_active_care_from_queue(): void
+    {
+        [$unit, $doctor, $entry] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $consultation = $this->start($unit, $doctor, $entry);
+        $otherDoctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $otherDoctor->assignRole('doctor');
+        $this->registerDoctor($otherDoctor, $unit);
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+
+        $this->actingAs($doctor)->withSession($session)
+            ->getJson(route('queues.entries', $entry->queue))
+            ->assertOk()
+            ->assertJsonPath('data.0.can_edit', true)
+            ->assertJsonPath('data.0.edit_url', route('medical.show', $consultation));
+
+        $this->actingAs($otherDoctor)->withSession($session)
+            ->getJson(route('queues.entries', $entry->queue))
+            ->assertOk()
+            ->assertJsonPath('data.0.can_edit', false)
+            ->assertJsonPath('data.0.edit_url', null);
+        $this->actingAs($otherDoctor)->withSession($session)
+            ->get(route('medical.show', $consultation))
+            ->assertForbidden();
+
+        $this->actingAs($administrator)->withSession($session)
+            ->getJson(route('queues.entries', $entry->queue))
+            ->assertOk()
+            ->assertJsonPath('data.0.can_edit', true)
+            ->assertJsonPath('data.0.edit_url', route('medical.show', $consultation));
+        $this->actingAs($administrator)->withSession($session)
+            ->get(route('medical.show', $consultation))
+            ->assertOk();
+        $this->actingAs($administrator)->withSession($session)
+            ->put(route('medical.draft', $consultation), [
+                'version' => 1,
+                'chief_complaint' => 'Registro revisado pelo administrador global.',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame('Registro revisado pelo administrador global.', $consultation->fresh()?->chief_complaint);
+    }
+
+    public function test_doctor_replaces_and_cancels_prescription_without_deleting_history(): void
+    {
+        Storage::fake('local_private');
+        [$unit, $doctor, $entry] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $consultation = $this->start($unit, $doctor, $entry);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.prescriptions', $consultation), [
+                'version' => 1,
+                'prescription_type' => 'home',
+                'items' => [[
+                    'medication_name' => 'Medicamento original',
+                    'presentation' => 'Comprimido',
+                    'dose' => 10,
+                    'dose_unit' => 'mg',
+                    'route' => 'Oral',
+                    'frequency' => 'Uma vez ao dia',
+                ]],
+            ])
+            ->assertRedirect();
+
+        $original = Prescription::query()->sole();
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.prescriptions.document', [$consultation, $original]))
+            ->assertRedirect();
+        $originalDocumentId = $original->fresh()?->document_id;
+        $this->assertNotNull($originalDocumentId);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('medical.show', ['consultation' => $consultation, 'tab' => 'prescriptions']))
+            ->assertOk()
+            ->assertSee('aria-label="Editar prescrição"', false)
+            ->assertSee('aria-label="Cancelar prescrição"', false);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.prescriptions', $consultation), [
+                'version' => 2,
+                'replaces_prescription_id' => $original->public_id,
+                'replacement_reason' => 'Ajuste de dose após reavaliação clínica.',
+                'prescription_type' => 'home',
+                'items' => [[
+                    'medication_name' => 'Medicamento corrigido',
+                    'presentation' => 'Comprimido',
+                    'dose' => 20,
+                    'dose_unit' => 'mg',
+                    'route' => 'Oral',
+                    'frequency' => 'Uma vez ao dia',
+                ]],
+            ])
+            ->assertRedirect();
+
+        $replacement = Prescription::query()->where('parent_prescription_id', $original->getKey())->sole();
+        $this->assertSame('replaced', $original->fresh()?->status);
+        $this->assertSame(2, (int) $replacement->version);
+        $this->assertDatabaseHas('documents', ['id' => $originalDocumentId, 'status' => 'voided']);
+        $this->assertDatabaseHas('prescription_items', [
+            'prescription_id' => $original->getKey(),
+            'medication_name' => 'Medicamento original',
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'medical.prescription_replaced']);
+
+        $this->actingAs($doctor)->withSession($session)
+            ->post(route('medical.prescriptions.cancel', [$consultation, $replacement]), [
+                'reason' => 'Cancelamento após nova avaliação do paciente.',
+                'confirmation' => '1',
+            ])
+            ->assertRedirect();
+        $this->assertSame('cancelled', $replacement->fresh()?->status);
+        $this->assertDatabaseCount('prescriptions', 2);
     }
 
     public function test_doctor_records_versioned_clinical_components_without_manual_exam_results(): void
@@ -143,8 +268,14 @@ final class MedicalConsultationFlowTest extends TestCase
                     'dose_unit' => 'mg',
                     'route' => 'Oral',
                     'frequency' => 'A cada 6 horas',
-                    'is_as_needed' => true,
-                    'as_needed_condition' => 'Se dor.',
+                ], [
+                    'medication_name' => 'Ibuprofeno',
+                    'presentation' => 'Comprimido',
+                    'concentration' => '400 mg',
+                    'dose' => 400,
+                    'dose_unit' => 'mg',
+                    'route' => 'Oral',
+                    'frequency' => 'A cada 8 horas',
                 ]],
             ])
             ->assertRedirect();
@@ -159,6 +290,11 @@ final class MedicalConsultationFlowTest extends TestCase
                     'exam_name' => 'Radiografia de joelho',
                     'group' => 'imaging',
                     'laterality' => 'right',
+                ], [
+                    'internal_code' => 'HEMOGRAMA',
+                    'exam_name' => 'Hemograma completo',
+                    'group' => 'laboratory',
+                    'laterality' => 'not_applicable',
                 ]],
             ])
             ->assertRedirect();
@@ -183,12 +319,108 @@ final class MedicalConsultationFlowTest extends TestCase
 
         $this->assertDatabaseHas('diagnoses', ['code' => 'S80.0', 'is_primary' => true]);
         $this->assertDatabaseHas('prescriptions', ['status' => 'finalized', 'prescription_type' => 'hospital']);
+        $this->assertDatabaseHas('prescription_items', [
+            'is_immediate' => false,
+            'is_as_needed' => false,
+            'as_needed_condition' => null,
+        ]);
         $this->assertDatabaseHas('prescription_items', ['medication_name' => 'Paracetamol', 'route' => 'Oral']);
+        $this->assertSame(
+            ['Paracetamol', 'Ibuprofeno'],
+            Prescription::query()->sole()->items()->pluck('medication_name')->all(),
+        );
         $this->assertDatabaseHas('exam_order_items', ['exam_name' => 'Radiografia de joelho', 'status' => 'requested']);
+        $this->assertSame(
+            ['Radiografia de joelho', 'Hemograma completo'],
+            ExamOrder::query()->sole()->items()->pluck('exam_name')->all(),
+        );
         $this->assertDatabaseCount('exam_results', 0);
         $this->assertDatabaseHas('clinical_notes', ['status' => 'finalized', 'note_type' => 'reassessment']);
         $this->assertDatabaseHas('referrals', ['destination' => 'Ambulatório de ortopedia', 'status' => 'issued']);
         $this->assertSame(7, $consultation->fresh()?->version());
+    }
+
+    public function test_catalog_exam_creates_a_tenant_scoped_transmission_outbox(): void
+    {
+        [$unit, $doctor, $entry] = $this->context();
+        $consultation = $this->start($unit, $doctor, $entry);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $exam = $integration->exams()->create([
+            'external_code' => '127',
+            'name' => 'Hemograma completo',
+            'collection_instructions' => 'Coletar sangue total.',
+            'source_version' => 'catalog-v1',
+        ]);
+        $this->setLaboratoryExamAvailability($unit, $integration, $exam);
+
+        $this->actingAs($doctor)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->post(route('medical.exam-orders', $consultation), [
+                'version' => 1,
+                'priority' => 'routine',
+                'clinical_indication' => 'Investigacao de anemia sintomatica.',
+                'items' => [[
+                    'laboratory_exam_id' => $exam->getKey(),
+                    'exam_name' => 'Nome adulterado pelo navegador',
+                    'group' => 'other',
+                    'laterality' => 'not_applicable',
+                ]],
+            ])
+            ->assertRedirect();
+
+        $item = ExamOrder::query()->sole()->items()->sole();
+        $transmission = LaboratoryOrderTransmission::query()->sole();
+
+        $this->assertSame('Hemograma completo', $item->exam_name);
+        $this->assertSame('laboratory', $item->group);
+        $this->assertSame('127', $item->external_exam_code);
+        $this->assertSame('catalog-v1', $item->catalog_version);
+        $this->assertSame('awaiting_configuration', $transmission->status->value);
+        $this->assertSame($unit->getKey(), $transmission->health_unit_id);
+        $this->assertNull($transmission->external_order_number);
+    }
+
+    public function test_disabled_catalog_exam_cannot_be_requested_by_direct_medical_post(): void
+    {
+        [$unit, $doctor, $entry] = $this->context();
+        $consultation = $this->start($unit, $doctor, $entry);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $exam = $integration->exams()->create([
+            'external_code' => 'DISABLED-127',
+            'name' => 'Exame desabilitado',
+            'source_version' => 'catalog-v1',
+        ]);
+        $this->setLaboratoryExamAvailability($unit, $integration, $exam, false);
+
+        $this->actingAs($doctor)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->post(route('medical.exam-orders', $consultation), [
+                'version' => 1,
+                'priority' => 'routine',
+                'clinical_indication' => 'Tentativa direta com exame desabilitado.',
+                'items' => [[
+                    'laboratory_exam_id' => $exam->getKey(),
+                    'exam_name' => 'Exame desabilitado',
+                    'group' => 'laboratory',
+                    'laterality' => 'not_applicable',
+                ]],
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('exam_orders', 0);
+        $this->assertDatabaseCount('exam_order_items', 0);
+        $this->assertDatabaseCount('laboratory_order_transmissions', 0);
+        $this->assertSame(1, $consultation->fresh()?->version());
     }
 
     /**
@@ -297,6 +529,33 @@ final class MedicalConsultationFlowTest extends TestCase
         ];
     }
 
+    private function setLaboratoryExamAvailability(
+        HealthUnit $unit,
+        LaboratoryIntegration $integration,
+        LaboratoryExam $laboratoryExam,
+        bool $enabled = true,
+    ): void {
+        $exam = Exam::query()->create([
+            'organization_id' => $unit->organization_id,
+            'name' => $laboratoryExam->name,
+            'sus_procedure_code' => $laboratoryExam->sus_procedure_code,
+        ]);
+        ExamMapping::query()->create([
+            'exam_id' => $exam->getKey(),
+            'laboratory_integration_id' => $integration->getKey(),
+            'external_code' => $laboratoryExam->external_code,
+            'external_name_snapshot' => $laboratoryExam->name,
+            'match_type' => ExamMappingMatchType::Exact,
+            'mapped_at' => now(),
+        ]);
+        HealthUnitExam::query()->create([
+            'exam_id' => $exam->getKey(),
+            'health_unit_id' => $unit->getKey(),
+            'is_enabled' => $enabled,
+            'enabled_at' => $enabled ? now() : null,
+        ]);
+    }
+
     private function start(HealthUnit $unit, User $doctor, QueueEntry $entry): MedicalConsultation
     {
         $this->actingAs($doctor)
@@ -333,7 +592,7 @@ final class MedicalConsultationFlowTest extends TestCase
         $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class, MedicalCatalogSeeder::class]);
         $doctor = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         $doctor->assignRole('doctor');
-        $this->checkInDoctor($doctor, $unit);
+        $this->registerDoctor($doctor, $unit);
         $patient = Patient::query()->create([
             'organization_id' => $unit->organization_id,
             'medical_record_number' => 'P00000055',

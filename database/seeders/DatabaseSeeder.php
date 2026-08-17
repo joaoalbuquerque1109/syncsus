@@ -10,8 +10,14 @@ final class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        if (! app()->isProduction()) {
+            $this->call(FoundationCatalogSeeder::class);
+        }
+
         $this->call([
-            FoundationCatalogSeeder::class,
+            SusProcedureCatalogSeeder::class,
+            SynclabExamCatalogSeeder::class,
+            CanonicalExamCatalogBackfillSeeder::class,
             OperationalCatalogSeeder::class,
             TriageCatalogSeeder::class,
             MedicalCatalogSeeder::class,
@@ -20,8 +26,6 @@ final class DatabaseSeeder extends Seeder
 
         if (config('sync_sus.seed_demo_data') && ! app()->isProduction()) {
             $this->call(DemoDataSeeder::class);
-
-            return;
         }
 
         $this->call(AdminUserSeeder::class);

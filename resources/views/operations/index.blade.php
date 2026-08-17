@@ -18,6 +18,23 @@
         <p class="mt-3 text-xs text-slate-500">A verificação de conjunto é executada no servidor com <code>php artisan sync-sus:backup-verify /backups/CONJUNTO --actor=admin@instituicao.local</code>.</p>
     </section>
 
+    <section class="app-card mt-5 overflow-hidden">
+        <div class="border-b border-slate-200 px-5 py-4">
+            <h2 class="font-extrabold">Visão consolidada por unidade</h2>
+            <p class="text-xs text-slate-500">Agregados assíncronos no Core; esta tela não consulta os bancos das unidades ao vivo.</p>
+        </div>
+        <div class="overflow-x-auto"><table class="w-full min-w-[900px] text-left text-sm">
+            <thead class="bg-slate-50 text-xs uppercase text-slate-500"><tr><th class="px-4 py-3">Unidade</th><th class="px-4 py-3">Aguardando triagem</th><th class="px-4 py-3">Em atendimento</th><th class="px-4 py-3">Altas hoje</th><th class="px-4 py-3">Atualizado</th><th class="px-4 py-3">Estado</th></tr></thead>
+            <tbody class="divide-y divide-slate-100">
+                @forelse($unitSnapshots as $snapshot)
+                    <tr><td class="px-4 py-3 font-bold">{{ $snapshot['unit']->name }}</td><td class="px-4 py-3">{{ $snapshot['metrics']['waiting_triage'] ?? 0 }}</td><td class="px-4 py-3">{{ $snapshot['metrics']['in_medical_care'] ?? 0 }}</td><td class="px-4 py-3">{{ $snapshot['metrics']['discharges_today'] ?? 0 }}</td><td class="px-4 py-3">{{ $snapshot['generated_at']->format('d/m/Y H:i:s') }}</td><td class="px-4 py-3 font-bold {{ $snapshot['stale'] ? 'text-red-700' : 'text-emerald-700' }}">{{ $snapshot['stale'] ? 'Desatualizado' : 'Atual' }}</td></tr>
+                @empty
+                    <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Nenhum snapshot gerado.</td></tr>
+                @endforelse
+            </tbody>
+        </table></div>
+    </section>
+
     <div class="mt-5 grid gap-5 xl:grid-cols-2">
         <section class="app-card overflow-hidden">
             <div class="border-b border-slate-200 px-5 py-4"><h2 class="font-extrabold">Execuções de backup</h2></div>

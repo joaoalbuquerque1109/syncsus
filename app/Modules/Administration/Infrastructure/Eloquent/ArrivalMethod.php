@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace App\Modules\Administration\Infrastructure\Eloquent;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Support\Models\TenantModel;
 
-final class ArrivalMethod extends Model
+final class ArrivalMethod extends TenantModel
 {
     protected $guarded = [];
 
-    /** @return BelongsTo<Organization, $this> */
-    public function organization(): BelongsTo
+    public function resolveOrganization(): ?Organization
     {
-        return $this->belongsTo(Organization::class);
+        return $this->resolveCoreReference(Organization::class, 'organization_public_id', 'organization_id');
+    }
+
+    public function getOrganizationAttribute(): ?Organization
+    {
+        return $this->relationLoaded('organization') ? $this->getRelation('organization') : $this->resolveOrganization();
     }
 
     protected function casts(): array

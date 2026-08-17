@@ -10,6 +10,7 @@ use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Application\Actions\CreateProvisionalPatientAction;
 use App\Modules\Patients\Presentation\Http\Requests\ProvisionalPatientRequest;
+use App\Modules\Reception\Application\Services\ReceptionDraftService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
@@ -24,6 +25,7 @@ final class ProvisionalPatientController extends Controller
         ProvisionalPatientRequest $request,
         CreateProvisionalPatientAction $action,
         RecordAuditEventAction $audit,
+        ReceptionDraftService $drafts,
     ): RedirectResponse {
         $user = $request->user();
         $unit = $request->attributes->get('active_health_unit');
@@ -32,6 +34,7 @@ final class ProvisionalPatientController extends Controller
         $audit->execute('patient.provisional_created', $request, $user, [], (int) $unit->getKey(), (int) $patient->getKey());
 
         return redirect()->route('reception.create', ['patient' => $patient->public_id])
+            ->withInput($drafts->pull($request, (int) $unit->getKey()))
             ->with('warning', 'Cadastro provisório criado. Complete a identificação assim que possível.');
     }
 }

@@ -8,11 +8,11 @@ use App\Modules\Administration\Infrastructure\Eloquent\ServicePoint;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Queues\Domain\Enums\QueueCallType;
 use App\Support\Models\HasPublicId;
+use App\Support\Models\TenantModel;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-final class QueueCall extends Model
+final class QueueCall extends TenantModel
 {
     use HasPublicId;
 
@@ -36,10 +36,14 @@ final class QueueCall extends Model
         return $this->belongsTo(ServicePoint::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function caller(): BelongsTo
+    public function resolveCaller(): ?User
     {
-        return $this->belongsTo(User::class, 'called_by');
+        return User::query()->find($this->called_by);
+    }
+
+    public function getCallerAttribute(): ?User
+    {
+        return $this->relationLoaded('caller') ? $this->getRelation('caller') : $this->resolveCaller();
     }
 
     public function callTypeEnum(): QueueCallType

@@ -8,6 +8,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Professionals\Infrastructure\Eloquent\MedicalShiftAttendance;
+use App\Support\Models\UsesCoreConnection;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -43,6 +44,7 @@ final class User extends Authenticatable
     use HasRoles;
     use HasUlids;
     use Notifiable;
+    use UsesCoreConnection;
 
     protected static function newFactory(): UserFactory
     {
@@ -80,6 +82,12 @@ final class User extends Authenticatable
     public function isPlatformAdministrator(): bool
     {
         return (int) $this->platform_admin_slot === 1;
+    }
+
+    public function canManageClinicalRecordOwnedBy(int|string|null $professionalId): bool
+    {
+        return $this->isPlatformAdministrator()
+            || ($professionalId !== null && (string) $this->getKey() === (string) $professionalId);
     }
 
     /** @return BelongsToMany<HealthUnit, $this> */

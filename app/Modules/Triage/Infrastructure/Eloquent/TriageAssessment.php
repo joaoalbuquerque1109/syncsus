@@ -12,11 +12,11 @@ use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use App\Modules\Triage\Domain\Enums\TriageAssessmentStatus;
 use App\Support\Models\HasPublicId;
-use Illuminate\Database\Eloquent\Model;
+use App\Support\Models\TenantModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-final class TriageAssessment extends Model
+final class TriageAssessment extends TenantModel
 {
     use HasPublicId;
 
@@ -34,10 +34,16 @@ final class TriageAssessment extends Model
         return $this->belongsTo(QueueEntry::class);
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function professional(): BelongsTo
+    public function resolveProfessional(): ?User
     {
-        return $this->belongsTo(User::class, 'professional_id');
+        return User::query()->find($this->professional_id);
+    }
+
+    public function getProfessionalAttribute(): ?User
+    {
+        return $this->relationLoaded('professional')
+            ? $this->getRelation('professional')
+            : $this->resolveProfessional();
     }
 
     /** @return BelongsTo<ServicePoint, $this> */
@@ -64,10 +70,16 @@ final class TriageAssessment extends Model
         return $this->belongsTo(TriageDiscriminator::class, 'triage_discriminator_id');
     }
 
-    /** @return BelongsTo<RiskLevel, $this> */
-    public function riskLevel(): BelongsTo
+    public function resolveRiskLevel(): ?RiskLevel
     {
-        return $this->belongsTo(RiskLevel::class);
+        return RiskLevel::query()->find($this->risk_level_id);
+    }
+
+    public function getRiskLevelAttribute(): ?RiskLevel
+    {
+        return $this->relationLoaded('riskLevel')
+            ? $this->getRelation('riskLevel')
+            : $this->resolveRiskLevel();
     }
 
     /** @return BelongsTo<Queue, $this> */

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Verificação de documento · SYNC SUS</title>
+    <title>Verificação de documento · SYNC HOSP</title>
     @vite(['resources/css/app.css'])
 </head>
 <body class="grid min-h-screen place-items-center bg-slate-100 p-5">
@@ -24,7 +24,7 @@
             <div class="grid grid-cols-[150px_1fr] gap-3 py-3"><dt class="text-slate-500">Hash</dt><dd class="break-all font-mono text-xs">{{ $document->currentVersion->file_hash }}</dd></div>
             <div class="grid grid-cols-[150px_1fr] gap-3 py-3"><dt class="text-slate-500">Código</dt><dd class="font-mono font-bold">{{ $document->verification_code }}</dd></div>
         </dl>
-        <p class="mt-6 text-xs leading-5 text-slate-500">Esta verificação confirma o registro e a versão atual no SYNC SUS. Em instalações locais, ela está disponível apenas na rede institucional.</p>
+        <p class="mt-6 text-xs leading-5 text-slate-500">Esta verificação confirma o registro e a versão atual no SYNC HOSP. Em instalações locais, ela está disponível apenas na rede institucional.</p>
     </main>
 </body>
 </html>

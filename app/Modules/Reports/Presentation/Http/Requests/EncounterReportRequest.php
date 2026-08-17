@@ -23,9 +23,9 @@ final class EncounterReportRequest extends FormRequest
             'date_from' => ['required', 'date'],
             'date_to' => ['required', 'date', 'after_or_equal:date_from'],
             'status' => ['nullable', Rule::enum(EncounterStatus::class)],
-            'risk_level_id' => ['nullable', 'integer', 'exists:risk_levels,id'],
-            'specialty_id' => ['nullable', 'integer', 'exists:specialties,id'],
-            'professional_id' => ['nullable', 'integer', 'exists:users,id'],
+            'risk_level_id' => ['nullable', 'integer', 'exists:core.risk_levels,id'],
+            'specialty_id' => ['nullable', 'integer', 'exists:core.specialties,id'],
+            'professional_id' => ['nullable', 'integer', 'exists:core.users,id'],
             'destination_type' => ['nullable', Rule::in(['discharge', 'observation', 'admission_request', 'transfer', 'evasion', 'death'])],
         ];
     }
