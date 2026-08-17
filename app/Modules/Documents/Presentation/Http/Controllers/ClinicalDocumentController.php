@@ -22,7 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class ClinicalDocumentController extends Controller
 {
@@ -58,7 +58,7 @@ final class ClinicalDocumentController extends Controller
         ClinicalDocument $document,
         RecordAuditEventAction $audit,
         ClinicalDocumentContextLoader $contextLoader,
-    ): BinaryFileResponse {
+    ): StreamedResponse {
         [$user, $unit] = $this->context($request);
         $this->ensureDocumentUnit($document, $unit);
         $contextLoader->load($document);
@@ -76,11 +76,9 @@ final class ClinicalDocumentController extends Controller
         );
         $filename = str($document->title)->slug().'_v'.$document->currentVersion->version_number.'.pdf';
 
-        $response = response()->download(
-            Storage::disk('local_private')->path($path),
-            $filename,
-            ['Content-Type' => 'application/pdf'],
-        );
+        // Storage::download() (not response()->download(Storage::path(...))) is required
+        // here: ->path() only exists on the local driver and throws on S3-backed disks.
+        $response = Storage::disk('local_private')->download($path, $filename, ['Content-Type' => 'application/pdf']);
         $response->setPrivate();
         $response->headers->set('Cache-Control', 'no-store, private');
 

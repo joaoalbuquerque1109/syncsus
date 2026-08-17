@@ -142,7 +142,7 @@ final class DocumentsAndReportsTest extends TestCase
             ->assertOk()
             ->assertHeader('content-type', 'application/pdf')
             ->assertHeader('cache-control', 'no-store, private');
-        $this->assertStringStartsWith('%PDF', $download->getFile()->getContent());
+        $this->assertStringStartsWith('%PDF', $download->streamedContent());
         $this->assertDatabaseHas('audit_logs', ['action' => 'document.downloaded']);
 
         $this->actingAs($receptionist)->withSession($session)
