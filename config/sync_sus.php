@@ -30,6 +30,7 @@ return [
         )),
     ))),
     'require_https' => (bool) env('SYNC_SUS_REQUIRE_HTTPS', false),
+    'canonical_host' => trim((string) env('SYNC_SUS_CANONICAL_HOST', '')),
     'trusted_hosts' => array_values(array_filter(array_map(
         'trim',
         explode(',', (string) env('SYNC_SUS_TRUSTED_HOSTS', 'localhost,127.0.0.1')),

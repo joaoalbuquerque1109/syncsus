@@ -17,12 +17,16 @@ final class EnforceHttps
             return $next($request);
         }
 
-        if (! config('sync_sus.require_https') || $request->isSecure()) {
+        $canonicalHost = config('sync_sus.canonical_host');
+        $hostMismatch = $canonicalHost !== '' && $request->getHost() !== $canonicalHost;
+
+        if (! $hostMismatch && (! config('sync_sus.require_https') || $request->isSecure())) {
             return $next($request);
         }
 
         if ($request->isMethodSafe()) {
-            $target = 'https://'.$request->getHttpHost().$request->getRequestUri();
+            $host = $hostMismatch ? $canonicalHost : $request->getHttpHost();
+            $target = 'https://'.$host.$request->getRequestUri();
 
             return redirect()->to($target, 308);
         }

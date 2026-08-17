@@ -131,7 +131,12 @@ final class SecurityAuditAndBackupTest extends TestCase
             ->assertHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
         $this->post('http://localhost/login', [])->assertStatus(400);
 
-        config(['sync_sus.require_https' => false, 'session.driver' => 'database', 'sync_sus.max_concurrent_sessions' => 2]);
+        config(['sync_sus.require_https' => false, 'sync_sus.canonical_host' => 'www.example.test']);
+        $this->get('http://localhost/login')
+            ->assertStatus(308)
+            ->assertRedirect('https://www.example.test/login');
+
+        config(['sync_sus.canonical_host' => '', 'session.driver' => 'database', 'sync_sus.max_concurrent_sessions' => 2]);
         $unit = $this->createHealthUnit();
         $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
         foreach ([100, 200, 300] as $lastActivity) {
