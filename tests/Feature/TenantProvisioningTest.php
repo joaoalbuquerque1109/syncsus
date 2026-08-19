@@ -17,6 +17,7 @@ use App\Support\Tenancy\TenantInfrastructureProvisioner;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Validation\ValidationException;
 use LogicException;
@@ -158,6 +159,85 @@ final class TenantProvisioningTest extends TestCase
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('TENANT_PROVISIONING_EXPECTED_PARTIAL_REVOKES');
         app(TenantInfrastructureProvisioner::class)->provision($database);
+    }
+
+    public function test_native_worker_provisions_database_user_and_database_scoped_grants_on_mysql(): void
+    {
+        if (config('database.connections.tenant_test.driver') !== 'mysql') {
+            $this->markTestSkipped('O caminho feliz de DDL nativo exige o MySQL real do job de CI.');
+        }
+
+        $administrativeConfiguration = config('database.connections.tenant_test');
+        $this->assertIsArray($administrativeConfiguration);
+        $administrativeConfiguration['database'] = 'mysql';
+        config()->set('tenancy.native_provisioning.administrative_connection', $administrativeConfiguration);
+        config()->set('tenancy.native_provisioning.worker_enabled', true);
+        config()->set('tenancy.native_provisioning.require_tls', false);
+
+        $partialRevokesResult = (array) DB::connection('tenant_test')->selectOne(
+            'SELECT @@GLOBAL.partial_revokes AS partial_revokes',
+        );
+        $partialRevokes = strtoupper((string) ($partialRevokesResult['partial_revokes'] ?? ''));
+        $this->assertContains($partialRevokes, ['0', '1', 'OFF', 'ON']);
+        config()->set(
+            'tenancy.native_provisioning.expected_partial_revokes',
+            in_array($partialRevokes, ['1', 'ON'], true) ? 'ON' : 'OFF',
+        );
+
+        $unit = $this->createHealthUnit('NATIVE-MYSQL');
+        $actor = $this->createPlatformAdministrator();
+        $database = app(TenantDatabaseLifecycle::class)->registerNative($unit, $actor);
+        $databaseName = (string) $database->database_name;
+        $username = (string) $database->runtime_username;
+        $host = (string) $database->runtime_host;
+
+        try {
+            $provisioned = app(TenantInfrastructureProvisioner::class)->provision($database);
+            $this->assertSame('grants_applied', $provisioned->infrastructure_status);
+
+            $administrativeConnection = DB::connection('tenant_provisioning');
+            $databaseResult = (array) $administrativeConnection->selectOne(
+                'SELECT COUNT(*) AS aggregate FROM information_schema.schemata WHERE schema_name = ?',
+                [$databaseName],
+            );
+            $userResult = (array) $administrativeConnection->selectOne(
+                'SELECT COUNT(*) AS aggregate FROM mysql.user WHERE User = ? AND Host = ?',
+                [$username, $host],
+            );
+            $this->assertSame(1, (int) ($databaseResult['aggregate'] ?? 0));
+            $this->assertSame(1, (int) ($userResult['aggregate'] ?? 0));
+
+            $pdo = $administrativeConnection->getPdo();
+            $account = $pdo->quote($username).'@'.$pdo->quote($host);
+            $grantRows = $administrativeConnection->select("SHOW GRANTS FOR {$account}");
+            $grants = array_map(
+                static fn (object $row): string => (string) (array_values((array) $row)[0] ?? ''),
+                $grantRows,
+            );
+
+            $this->assertTrue(
+                collect($grants)->contains(
+                    static fn (string $grant): bool => str_contains($grant, "ON `{$databaseName}`.* TO"),
+                ),
+                'A credencial deve receber privilégios no banco criado.',
+            );
+            $this->assertSame(
+                [],
+                array_values(array_filter(
+                    $grants,
+                    static fn (string $grant): bool => str_contains($grant, ' ON *.* TO ')
+                        && ! str_starts_with($grant, 'GRANT USAGE ON *.* TO '),
+                )),
+                'A credencial de runtime não pode receber privilégios globais.',
+            );
+        } finally {
+            $administrativeConnection = DB::connection('tenant_provisioning');
+            $pdo = $administrativeConnection->getPdo();
+            $account = $pdo->quote($username).'@'.$pdo->quote($host);
+            $administrativeConnection->unprepared("DROP USER IF EXISTS {$account}");
+            $administrativeConnection->unprepared("DROP DATABASE IF EXISTS `{$databaseName}`");
+            DB::purge('tenant_provisioning');
+        }
     }
 
     public function test_native_unit_is_activated_only_when_lifecycle_reaches_tenant(): void
