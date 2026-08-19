@@ -61,6 +61,8 @@ COPY docker/railway/start.sh /usr/local/bin/sync-sus-railway
 COPY docker/railway/nginx.conf.template /etc/nginx/http.d/default.conf.template
 COPY docker/railway/supervisord.conf /etc/supervisord.conf
 COPY docker/railway/supervisord.tenant-worker.conf /etc/supervisord.tenant-worker.conf
-RUN chmod 0555 /usr/local/bin/sync-sus-railway
+COPY docker/railway/certs/mysql-ca.pem /etc/ssl/certs/railway-mysql-ca.pem
+RUN chmod 0555 /usr/local/bin/sync-sus-railway \
+    && chmod 0444 /etc/ssl/certs/railway-mysql-ca.pem
 EXPOSE 8080
 CMD ["/usr/local/bin/sync-sus-railway"]
