@@ -15,8 +15,10 @@ use App\Support\Tenancy\TenantDatabaseLifecycle;
 use App\Support\Tenancy\TenantDatabaseState;
 use App\Support\Tenancy\TenantInfrastructureProvisioner;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Validation\ValidationException;
 use LogicException;
 use RuntimeException;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
@@ -236,6 +238,32 @@ final class TenantProvisioningTest extends TestCase
         $this->assertSame(0, Organization::query()->where('cnes_code', '9988776')->count());
         $this->assertDatabaseMissing('health_units', ['cnes_code' => '9988776']);
         $this->assertSame(0, TenantDatabase::query()->count());
+        Queue::assertNothingPushed();
+    }
+
+    public function test_concurrent_provisioning_of_the_same_cnes_is_rejected_without_waiting_on_a_db_lock(): void
+    {
+        $actor = $this->createPlatformAdministrator();
+        $lock = Cache::lock('tenant-provisioning:6612547', 60);
+        $this->assertTrue($lock->get(), 'Pré-condição: o teste precisa conseguir simular a outra requisição segurando o lock.');
+
+        try {
+            app(ProvisionTenantAction::class)->execute([
+                'cnes_code' => '6612547',
+                'legal_name' => 'Organização Concorrente',
+                'trade_name' => 'Unidade Concorrente',
+                'manager_name' => 'Gestora',
+                'manager_email' => 'gestora.concorrente@example.test',
+                'manager_password' => 'Temporary#Password2026',
+            ], $actor);
+            $this->fail('Deveria ter rejeitado a requisição concorrente sem esperar lock de banco.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('cnes_code', $exception->errors());
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertSame(0, Organization::query()->where('cnes_code', '6612547')->count());
         Queue::assertNothingPushed();
     }
 

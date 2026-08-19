@@ -13,7 +13,9 @@ use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantContext;
 use App\Support\Tenancy\TenantDatabaseLifecycle;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final readonly class ProvisionTenantAction
 {
@@ -30,12 +32,23 @@ final readonly class ProvisionTenantAction
      */
     public function execute(array $data, User $actor): array
     {
+        $cnes = preg_replace('/\D/', '', (string) $data['cnes_code']);
+        // Sem isso, dois envios concorrentes do mesmo CNES (duplo clique, retry
+        // após timeout aparente) passam ambos pela validação de unicidade —
+        // que não enxerga a transação da primeira requisição ainda não commitada
+        // — e o segundo fica preso num lock bruto do MySQL até estourar em 500.
+        $lock = Cache::lock("tenant-provisioning:{$cnes}", 60);
+        if (! $lock->get()) {
+            throw ValidationException::withMessages([
+                'cnes_code' => 'Este CNES já está sendo provisionado por outra requisição. Aguarde um momento e tente novamente.',
+            ]);
+        }
+
         $previous = $this->tenantContext->isResolved()
             ? [$this->tenantContext->healthUnit(), $this->tenantContext->connectionName()]
             : null;
         try {
-            return DB::connection('core')->transaction(function () use ($data, $actor): array {
-                $cnes = preg_replace('/\D/', '', (string) $data['cnes_code']);
+            return DB::connection('core')->transaction(function () use ($data, $actor, $cnes): array {
                 $organization = Organization::query()->create([
                     'code' => $cnes,
                     'cnes_code' => $cnes,
@@ -96,6 +109,7 @@ final readonly class ProvisionTenantAction
             if ($previous !== null) {
                 $this->tenantContext->resolve($previous[0], $previous[1]);
             }
+            $lock->release();
         }
     }
 }
