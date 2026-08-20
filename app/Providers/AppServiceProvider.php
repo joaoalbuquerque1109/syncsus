@@ -62,5 +62,6 @@ final class AppServiceProvider extends ServiceProvider
         RateLimiter::for('document-verification', fn (Request $request): Limit => Limit::perMinute(60)->by($request->ip()));
         RateLimiter::for('exports', fn (Request $request): Limit => Limit::perMinute(20)
             ->by((string) ($request->user()?->getAuthIdentifier() ?? $request->ip())));
+        RateLimiter::for('employee-registration', fn (Request $request): Limit => Limit::perMinute(10)->by($request->ip()));
     }
 }

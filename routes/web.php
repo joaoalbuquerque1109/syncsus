@@ -13,6 +13,7 @@ use App\Modules\Documents\Presentation\Http\Controllers\MedicalCertificateContro
 use App\Modules\Documents\Presentation\Http\Controllers\SourceClinicalDocumentController;
 use App\Modules\Identity\Presentation\Http\Controllers\ActiveHealthUnitController;
 use App\Modules\Identity\Presentation\Http\Controllers\AuthenticatedSessionController;
+use App\Modules\Identity\Presentation\Http\Controllers\EmployeeRegistrationController;
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\ExamGroupManagementController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
@@ -51,6 +52,10 @@ Route::get('/document-verification/{verificationCode}', [ClinicalDocumentControl
 Route::middleware('guest')->group(function (): void {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])->name('login.store');
+    Route::get('/register', [EmployeeRegistrationController::class, 'create'])->name('register');
+    Route::post('/register', [EmployeeRegistrationController::class, 'store'])
+        ->middleware('throttle:employee-registration')
+        ->name('register.store');
 });
 
 Route::middleware(['auth', 'active'])->group(function (): void {

@@ -26,6 +26,8 @@ use Spatie\Permission\Traits\HasRoles;
 #[Fillable([
     'name',
     'email',
+    'cpf',
+    'birth_date',
     'password',
     'organization_id',
     'platform_admin_slot',
@@ -118,6 +120,7 @@ final class User extends Authenticatable
     {
         return [
             'password' => 'hashed',
+            'birth_date' => 'immutable_date',
             'is_active' => 'boolean',
             'must_change_password' => 'boolean',
             'last_login_at' => 'immutable_datetime',

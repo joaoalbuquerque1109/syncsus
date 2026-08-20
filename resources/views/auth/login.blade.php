@@ -5,6 +5,10 @@
         <p class="mt-2 text-sm leading-6 text-slate-500">Informe a unidade e suas credenciais institucionais.</p>
     </div>
 
+    @if(session('success'))
+        <x-alert type="success" class="mb-5">{{ session('success') }}</x-alert>
+    @endif
+
     @if($errors->any())
         <x-alert type="error" class="mb-5">
             Não foi possível entrar. Verifique os dados e tente novamente.
@@ -41,6 +45,13 @@
         />
         <x-button.primary class="w-full">Entrar no SYNC HOSP</x-button.primary>
     </form>
+
+    <a
+        href="{{ route('register') }}"
+        class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+    >
+        Cadastro
+    </a>
 
     <p class="mt-6 rounded-lg bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
         Esqueceu a senha? Solicite a redefinição ao administrador da unidade.
