@@ -19,7 +19,7 @@ final class EmployeeRegistrationRequest extends FormRequest
     public const CLINICAL_ROLES = ['doctor', 'triage_professional'];
 
     /** @var list<string> */
-    public const ALLOWED_ROLES = ['receptionist', 'triage_professional', 'doctor', 'auditor'];
+    public const ALLOWED_ROLES = ['receptionist', 'triage_professional', 'doctor'];
 
     private ?Organization $resolvedOrganization = null;
 

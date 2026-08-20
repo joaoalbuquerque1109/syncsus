@@ -111,11 +111,11 @@ final class EmployeeRegistrationTest extends TestCase
         $this->assertSame(0, User::query()->count());
     }
 
-    public function test_manager_and_administrator_roles_are_not_selectable(): void
+    public function test_manager_administrator_and_auditor_roles_are_not_selectable(): void
     {
         $unit = $this->createHealthUnit();
 
-        foreach (['manager', 'administrator'] as $role) {
+        foreach (['manager', 'administrator', 'auditor'] as $role) {
             $payload = $this->receptionistPayload($unit->organization->cnes_code);
             $payload['role'] = $role;
 

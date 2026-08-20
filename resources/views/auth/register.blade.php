@@ -66,7 +66,6 @@
                         'receptionist' => 'Recepcionista',
                         'triage_professional' => 'Profissional de triagem',
                         'doctor' => 'Médico',
-                        'auditor' => 'Auditor',
                         default => $roleOption->name,
                     } }}
                 </option>
