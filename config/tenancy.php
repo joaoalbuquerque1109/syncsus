@@ -30,9 +30,15 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
+            // MySQL's auto-generated server cert has a fixed CN that never matches the
+            // connection hostname, so strict peer-name verification always fails here —
+            // VERIFY_SERVER_CERT=false keeps encryption + CA-chain trust, only skips the
+            // hostname check. array_filter() would drop an explicit `false`, so this only
+            // builds the array when a CA path is actually configured.
+            'options' => extension_loaded('pdo_mysql') && filled(env('TENANT_RUNTIME_SSL_CA')) ? [
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('TENANT_RUNTIME_SSL_CA'),
-            ]) : [],
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_VERIFY_SERVER_CERT : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT) => false,
+            ] : [],
         ],
         // These values belong exclusively to the isolated provisioning worker.
         'administrative_connection' => [
@@ -50,9 +56,12 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? array_filter([
+            // See the same option on runtime_connection above — the auto-generated
+            // server cert's CN never matches the hostname we connect through.
+            'options' => extension_loaded('pdo_mysql') && filled(env('TENANT_PROVISIONING_SSL_CA')) ? [
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('TENANT_PROVISIONING_SSL_CA'),
-            ]) : [],
+                (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_VERIFY_SERVER_CERT : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT) => false,
+            ] : [],
         ],
     ],
 ];
