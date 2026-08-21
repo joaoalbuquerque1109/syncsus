@@ -388,4 +388,53 @@ final class TenantProvisioningTest extends TestCase
             'password' => 'Demo#SyncHOSP2026',
         ])->assertRedirect(route('administration.tenants.index', absolute: false));
     }
+
+    public function test_global_administrator_can_activate_and_deactivate_a_health_unit(): void
+    {
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $unit = $this->createHealthUnit('TOGGLE-ACTIVE');
+        $unit->update(['is_active' => false]);
+
+        $this->actingAs($administrator)
+            ->get(route('administration.tenants.index'))
+            ->assertOk()
+            ->assertSee('Inativa')
+            ->assertSee('Ativar');
+
+        $this->actingAs($administrator)
+            ->put(route('administration.tenants.toggle-active', $unit))
+            ->assertRedirect(route('administration.tenants.index'))
+            ->assertSessionHas('success');
+
+        $this->assertTrue($unit->refresh()->is_active);
+        $this->assertDatabaseHas('security_audit_logs', [
+            'action' => 'tenant.health_unit_activated',
+            'health_unit_id' => $unit->getKey(),
+            'user_id' => $administrator->getKey(),
+        ], 'core');
+
+        $this->actingAs($administrator)
+            ->put(route('administration.tenants.toggle-active', $unit))
+            ->assertRedirect(route('administration.tenants.index'));
+
+        $this->assertFalse($unit->refresh()->is_active);
+        $this->assertDatabaseHas('security_audit_logs', [
+            'action' => 'tenant.health_unit_deactivated',
+            'health_unit_id' => $unit->getKey(),
+            'user_id' => $administrator->getKey(),
+        ], 'core');
+    }
+
+    public function test_non_administrator_cannot_toggle_a_health_unit(): void
+    {
+        $unit = $this->createHealthUnit('TOGGLE-FORBIDDEN');
+        $user = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+
+        $this->actingAs($user)
+            ->put(route('administration.tenants.toggle-active', $unit))
+            ->assertForbidden();
+
+        $this->assertTrue($unit->refresh()->is_active);
+    }
 }

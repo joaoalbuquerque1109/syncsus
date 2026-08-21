@@ -49,11 +49,23 @@
                                 <h2 class="mt-1 text-xl font-black">{{ $organization->trade_name }}</h2>
                                 <p class="mt-1 text-sm text-slate-500">{{ $organization->legal_name }}</p>
                             </div>
-                            <span @class([
-                                'rounded-full px-3 py-1 text-xs font-bold',
-                                'bg-emerald-100 text-emerald-800' => $organization->is_active,
-                                'bg-slate-200 text-slate-600' => ! $organization->is_active,
-                            ])>{{ $organization->is_active ? 'Ativa' : 'Inativa' }}</span>
+                            <div class="flex items-center gap-2">
+                                <span @class([
+                                    'rounded-full px-3 py-1 text-xs font-bold',
+                                    'bg-emerald-100 text-emerald-800' => $unit?->is_active,
+                                    'bg-slate-200 text-slate-600' => ! $unit?->is_active,
+                                ])>{{ $unit === null ? 'Sem unidade' : ($unit->is_active ? 'Ativa' : 'Inativa') }}</span>
+                                @if($unit !== null)
+                                    <form method="POST" action="{{ route('administration.tenants.toggle-active', $unit) }}">
+                                        @csrf
+                                        @method('PUT')
+                                        <button
+                                            type="submit"
+                                            class="rounded-full border border-slate-300 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                                        >{{ $unit->is_active ? 'Desativar' : 'Ativar' }}</button>
+                                    </form>
+                                @endif
+                            </div>
                         </div>
                         <dl class="mt-4 grid gap-3 border-t border-slate-100 pt-4 text-sm sm:grid-cols-2">
                             <div><dt class="text-slate-500">Unidade principal</dt><dd class="font-bold">{{ $unit?->name ?? 'Não cadastrada' }}</dd></div>

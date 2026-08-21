@@ -6,6 +6,8 @@ namespace App\Modules\Administration\Presentation\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Administration\Application\Actions\ProvisionTenantAction;
+use App\Modules\Administration\Application\Actions\ToggleHealthUnitActiveAction;
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Administration\Presentation\Http\Requests\ProvisionTenantRequest;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
@@ -47,6 +49,20 @@ final class TenantProvisioningController extends Controller
 
         return redirect()->route('administration.tenants.index')
             ->with('success', 'Unidade registrada. O banco dedicado está em provisionamento e a unidade permanecerá inativa até a validação final.');
+    }
+
+    public function toggleActive(
+        Request $request,
+        HealthUnit $healthUnit,
+        ToggleHealthUnitActiveAction $toggleActive,
+    ): RedirectResponse {
+        $actor = $this->actor($request);
+        $unit = $toggleActive->execute($healthUnit, $actor, $request);
+
+        return redirect()->route('administration.tenants.index')->with(
+            'success',
+            $unit->is_active ? 'Unidade ativada.' : 'Unidade desativada.',
+        );
     }
 
     private function actor(Request $request): User

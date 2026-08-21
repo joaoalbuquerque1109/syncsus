@@ -68,6 +68,8 @@ Route::middleware(['auth', 'active'])->group(function (): void {
         ->group(function (): void {
             Route::get('/', [TenantProvisioningController::class, 'index'])->name('index');
             Route::post('/', [TenantProvisioningController::class, 'store'])->name('store');
+            Route::put('/{healthUnit:public_id}/toggle-active', [TenantProvisioningController::class, 'toggleActive'])
+                ->name('toggle-active');
         });
 
     Route::middleware(['password.changed', 'active.unit'])->group(function (): void {
