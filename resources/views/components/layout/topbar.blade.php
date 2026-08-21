@@ -34,7 +34,7 @@
                         id="health-unit"
                         name="health_unit"
                         list="health-unit-options"
-                        class="field-control min-w-0 max-w-64 truncate py-2 text-sm font-bold"
+                        class="field-control min-w-0 max-w-64 flex-1 truncate py-2 text-sm font-bold"
                         aria-label="Visualizar unidade"
                         placeholder="CNES da unidade"
                         value="{{ $activeHealthUnit->cnes_code ?: $activeHealthUnit->organization->cnes_code }}"
@@ -47,7 +47,7 @@
                             </option>
                         @endforeach
                     </datalist>
-                    <button type="submit" class="field-control shrink-0 px-3 py-2 text-sm font-bold">Ir</button>
+                    <x-button.primary class="min-h-0 shrink-0 px-3 py-2 text-sm">Ir</x-button.primary>
                 @else
                     <select
                         id="health-unit"
