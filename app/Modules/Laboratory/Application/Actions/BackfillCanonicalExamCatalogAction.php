@@ -30,6 +30,38 @@ final readonly class BackfillCanonicalExamCatalogAction
             ->where('is_active', true)
             ->orderBy('id')
             ->chunkById(250, function ($laboratoryExams) use (&$result): void {
+                $integrationIds = $laboratoryExams
+                    ->pluck('laboratory_integration_id')
+                    ->unique()
+                    ->values();
+                $externalCodes = $laboratoryExams
+                    ->pluck('external_code')
+                    ->unique()
+                    ->values();
+                $mappingIndex = ExamMapping::query()
+                    ->whereIn('laboratory_integration_id', $integrationIds)
+                    ->whereIn('external_code', $externalCodes)
+                    ->get()
+                    ->keyBy(fn (ExamMapping $mapping): string => $this->indexKey(
+                        $mapping->laboratory_integration_id,
+                        $mapping->external_code,
+                    ));
+                $healthUnitIds = $laboratoryExams
+                    ->pluck('integration')
+                    ->filter()
+                    ->pluck('health_unit_id')
+                    ->unique()
+                    ->values();
+                $examIds = $mappingIndex->pluck('exam_id')->unique()->values();
+                $availabilityIndex = HealthUnitExam::query()
+                    ->whereIn('exam_id', $examIds)
+                    ->whereIn('health_unit_id', $healthUnitIds)
+                    ->get()
+                    ->keyBy(fn (HealthUnitExam $availability): string => $this->indexKey(
+                        $availability->exam_id,
+                        $availability->health_unit_id,
+                    ));
+
                 foreach ($laboratoryExams as $laboratoryExam) {
                     $integration = $laboratoryExam->integration;
                     if ($integration === null) {
@@ -37,12 +69,10 @@ final readonly class BackfillCanonicalExamCatalogAction
                     }
 
                     $result['processed']++;
-                    $mapping = ExamMapping::query()
-                        ->where('laboratory_integration_id', $integration->getKey())
-                        ->where('external_code', $laboratoryExam->external_code)
-                        ->first();
+                    $mappingKey = $this->indexKey($integration->getKey(), $laboratoryExam->external_code);
+                    $mapping = $mappingIndex->get($mappingKey);
 
-                    if ($mapping === null) {
+                    if (! $mapping instanceof ExamMapping) {
                         $exam = Exam::query()->create([
                             'organization_id' => $integration->organization_id,
                             'name' => $laboratoryExam->name,
@@ -62,12 +92,17 @@ final readonly class BackfillCanonicalExamCatalogAction
                             'is_active' => true,
                         ]);
                         $result['mappings_created']++;
+                        $mappingIndex->put($mappingKey, $mapping);
                     }
 
                     if (! $mapping->is_active) {
                         continue;
                     }
 
+                    $availabilityKey = $this->indexKey($mapping->exam_id, $integration->health_unit_id);
+                    if ($availabilityIndex->has($availabilityKey)) {
+                        continue;
+                    }
                     $availability = HealthUnitExam::query()->firstOrCreate(
                         [
                             'exam_id' => $mapping->exam_id,
@@ -81,9 +116,15 @@ final readonly class BackfillCanonicalExamCatalogAction
                     if ($availability->wasRecentlyCreated) {
                         $result['availabilities_created']++;
                     }
+                    $availabilityIndex->put($availabilityKey, $availability);
                 }
             });
 
         return $result;
+    }
+
+    private function indexKey(int|string $first, int|string $second): string
+    {
+        return json_encode([(string) $first, (string) $second], JSON_THROW_ON_ERROR);
     }
 }

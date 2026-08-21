@@ -53,6 +53,7 @@ if [ "$mode" = "web" ]; then
     PORT="$port" envsubst '${PORT}' \
         < /etc/nginx/http.d/default.conf.template \
         > /etc/nginx/http.d/default.conf
+    su-exec www-data php artisan db:seed --force --no-interaction
 fi
 
 su-exec www-data php artisan optimize

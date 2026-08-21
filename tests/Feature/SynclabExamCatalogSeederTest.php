@@ -9,6 +9,7 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\ExamCatalogImportCandidate;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\SynclabExamCatalogSeeder;
+use Illuminate\Support\Facades\DB;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
@@ -102,5 +103,44 @@ final class SynclabExamCatalogSeederTest extends TestCase
             [ExamCatalogMatchStatus::Unmatched],
             ExamCatalogImportCandidate::query()->pluck('match_status')->unique()->values()->all(),
         );
+    }
+
+    public function test_unchanged_second_import_uses_one_batched_lookup_and_does_not_rewrite_exams(): void
+    {
+        $this->createHealthUnit('IDEMPOTENT-CATALOG');
+        $this->seed(SynclabExamCatalogSeeder::class);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $this->seed(SynclabExamCatalogSeeder::class);
+            $queries = DB::getQueryLog();
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+
+        $laboratoryExamQueries = collect($queries)->filter(
+            static fn (array $query): bool => str_contains(strtolower($query['query']), 'laboratory_exams'),
+        );
+        $perItemLookups = $laboratoryExamQueries->filter(
+            static fn (array $query): bool => str_starts_with(strtolower(ltrim($query['query'])), 'select')
+                && str_contains(strtolower($query['query']), 'external_code')
+                && str_contains(strtolower($query['query']), 'limit 1'),
+        );
+        $batchedLookups = $laboratoryExamQueries->filter(
+            static fn (array $query): bool => str_starts_with(strtolower(ltrim($query['query'])), 'select')
+                && str_contains(strtolower($query['query']), 'laboratory_integration_id')
+                && ! str_contains(strtolower($query['query']), 'limit'),
+        );
+        $writes = $laboratoryExamQueries->filter(
+            static fn (array $query): bool => preg_match('/^\s*(insert|update)/i', $query['query']) === 1,
+        );
+
+        $this->assertCount(0, $perItemLookups);
+        $this->assertCount(1, $batchedLookups);
+        $this->assertCount(1, $writes);
+        $this->assertStringContainsString('not in', strtolower($writes->first()['query']));
+        $this->assertDatabaseCount('laboratory_exams', 123);
     }
 }

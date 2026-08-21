@@ -32,15 +32,26 @@ final class SynclabExamCatalogSeeder extends Seeder
             $context->resolve($unit, app(TenantConnectionManager::class)->connectionName($unit));
             $integration = $this->integration($unit);
             $activeCodes = [];
+            $existingExams = LaboratoryExam::query()
+                ->where('laboratory_integration_id', $integration->getKey())
+                ->get()
+                ->keyBy('external_code');
 
             foreach ($rows as $row) {
                 $externalCode = preg_replace('/\.0$/', '', trim($row['codigo'])) ?: trim($row['codigo']);
                 $activeCodes[] = $externalCode;
-                $exam = LaboratoryExam::query()->firstOrNew([
-                    'laboratory_integration_id' => $integration->getKey(),
-                    'external_code' => $externalCode,
-                ]);
+                $exam = $existingExams->get($externalCode);
+                if (! $exam instanceof LaboratoryExam) {
+                    $exam = LaboratoryExam::query()->make([
+                        'laboratory_integration_id' => $integration->getKey(),
+                        'external_code' => $externalCode,
+                    ]);
+                }
                 if ($exam->exists && $exam->source_version === null) {
+                    continue;
+                }
+                $contentHash = hash('sha256', json_encode($row, JSON_THROW_ON_ERROR));
+                if ($exam->exists && $exam->content_hash === $contentHash) {
                     continue;
                 }
                 $exam->fill([
@@ -54,8 +65,9 @@ final class SynclabExamCatalogSeeder extends Seeder
                     'synonyms' => array_filter([$this->nullable($row['descricao'])]),
                     'is_active' => true,
                     'source_version' => $version,
-                    'content_hash' => hash('sha256', json_encode($row, JSON_THROW_ON_ERROR)),
+                    'content_hash' => $contentHash,
                 ])->save();
+                $existingExams->put($externalCode, $exam);
             }
 
             LaboratoryExam::query()

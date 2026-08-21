@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
+use App\Modules\Laboratory\Application\Actions\BackfillCanonicalExamCatalogAction;
 use App\Modules\Laboratory\Domain\Enums\ExamMappingMatchType;
 use App\Modules\Laboratory\Infrastructure\Eloquent\Exam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
 use App\Modules\Laboratory\Infrastructure\Eloquent\HealthUnitExam;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryExam;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\CanonicalExamCatalogBackfillSeeder;
 use Database\Seeders\SynclabExamCatalogSeeder;
+use Illuminate\Support\Facades\DB;
 use LogicException;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
@@ -115,6 +118,55 @@ final class CanonicalExamCatalogTest extends TestCase
                 ->where('is_enabled', true)
                 ->count(),
         );
+    }
+
+    public function test_backfill_batches_existing_lookups_and_processes_a_new_exam_on_the_second_run(): void
+    {
+        $unit = $this->createHealthUnit('BACKFILL-BATCH');
+        $integration = $this->integration($unit);
+        foreach (range(1, 20) as $index) {
+            $integration->exams()->create([
+                'external_code' => "BATCH-{$index}",
+                'name' => "Exame em lote {$index}",
+                'is_active' => true,
+            ]);
+        }
+
+        $action = app(BackfillCanonicalExamCatalogAction::class);
+        $action->execute();
+        $integration->exams()->create([
+            'external_code' => 'BATCH-NEW',
+            'name' => 'Novo exame incremental',
+            'is_active' => true,
+        ]);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        try {
+            $result = $action->execute();
+            $queries = DB::getQueryLog();
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+
+        $selectsFor = static fn (string $table): int => collect($queries)->filter(
+            static fn (array $query): bool => str_starts_with(strtolower(ltrim($query['query'])), 'select')
+                && str_contains(strtolower($query['query']), $table),
+        )->count();
+
+        $this->assertSame([
+            'processed' => 21,
+            'exams_created' => 1,
+            'mappings_created' => 1,
+            'availabilities_created' => 1,
+        ], $result);
+        $this->assertLessThanOrEqual(2, $selectsFor('exam_mappings'));
+        $this->assertLessThanOrEqual(2, $selectsFor('health_unit_exams'));
+        $this->assertSame(21, LaboratoryExam::query()->where('is_active', true)->count());
+        $this->assertDatabaseCount('exams', 21);
+        $this->assertDatabaseCount('exam_mappings', 21);
+        $this->assertDatabaseCount('health_unit_exams', 21);
     }
 
     public function test_catalog_rejects_cross_tenant_mapping_and_availability_without_unit_mapping(): void
