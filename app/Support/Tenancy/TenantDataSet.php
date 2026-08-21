@@ -118,14 +118,18 @@ final class TenantDataSet
                 $legacyColumn = array_key_exists('legacy_column', $definition)
                     ? $definition['legacy_column']
                     : 'organization_id';
+                $hasLegacyColumn = $legacyColumn !== null
+                    && $connection->getSchemaBuilder()->hasColumn($definition['table'], $legacyColumn);
                 if ($publicColumn !== null
                     && $connection->getSchemaBuilder()->hasColumn($definition['table'], $publicColumn)) {
-                    $query->where($publicColumn, $unit->organization?->public_id)
-                        ->orWhere(function (Builder $query) use ($publicColumn, $legacyColumn, $unit): void {
+                    $query->where($publicColumn, $unit->organization?->public_id);
+                    if ($hasLegacyColumn) {
+                        $query->orWhere(function (Builder $query) use ($publicColumn, $legacyColumn, $unit): void {
                             $query->whereNull($publicColumn)
                                 ->where($legacyColumn, $unit->organization_id);
                         });
-                } elseif ($legacyColumn !== null) {
+                    }
+                } elseif ($hasLegacyColumn) {
                     $query->where($legacyColumn, $unit->organization_id);
                 } else {
                     $query->whereRaw('1 = 0');
@@ -138,15 +142,17 @@ final class TenantDataSet
                 $legacyColumn = array_key_exists('legacy_column', $definition)
                     ? $definition['legacy_column']
                     : 'health_unit_id';
+                $hasLegacyColumn = $legacyColumn !== null
+                    && $connection->getSchemaBuilder()->hasColumn($definition['table'], $legacyColumn);
                 if ($publicColumn !== null
                     && $connection->getSchemaBuilder()->hasColumn($definition['table'], $publicColumn)) {
                     $query->where($publicColumn, $unit->public_id);
-                    if ($legacyColumn !== null) {
+                    if ($hasLegacyColumn) {
                         $query->orWhere(function (Builder $query) use ($publicColumn, $legacyColumn, $unit): void {
                             $query->whereNull($publicColumn)->where($legacyColumn, $unit->getKey());
                         });
                     }
-                } elseif ($legacyColumn !== null) {
+                } elseif ($hasLegacyColumn) {
                     $query->where($legacyColumn, $unit->getKey());
                 } else {
                     $query->whereRaw('1 = 0');

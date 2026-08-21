@@ -8,6 +8,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\Department;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabaseEvent;
 use App\Modules\Audit\Application\Actions\RecordAuditEventAction;
+use App\Modules\Patients\Infrastructure\Eloquent\UnitPatient;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Support\Tenancy\TenantConnectionManager;
@@ -247,6 +248,38 @@ final class TenantDatabasePilotTest extends TestCase
             'panel_id' => $panel->getKey(),
             'queue_id' => $queue->getKey(),
         ], 'tenant_test');
+    }
+
+    public function test_synchronize_copies_tables_that_have_no_legacy_health_unit_id_column(): void
+    {
+        // unit_patients (e as demais tabelas de paciente por unidade) nunca teve coluna
+        // health_unit_id legada - sourceQuery() montava um orWhere() nela sem checar
+        // hasColumn(), o que quebrava com 1054 Unknown column no MySQL real de produção
+        // (reproduzido e confirmado contra o banco de produção antes desta correção).
+        // O SQLite usado nos testes locais não valida a coluna inexistente na cláusula
+        // OR e não reproduz a falha - esta asserção cobre o comportamento correto da
+        // cópia; a regressão do erro em si depende do job de CI que roda contra MySQL.
+        $this->configurePilotProfile();
+        $unit = $this->createHealthUnit('PHASE-3-PUBLIC-ID-ONLY');
+        $actor = $this->createPlatformAdministrator();
+        $unitPatient = UnitPatient::query()->create([
+            'patient_public_id' => (string) Str::ulid(),
+            'health_unit_public_id' => $unit->public_id,
+            'status' => 'active',
+        ]);
+        $connections = app(TenantConnectionManager::class);
+        $lifecycle = app(TenantDatabaseLifecycle::class);
+        $database = $lifecycle->register($unit, 'phase_3_test', null, $actor);
+        $database = app(TenantDatabaseProvisioner::class)->provision($database, $actor);
+        $dedicated = $connections->dedicatedConnectionName($database);
+
+        $counts = app(TenantPilotDataSynchronizer::class)->synchronize($database, $actor);
+
+        $this->assertSame(1, $counts['unit_patients']);
+        $this->assertDatabaseHas('unit_patients', [
+            'patient_public_id' => $unitPatient->patient_public_id,
+            'health_unit_public_id' => $unit->public_id,
+        ], $dedicated);
     }
 
     public function test_registration_rejects_an_unknown_connection_profile_without_persisting_it(): void
