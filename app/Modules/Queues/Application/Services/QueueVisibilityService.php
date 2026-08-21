@@ -23,7 +23,7 @@ final class QueueVisibilityService
 
     public function hasBroadAccess(User $user): bool
     {
-        return $user->isPlatformAdministrator() || $user->hasAnyRole(['manager', 'receptionist']);
+        return $user->isPlatformAdministrator() || $user->hasRole('manager');
     }
 
     /** @param Builder<Queue> $query

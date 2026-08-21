@@ -25,7 +25,7 @@ final class RolePermissionSeeder extends Seeder
         ],
         'receptionist' => [
             'patients.view', 'patients.create', 'patients.update',
-            'encounters.open', 'encounters.cancel', 'queues.view',
+            'encounters.open', 'encounters.cancel',
             'laboratory.orders.view', 'laboratory.orders.create', 'laboratory.orders.cancel',
         ],
         'triage_professional' => [

@@ -26,7 +26,7 @@ final class RolePermissionTest extends TestCase
         ],
         'receptionist' => [
             'encounters.cancel', 'encounters.open', 'patients.create', 'patients.update',
-            'patients.view', 'queues.view',
+            'patients.view',
             'laboratory.orders.cancel', 'laboratory.orders.create', 'laboratory.orders.view',
         ],
         'triage_professional' => [
@@ -53,6 +53,7 @@ final class RolePermissionTest extends TestCase
 
         $this->assertTrue($receptionist->hasPermissionTo('encounters.open'));
         $this->assertFalse($receptionist->hasPermissionTo('medical.view'));
+        $this->assertFalse($receptionist->hasPermissionTo('queues.view'));
         $this->assertTrue($doctor->hasPermissionTo('medical.prescribe'));
         $this->assertFalse($doctor->hasPermissionTo('administration.manage'));
         $this->assertTrue($manager->hasPermissionTo('reports.view'));
@@ -69,5 +70,23 @@ final class RolePermissionTest extends TestCase
             $expected = collect($expectedPermissions)->sort()->values()->all();
             $this->assertSame($expected, $actual, "Matriz divergente para {$roleName}.");
         }
+    }
+
+    public function test_receptionist_cannot_access_queues_or_see_the_queue_navigation_item(): void
+    {
+        $this->seed(RolePermissionSeeder::class);
+        $unit = $this->createHealthUnit();
+        $receptionist = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $receptionist->assignRole('receptionist');
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('patients.index'))
+            ->assertOk()
+            ->assertDontSee('Filas e chamadas');
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->get(route('queues.index'))
+            ->assertForbidden();
     }
 }
