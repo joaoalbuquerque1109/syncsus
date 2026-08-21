@@ -82,8 +82,10 @@ final class HealthUnitScopeTest extends TestCase
             ->get('/dashboard')
             ->assertOk()
             ->assertSee('Visualizar unidade')
-            ->assertSee("Hospital GLOBAL-FIRST · Unidade GLOBAL-FIRST · CNES {$firstUnit->cnes_code}")
-            ->assertSee("Hospital GLOBAL-SECOND · Unidade GLOBAL-SECOND · CNES {$secondUnit->cnes_code}");
+            ->assertSee('value="'.$firstUnit->cnes_code.'"', false)
+            ->assertSee('Hospital GLOBAL-FIRST · Unidade GLOBAL-FIRST')
+            ->assertSee('value="'.$secondUnit->cnes_code.'"', false)
+            ->assertSee('Hospital GLOBAL-SECOND · Unidade GLOBAL-SECOND');
         $this->actingAs($administrator)
             ->withSession(['active_health_unit_id' => $firstUnit->getKey()])
             ->put('/active-health-unit', ['health_unit' => $secondUnit->public_id])
@@ -96,7 +98,43 @@ final class HealthUnitScopeTest extends TestCase
         $this->actingAs($administrator)
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('value="'.$secondUnit->public_id.'" selected', false)
+            ->assertSee('value="'.$secondUnit->cnes_code.'"', false)
             ->assertSee('Unidade GLOBAL-SECOND');
+    }
+
+    public function test_global_administrator_can_switch_units_by_cnes(): void
+    {
+        $firstUnit = $this->createHealthUnit('CNES-FIRST');
+        $secondUnit = $this->createHealthUnit('CNES-SECOND');
+        $this->seed(RolePermissionSeeder::class);
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $firstUnit->getKey()])
+            ->put('/active-health-unit', ['health_unit' => $secondUnit->cnes_code])
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHas('success');
+
+        $this->assertSame($secondUnit->getKey(), session('active_health_unit_id'));
+        $this->assertDatabaseHas('security_audit_logs', [
+            'user_id' => $administrator->getKey(),
+            'health_unit_id' => $secondUnit->getKey(),
+            'action' => 'user.active_health_unit_changed',
+        ]);
+    }
+
+    public function test_linked_user_cannot_switch_units_by_cnes_outside_their_link(): void
+    {
+        $linkedUnit = $this->createHealthUnit('CNES-LINKED');
+        $unlinkedUnit = $this->createHealthUnit('CNES-UNLINKED');
+        $user = $this->createUserWithUnit($linkedUnit, ['must_change_password' => false]);
+
+        $this->actingAs($user)
+            ->withSession(['active_health_unit_id' => $linkedUnit->getKey()])
+            ->put('/active-health-unit', ['health_unit' => $unlinkedUnit->cnes_code])
+            ->assertForbidden();
+
+        $this->assertSame($linkedUnit->getKey(), session('active_health_unit_id'));
     }
 }

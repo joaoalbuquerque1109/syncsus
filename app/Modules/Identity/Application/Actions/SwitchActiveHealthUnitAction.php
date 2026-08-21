@@ -16,9 +16,16 @@ final readonly class SwitchActiveHealthUnitAction
 
     public function execute(User $user, string $publicId, Request $request): HealthUnit
     {
+        $cnes = preg_replace('/\D/', '', $publicId);
         $unit = $user->isPlatformAdministrator()
             ? HealthUnit::query()
-                ->where('public_id', $publicId)
+                ->where(function ($query) use ($publicId, $cnes): void {
+                    $query->where('public_id', $publicId);
+                    if ($cnes !== '' && strlen($cnes) === 7) {
+                        $query->orWhere('cnes_code', $cnes)
+                            ->orWhereHas('organization', fn ($organization) => $organization->where('cnes_code', $cnes));
+                    }
+                })
                 ->where('is_active', true)
                 ->whereHas('organization', fn ($query) => $query->where('is_active', true))
                 ->first()
