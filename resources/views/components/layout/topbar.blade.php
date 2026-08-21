@@ -36,9 +36,9 @@
                         list="health-unit-options"
                         class="field-control min-w-0 max-w-64 flex-1 truncate py-2 text-sm font-bold"
                         aria-label="Visualizar unidade"
-                        placeholder="CNES da unidade"
-                        value="{{ $activeHealthUnit->cnes_code ?: $activeHealthUnit->organization->cnes_code }}"
+                        placeholder="CNES atual: {{ $activeHealthUnit->cnes_code ?: $activeHealthUnit->organization->cnes_code }}"
                         autocomplete="off"
+                        onfocus="this.select()"
                     >
                     <datalist id="health-unit-options">
                         @foreach($availableHealthUnits as $unit)

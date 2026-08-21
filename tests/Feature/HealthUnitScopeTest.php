@@ -98,7 +98,7 @@ final class HealthUnitScopeTest extends TestCase
         $this->actingAs($administrator)
             ->get('/dashboard')
             ->assertOk()
-            ->assertSee('value="'.$secondUnit->cnes_code.'"', false)
+            ->assertSee('placeholder="CNES atual: '.$secondUnit->cnes_code.'"', false)
             ->assertSee('Unidade GLOBAL-SECOND');
     }
 
