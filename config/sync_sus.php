@@ -40,6 +40,13 @@ return [
         explode(',', (string) env('SYNC_SUS_TRUSTED_PROXIES', '')),
     ))),
     'max_concurrent_sessions' => max(1, (int) env('SYNC_SUS_MAX_CONCURRENT_SESSIONS', 1)),
+    'startup_seed_lock' => [
+        // Evita que replicas concorrentes rodem db:seed ao mesmo tempo no boot
+        // (docker/railway/start.sh) contra o mesmo banco, causando corrida em
+        // dados compartilhados entre unidades (ex.: MatchSynclabExamCatalogAction).
+        'ttl_seconds' => max(1, (int) env('SYNC_SUS_STARTUP_SEED_LOCK_TTL_SECONDS', 300)),
+        'block_seconds' => max(1, (int) env('SYNC_SUS_STARTUP_SEED_LOCK_BLOCK_SECONDS', 180)),
+    ],
     'synclab' => [
         'enabled' => (bool) env('SYNC_SUS_SYNCLAB_ENABLED', false),
         // Enable only after the Synclab operator has approved the additive

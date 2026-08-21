@@ -13,6 +13,8 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\ExamCatalogImportCandidate;
 use App\Modules\Laboratory\Infrastructure\Eloquent\ExamMapping;
 use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use Database\Seeders\RolePermissionSeeder;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Support\Facades\Event;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
 
@@ -98,6 +100,24 @@ final class ExamCatalogMatchingTest extends TestCase
             'health_unit_id' => $unit->getKey(),
             'action' => 'laboratory.exam_catalog_match_resolved',
         ]);
+    }
+
+    public function test_execute_transaction_runs_on_the_integrations_tenant_connection_not_the_default_connection(): void
+    {
+        $unit = $this->createHealthUnit('CONNTEST');
+        $integration = $this->integration($unit->organization_id, $unit->getKey());
+        $this->canonical((int) $unit->organization_id, 'Sódio');
+        $this->raw($integration, 'CONN', 'Sódio');
+
+        $beganOn = [];
+        Event::listen(TransactionBeginning::class, function (TransactionBeginning $event) use (&$beganOn): void {
+            $beganOn[] = $event->connectionName;
+        });
+
+        app(MatchSynclabExamCatalogAction::class)->execute($integration);
+
+        $this->assertContains($integration->getConnectionName(), $beganOn);
+        $this->assertNotContains('core', $beganOn);
     }
 
     private function integration(int $organizationId, int $healthUnitId): LaboratoryIntegration

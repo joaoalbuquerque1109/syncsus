@@ -24,7 +24,7 @@ final readonly class MatchSynclabExamCatalogAction
     /** @return array{exact: int, probable: int, unmatched: int, conflict: int} */
     public function execute(LaboratoryIntegration $integration): array
     {
-        return DB::transaction(function () use ($integration): array {
+        return DB::connection($integration->getConnectionName())->transaction(function () use ($integration): array {
             $counts = ['exact' => 0, 'probable' => 0, 'unmatched' => 0, 'conflict' => 0];
             ExamCatalogImportCandidate::query()
                 ->where('laboratory_integration_id', $integration->getKey())
