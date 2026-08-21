@@ -19,11 +19,8 @@ final class SynclabExamCatalogSeederTest extends TestCase
 
     public function test_it_imports_only_parent_exams_and_preserves_valid_sus_codes(): void
     {
-        config()->set('sync_sus.synclab.unit_code', 'CENTRAL');
-        config()->set('sync_sus.synclab.cnes', '6612547');
-        config()->set('sync_sus.synclab.enabled', false);
-
         $unit = $this->createHealthUnit('CENTRAL');
+        $originalCnes = $unit->cnes_code;
         $this->seed(SynclabExamCatalogSeeder::class);
 
         $integration = LaboratoryIntegration::query()->sole();
@@ -31,7 +28,11 @@ final class SynclabExamCatalogSeederTest extends TestCase
         $this->assertTrue($integration->is_active);
         $this->assertFalse($integration->transmission_enabled);
         $this->assertFalse($integration->result_sync_enabled);
-        $this->assertSame('6612547', $unit->fresh()?->cnes_code);
+        $this->assertSame(
+            $originalCnes,
+            $unit->fresh()?->cnes_code,
+            'O seeder de catalogo nao deve alterar o CNES da unidade - isso e responsabilidade da tela de administracao.',
+        );
 
         $exams = LaboratoryExam::query()
             ->where('laboratory_integration_id', $integration->getKey())
@@ -88,6 +89,31 @@ final class SynclabExamCatalogSeederTest extends TestCase
         $this->assertDatabaseMissing('exam_catalog_import_candidates', [
             'laboratory_exam_id' => $overridden->getKey(),
         ]);
+    }
+
+    public function test_it_does_not_overwrite_admin_configured_credentials_and_transmission_flag(): void
+    {
+        $this->createHealthUnit('ADMIN-CONFIGURED');
+        $this->seed(SynclabExamCatalogSeeder::class);
+        $integration = LaboratoryIntegration::query()->sole();
+        $integration->update([
+            'external_tenant_code' => '2399628',
+            'username' => 'unidade-real',
+            'password' => 'segredo-real',
+            'base_url' => 'https://synclab.exemplo.com.br',
+            'transmission_enabled' => true,
+            'connection_status' => 'configured',
+        ]);
+
+        $this->seed(SynclabExamCatalogSeeder::class);
+
+        $integration->refresh();
+        $this->assertSame('2399628', $integration->external_tenant_code);
+        $this->assertSame('unidade-real', $integration->username);
+        $this->assertSame('segredo-real', $integration->password);
+        $this->assertSame('https://synclab.exemplo.com.br', $integration->base_url);
+        $this->assertTrue($integration->transmission_enabled);
+        $this->assertSame('configured', $integration->connection_status);
     }
 
     public function test_catalog_accepts_a_changed_number_of_parent_rows_and_creates_review_candidates(): void

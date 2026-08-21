@@ -82,35 +82,23 @@ final class SynclabExamCatalogSeeder extends Seeder
 
     private function integration(HealthUnit $unit): LaboratoryIntegration
     {
-        $targetUnitCode = trim((string) config('sync_sus.synclab.unit_code'));
-        $isTarget = $targetUnitCode !== '' && hash_equals($targetUnitCode, (string) $unit->code);
-        $configuredCnes = preg_replace('/\D/', '', (string) config('sync_sus.synclab.cnes'));
-        if ($isTarget && strlen($configuredCnes) === 7 && $unit->cnes_code !== $configuredCnes) {
-            $unit->forceFill(['cnes_code' => $configuredCnes])->save();
-        }
-
         $integration = LaboratoryIntegration::query()->firstOrNew([
             'health_unit_id' => $unit->getKey(),
             'provider' => 'synclab',
         ]);
-        $username = trim((string) config('sync_sus.synclab.username')) ?: (string) $integration->username;
-        $password = (string) config('sync_sus.synclab.password') ?: (string) $integration->password;
-        $ready = $isTarget
-            && (bool) config('sync_sus.synclab.enabled')
-            && strlen((string) $unit->fresh()?->cnes_code) === 7
-            && $username !== ''
-            && $password !== '';
-
-        $integration->fill([
-            'organization_id' => $unit->organization_id,
-            'base_url' => rtrim((string) config('sync_sus.synclab.base_url'), '/'),
-            'external_tenant_code' => $unit->fresh()?->cnes_code,
-            'username' => $username !== '' ? $username : null,
-            'password' => $password !== '' ? $password : null,
-            'is_active' => true,
-            'transmission_enabled' => $ready,
-            'connection_status' => $ready ? 'configured' : 'not_configured',
-        ])->save();
+        // Credenciais, CNES e transmission_enabled sao geridos por unidade pela
+        // tela de administracao (SynclabIntegrationController) e nunca devem ser
+        // sobrescritos aqui - o seeder so garante que a linha exista para poder
+        // anexar o catalogo de exames importado.
+        if (! $integration->exists) {
+            $integration->fill([
+                'organization_id' => $unit->organization_id,
+                'base_url' => rtrim((string) config('sync_sus.synclab.base_url'), '/'),
+                'is_active' => true,
+                'transmission_enabled' => false,
+                'connection_status' => 'not_configured',
+            ])->save();
+        }
 
         return $integration;
     }
