@@ -29,7 +29,8 @@
                     </div>
                     <div class="max-h-[80vh] overflow-y-auto p-5">
                         <p x-show="loading" class="py-10 text-center text-sm text-slate-500">Carregando...</p>
-                        <div x-show="!loading" x-ref="body" x-html="html"></div>
+                        <p x-show="error" x-text="error" class="py-10 text-center text-sm font-semibold text-red-700"></p>
+                        <div x-show="!loading && !error" x-ref="body"></div>
                     </div>
                 </div>
             </div>
