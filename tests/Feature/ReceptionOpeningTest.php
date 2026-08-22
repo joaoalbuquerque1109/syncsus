@@ -161,11 +161,12 @@ final class ReceptionOpeningTest extends TestCase
 
         $this->actingAs($receptionist)->withSession($session)
             ->get(route('laboratory.orders.index'))
-            ->assertForbidden();
+            ->assertOk()
+            ->assertSee('Paciente Demonstrativo');
         $this->actingAs($receptionist)->withSession($session)
             ->get(route('reception.create'))
             ->assertOk()
-            ->assertDontSee('href="'.route('laboratory.orders.index').'"', false);
+            ->assertSee('href="'.route('laboratory.orders.index').'"', false);
         $this->actingAs($doctor)->withSession($session)
             ->get(route('laboratory.orders.index'))
             ->assertForbidden();
@@ -254,6 +255,76 @@ final class ReceptionOpeningTest extends TestCase
             'status' => 'cancelled',
         ]);
         $this->assertDatabaseHas('audit_logs', ['action' => 'laboratory.order_cancelled']);
+    }
+
+    public function test_reception_can_request_exams_without_a_doctor_and_becomes_the_requester(): void
+    {
+        [$unit, $receptionist, $patient] = $this->context();
+        $patient->identifiers()->create([
+            'type' => PatientIdentifierType::Cpf,
+            'normalized_value' => '52998224725',
+            'display_value' => '529.982.247-25',
+            'is_primary' => true,
+        ]);
+        $integration = LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+        ]);
+        $exam = $integration->exams()->create(['external_code' => '127', 'name' => 'Hemograma completo']);
+        $this->setLaboratoryExamAvailability($unit, $integration, $exam);
+        $payload = [
+            ...$this->payload($patient),
+            'request_exams' => '1',
+            'exam_priority' => 'routine',
+            'exam_clinical_indication' => 'Investigação laboratorial sem médico solicitante.',
+            'exam_ids' => [$exam->getKey()],
+        ];
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.store'), $payload)
+            ->assertRedirect()
+            ->assertSessionHas('success', 'Atendimento aberto e requisição de exames registrada com sucesso.');
+
+        $order = ExamOrder::query()->sole();
+        $this->assertSame($receptionist->getKey(), $order->requested_by);
+        $this->assertSame($receptionist->getKey(), $order->created_by);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'laboratory.order_created_at_reception',
+        ]);
+    }
+
+    public function test_reception_create_modal_variant_renders_only_the_wizard_fragment(): void
+    {
+        [$unit, $receptionist, $patient] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $full = $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create', ['patient' => $patient->public_id]))
+            ->assertOk();
+        $full->assertSee('<html lang="pt-BR">', false);
+        $full->assertSee('Abrir atendimento');
+
+        $modal = $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create', ['patient' => $patient->public_id, 'modal' => 1, 'request_exams' => 1]))
+            ->assertOk();
+        $modal->assertDontSee('<html lang="pt-BR">', false);
+        $modal->assertSee('Registrar requisição de exames laboratoriais');
+        $modal->assertSee($patient->displayName());
+    }
+
+    public function test_patients_index_shows_the_new_exam_entry_button_for_receptionist(): void
+    {
+        [$unit, $receptionist, $patient] = $this->context();
+
+        $this->actingAs($receptionist)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->get(route('patients.index'))
+            ->assertOk()
+            ->assertSee('Nova entrada com exames')
+            ->assertSee($patient->displayName());
     }
 
     public function test_disabled_catalog_exam_cannot_be_requested_by_direct_reception_post(): void

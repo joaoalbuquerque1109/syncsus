@@ -16,6 +16,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * O médico solicitante é opcional: quando nenhum é informado, quem registrou
+ * o pedido (a recepção) assume como solicitante perante o Synclab.
+ */
 final readonly class CreateReceptionExamOrderAction
 {
     public function __construct(
@@ -36,14 +40,16 @@ final readonly class CreateReceptionExamOrderAction
         }
 
         $this->ensurePatientIdentification($encounter);
-        $requester = $this->requester((int) $data['exam_requester_id'], $unit);
+        $requesterUserId = filled($data['exam_requester_id'] ?? null)
+            ? $this->doctorUserId((int) $data['exam_requester_id'], $unit)
+            : $creator->getKey();
         $exams = $this->exams((array) $data['exam_ids'], $unit);
         $order = ExamOrder::query()->create([
             'organization_id' => $unit->organization_id,
             'health_unit_id' => $unit->getKey(),
             'encounter_id' => $encounter->getKey(),
             'medical_consultation_id' => null,
-            'requested_by' => $requester->user_id,
+            'requested_by' => $requesterUserId,
             'created_by' => $creator->getKey(),
             'origin' => 'reception',
             'status' => 'pending',
@@ -86,7 +92,7 @@ final readonly class CreateReceptionExamOrderAction
             $creator,
             [
                 'exam_order' => $order->public_id,
-                'requester' => $requester->public_id,
+                'requester_user_id' => $requesterUserId,
                 'item_count' => $exams->count(),
             ],
             (int) $unit->getKey(),
@@ -109,7 +115,7 @@ final readonly class CreateReceptionExamOrderAction
         }
     }
 
-    private function requester(int $userId, HealthUnit $unit): HealthProfessional
+    private function doctorUserId(int $userId, HealthUnit $unit): int
     {
         $requester = HealthProfessional::query()
             ->where('organization_id', $unit->organization_id)
@@ -125,7 +131,7 @@ final readonly class CreateReceptionExamOrderAction
             ]);
         }
 
-        return $requester;
+        return (int) $requester->user_id;
     }
 
     /** @param list<mixed> $ids

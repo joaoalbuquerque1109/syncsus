@@ -61,7 +61,7 @@ final class OpenEncounterRequest extends FormRequest
             'companion_relationship' => ['nullable', 'string', 'max:64'],
             'companion_is_guardian' => ['nullable', 'boolean'],
             'request_exams' => ['nullable', 'boolean'],
-            'exam_requester_id' => ['nullable', 'required_if:request_exams,1', 'integer', 'exists:core.users,id'],
+            'exam_requester_id' => ['nullable', 'integer', 'exists:core.users,id'],
             'exam_priority' => ['nullable', 'required_if:request_exams,1', Rule::in(['routine', 'urgent', 'emergency'])],
             'exam_clinical_indication' => ['nullable', 'required_if:request_exams,1', 'string', 'min:5', 'max:4000'],
             'exam_notes' => ['nullable', 'string', 'max:4000'],
@@ -145,6 +145,7 @@ final class OpenEncounterRequest extends FormRequest
             'companion_cpf' => NormalizesBrazilianData::digits($this->input('companion_cpf')),
             'companion_is_guardian' => $this->boolean('companion_is_guardian'),
             'request_exams' => $this->boolean('request_exams'),
+            'exam_requester_id' => $this->filled('exam_requester_id') ? $this->input('exam_requester_id') : null,
         ]);
     }
 }

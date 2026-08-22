@@ -39,8 +39,11 @@ final class ReceptionController extends Controller
             $patient = Patient::query()->with('identifiers')->where('public_id', $request->query('patient'))->first();
         }
 
-        return view('reception.create', [
+        $view = $request->boolean('modal') ? 'reception.partials.wizard' : 'reception.create';
+
+        return view($view, [
             'patient' => $patient,
+            'requestExamsByDefault' => $request->boolean('request_exams'),
             'idempotencyKey' => (string) Str::ulid(),
             'entryTypes' => EntryType::query()->where('organization_id', $unit->organization_id)
                 ->where('is_active', true)->orderBy('display_order')->get(),
@@ -82,9 +85,11 @@ final class ReceptionController extends Controller
         $unit = $request->attributes->get('active_health_unit');
         abort_unless($user instanceof User && $unit instanceof HealthUnit, 403);
         $encounter = $action->execute($request->validated(), $user, $unit, $request);
+        $success = $request->boolean('request_exams')
+            ? 'Atendimento aberto e requisição de exames registrada com sucesso.'
+            : 'Atendimento aberto e senha emitida com sucesso.';
 
-        return redirect()->route('reception.receipt', $encounter)
-            ->with('success', 'Atendimento aberto e senha emitida com sucesso.');
+        return redirect()->route('reception.receipt', $encounter)->with('success', $success);
     }
 
     public function draftForPatient(Request $request, ReceptionDraftService $drafts): RedirectResponse

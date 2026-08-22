@@ -38,7 +38,7 @@
                 'hover:bg-white/8 hover:text-white' => !request()->routeIs('patients.*'),
             ])><span aria-hidden="true">♙</span> Pacientes</a>
         @endcan
-        @if(auth()->user()->isPlatformAdministrator())
+        @if(auth()->user()->isPlatformAdministrator() || auth()->user()->hasRole('receptionist'))
             <a href="{{ route('laboratory.orders.index') }}" @class([
                 'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition',
                 'bg-brand-600 text-white' => request()->routeIs('laboratory.orders.*'),

@@ -22,13 +22,14 @@ final class LaboratoryOrderController extends Controller
 {
     public function index(Request $request): View
     {
-        $this->ensurePlatformAdministrator($request);
+        $user = $this->ensureCanListOrders($request);
         $unit = $this->unit($request);
         $filters = $request->validate([
             'q' => ['nullable', 'string', 'max:80'],
             'status' => ['nullable', 'in:pending,cancelled'],
             'origin' => ['nullable', 'in:reception,medical'],
         ]);
+        $forcedOrigin = $user->isPlatformAdministrator() ? null : 'reception';
         $search = trim(str_replace(['%', '_'], '', (string) ($filters['q'] ?? '')));
         $patientIds = $search === '' ? [] : Patient::query()
             ->where('full_name', 'like', '%'.$search.'%')
@@ -43,8 +44,9 @@ final class LaboratoryOrderController extends Controller
             ])
             ->where('organization_id', $unit->organization_id)
             ->where('health_unit_id', $unit->getKey())
+            ->when($forcedOrigin !== null, fn ($query) => $query->where('origin', $forcedOrigin))
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
-            ->when($filters['origin'] ?? null, fn ($query, $origin) => $query->where('origin', $origin))
+            ->when($forcedOrigin === null && ($filters['origin'] ?? null), fn ($query, $origin) => $query->where('origin', $origin))
             ->when($search !== '', function ($query) use ($search, $patientIds, $userIds): void {
                 $query->where(function ($inner) use ($search, $patientIds, $userIds): void {
                     $inner->where('id', ctype_digit($search) ? (int) $search : 0);
@@ -129,10 +131,15 @@ final class LaboratoryOrderController extends Controller
         return $unit;
     }
 
-    private function ensurePlatformAdministrator(Request $request): void
+    private function ensureCanListOrders(Request $request): User
     {
         $user = $request->user();
-        abort_unless($user instanceof User && $user->isPlatformAdministrator(), 403);
+        abort_unless(
+            $user instanceof User && ($user->isPlatformAdministrator() || $user->hasRole('receptionist')),
+            403,
+        );
+
+        return $user;
     }
 
     private function ensureUnit(ExamOrder $order, HealthUnit $unit): void
