@@ -16,7 +16,15 @@ export default function examRequestModal() {
                 if (patientPublicId) {
                     params.patient = patientPublicId;
                 }
-                const response = await window.axios.get(url, { params });
+                // O axios envia X-Requested-With: XMLHttpRequest por padrao (ver
+                // bootstrap.js), o que faz o Laravel tratar isto como uma requisicao
+                // que espera JSON e pular o compartilhamento de $activeHealthUnit em
+                // EnsureActiveHealthUnit. Este endpoint devolve HTML, entao pedimos
+                // Accept: text/html explicitamente so nesta chamada.
+                const response = await window.axios.get(url, {
+                    params,
+                    headers: { Accept: "text/html" },
+                });
                 this.loading = false;
                 this.$nextTick(() => {
                     if (this.$refs.body) {

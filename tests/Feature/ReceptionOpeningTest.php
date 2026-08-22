@@ -315,6 +315,32 @@ final class ReceptionOpeningTest extends TestCase
         $modal->assertSee($patient->displayName());
     }
 
+    public function test_reception_create_modal_fetch_survives_the_ajax_header_axios_sends_by_default(): void
+    {
+        // O axios manda X-Requested-With: XMLHttpRequest por padrao (bootstrap.js),
+        // o que faz Request::expectsJson() virar true e EnsureActiveHealthUnit pular
+        // o View::share de $activeHealthUnit - quebrando esta view em produção
+        // (ErrorException: Undefined variable $activeHealthUnit). Duas defesas:
+        // o front-end manda Accept: text/html nesta chamada, e o fragmento tem um
+        // fallback para request()->attributes->get('active_health_unit'). Este
+        // teste reproduz o cabeçalho real do axios e confirma as duas.
+        [$unit, $receptionist, $patient] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+        $url = route('reception.create', ['patient' => $patient->public_id, 'modal' => 1, 'request_exams' => 1]);
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->withHeaders(['X-Requested-With' => 'XMLHttpRequest'])
+            ->get($url)
+            ->assertOk()
+            ->assertSee('Registrar requisição de exames laboratoriais');
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->withHeaders(['X-Requested-With' => 'XMLHttpRequest', 'Accept' => 'text/html'])
+            ->get($url)
+            ->assertOk()
+            ->assertSee('Registrar requisição de exames laboratoriais');
+    }
+
     public function test_laboratory_orders_index_shows_the_new_exam_entry_button_for_receptionist(): void
     {
         [$unit, $receptionist] = $this->context();

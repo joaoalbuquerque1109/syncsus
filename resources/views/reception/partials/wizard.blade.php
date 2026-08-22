@@ -1,4 +1,9 @@
 @php
+    // Fallback defensivo: se este fragmento for renderizado numa requisicao que
+    // Request::expectsJson() classificou como JSON (ex.: X-Requested-With
+    // enviado pelo axios sem Accept: text/html), EnsureActiveHealthUnit pula o
+    // View::share de $activeHealthUnit e a view quebraria sem isto.
+    $activeHealthUnit ??= request()->attributes->get('active_health_unit');
     $initialPatient = $patient ? [
         'public_id' => $patient->public_id,
         'medical_record_number' => $patient->medical_record_number,
