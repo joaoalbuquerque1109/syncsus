@@ -296,6 +296,75 @@ final class ReceptionOpeningTest extends TestCase
         ]);
     }
 
+    public function test_reception_create_modal_hides_patient_registration_links_and_relaxes_queue_fields(): void
+    {
+        [$unit, $receptionist] = $this->context();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $full = $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create'))
+            ->assertOk();
+        $full->assertSee('Cadastrar paciente');
+        $full->assertSee('criar identificação provisória');
+        $full->assertDontSee('recepção de exames padrão da unidade será usada automaticamente');
+
+        $modal = $this->actingAs($receptionist)->withSession($session)
+            ->get(route('reception.create', ['modal' => 1, 'request_exams' => 1]))
+            ->assertOk();
+        $modal->assertDontSee('Cadastrar paciente');
+        $modal->assertDontSee('criar identificação provisória');
+        $modal->assertSee('Apenas pacientes já cadastrados podem ser usados aqui');
+        $modal->assertSee('recepção de exames padrão da unidade será usada automaticamente');
+    }
+
+    public function test_reception_without_department_and_queue_falls_back_to_lab_intake_queue_for_non_triage_entry(): void
+    {
+        [$unit, $user, $patient] = $this->context();
+        $payload = [
+            'idempotency_key' => (string) Str::ulid(),
+            'patient_public_id' => $patient->public_id,
+            'entry_type_id' => EntryType::query()->where('code', 'RETURN')->value('id'),
+            'arrival_method_id' => ArrivalMethod::query()->where('code', 'WALK_IN')->value('id'),
+            'entry_reason' => 'Retorno apenas para requisitar exames laboratoriais',
+            'administrative_priority' => 'none',
+        ];
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($user)->withSession($session)
+            ->post(route('reception.store'), $payload)
+            ->assertRedirect();
+
+        $encounter = Encounter::query()->sole();
+        $labIntakeQueue = Queue::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('code', 'QUEUE-LAB_INTAKE')
+            ->sole();
+        $this->assertSame($labIntakeQueue->department_id, $encounter->current_department_id);
+        $this->assertDatabaseHas('queue_entries', [
+            'encounter_id' => $encounter->getKey(),
+            'queue_id' => $labIntakeQueue->getKey(),
+        ]);
+    }
+
+    public function test_reception_without_department_and_queue_still_fails_for_entry_type_that_requires_triage(): void
+    {
+        [$unit, $user, $patient] = $this->context();
+        $payload = [
+            'idempotency_key' => (string) Str::ulid(),
+            'patient_public_id' => $patient->public_id,
+            'entry_type_id' => EntryType::query()->where('code', 'EMERGENCY')->value('id'),
+            'arrival_method_id' => ArrivalMethod::query()->where('code', 'WALK_IN')->value('id'),
+            'entry_reason' => 'Emergência sem fila selecionada',
+            'administrative_priority' => 'none',
+        ];
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($user)->withSession($session)
+            ->post(route('reception.store'), $payload)
+            ->assertSessionHasErrors('queue_id');
+        $this->assertDatabaseCount('encounters', 0);
+    }
+
     public function test_reception_create_modal_variant_renders_only_the_wizard_fragment(): void
     {
         [$unit, $receptionist, $patient] = $this->context();

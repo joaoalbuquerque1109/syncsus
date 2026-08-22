@@ -22,6 +22,7 @@ final class HealthUnitFlowBootstrapper
             ['code' => 'CLINIC', 'name' => 'Clínica médica', 'type' => 'medical', 'clinical' => true, 'order' => 30, 'specialty' => 'CLINICA'],
             ['code' => 'PEDIATRICS', 'name' => 'Pediatria', 'type' => 'medical', 'clinical' => true, 'order' => 40, 'specialty' => 'PEDIATRIA'],
             ['code' => 'ORTHOPEDICS', 'name' => 'Ortopedia', 'type' => 'medical', 'clinical' => true, 'order' => 50, 'specialty' => 'ORTOPEDIA'],
+            ['code' => 'LAB_INTAKE', 'name' => 'Recepção de exames', 'type' => 'medical', 'clinical' => true, 'order' => 60],
         ];
         $queueIds = [];
         foreach ($definitions as $definition) {
@@ -61,6 +62,7 @@ final class HealthUnitFlowBootstrapper
                         'TRIAGE' => 'T',
                         'PEDIATRICS' => 'P',
                         'ORTHOPEDICS' => 'O',
+                        'LAB_INTAKE' => 'E',
                         default => 'C',
                     },
                     'ticket_length' => 3,

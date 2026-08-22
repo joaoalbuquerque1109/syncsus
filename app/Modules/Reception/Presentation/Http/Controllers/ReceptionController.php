@@ -39,10 +39,12 @@ final class ReceptionController extends Controller
             $patient = Patient::query()->with('identifiers')->where('public_id', $request->query('patient'))->first();
         }
 
-        $view = $request->boolean('modal') ? 'reception.partials.wizard' : 'reception.create';
+        $isModal = $request->boolean('modal');
+        $view = $isModal ? 'reception.partials.wizard' : 'reception.create';
 
         return view($view, [
             'patient' => $patient,
+            'isModal' => $isModal,
             'requestExamsByDefault' => $request->boolean('request_exams'),
             'idempotencyKey' => (string) Str::ulid(),
             'entryTypes' => EntryType::query()->where('organization_id', $unit->organization_id)

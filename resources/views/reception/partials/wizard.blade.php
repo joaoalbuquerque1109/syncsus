@@ -90,10 +90,14 @@
                         </button>
                     </template>
                 </div>
-                <p class="mt-5 text-sm text-slate-600">Não encontrou?
-                    <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.patient') }}" formnovalidate class="font-bold text-brand-700 underline">Cadastrar paciente</button>
-                    ou <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.provisional') }}" formnovalidate class="font-bold text-amber-700 underline">criar identificação provisória</button>.
-                </p>
+                @unless($isModal ?? false)
+                    <p class="mt-5 text-sm text-slate-600">Não encontrou?
+                        <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.patient') }}" formnovalidate class="font-bold text-brand-700 underline">Cadastrar paciente</button>
+                        ou <button type="submit" formmethod="POST" formaction="{{ route('reception.draft.provisional') }}" formnovalidate class="font-bold text-amber-700 underline">criar identificação provisória</button>.
+                    </p>
+                @else
+                    <p class="mt-5 text-sm text-slate-500">Não encontrou? Apenas pacientes já cadastrados podem ser usados aqui.</p>
+                @endunless
             </div>
             <div x-show="patient" class="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5">
                 <div class="flex items-start justify-between gap-3">
@@ -108,14 +112,17 @@
         <x-card class="p-5 lg:p-7" x-show="step === 3" x-cloak>
             <h2 class="text-lg font-extrabold text-slate-900">Destino e acompanhante</h2>
             <div class="mt-5 grid gap-4 md:grid-cols-2">
-                <x-form.select name="department_id" label="Setor de destino" required x-model="departmentId">
-                    <option value="">Selecione</option>
+                <x-form.select name="department_id" label="Setor de destino" :required="! ($isModal ?? false)" x-model="departmentId">
+                    <option value="">{{ ($isModal ?? false) ? 'Selecione (opcional)' : 'Selecione' }}</option>
                     @foreach($departments->where('is_clinical', true) as $department)<option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>@endforeach
                 </x-form.select>
-                <x-form.select name="queue_id" label="Fila inicial" required x-model="queueId">
+                <x-form.select name="queue_id" label="Fila inicial" :required="! ($isModal ?? false)" x-model="queueId">
                     <option value="">Selecione o setor primeiro</option>
                     <template x-for="queue in filteredQueues" :key="queue.id"><option :value="queue.id" x-text="queue.name"></option></template>
                 </x-form.select>
+                @if($isModal ?? false)
+                    <p class="text-xs text-slate-500 md:col-span-2">Se não escolher setor e fila, a recepção de exames padrão da unidade será usada automaticamente.</p>
+                @endif
                 <x-form.select name="specialty_id" label="Especialidade">
                     <option value="">Não definida</option>
                     @foreach($specialties as $specialty)<option value="{{ $specialty->id }}" @selected((string) old('specialty_id') === (string) $specialty->id)>{{ $specialty->name }}</option>@endforeach

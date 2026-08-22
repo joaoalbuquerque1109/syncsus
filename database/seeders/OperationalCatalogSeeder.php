@@ -74,9 +74,17 @@ final class OperationalCatalogSeeder extends Seeder
             foreach ($organizationIds as $organizationId) {
                 $unit = HealthUnit::query()->where('organization_id', $organizationId)->firstOrFail();
                 $this->activate($unit);
+                $labIntakeQueueId = Queue::query()
+                    ->where('health_unit_id', $unit->getKey())
+                    ->where('code', 'QUEUE-LAB_INTAKE')
+                    ->value('id');
                 EntryType::query()->updateOrCreate(
                     ['organization_id' => $organizationId, 'code' => $item['code']],
-                    [...$item, 'is_active' => true],
+                    [
+                        ...$item,
+                        'default_queue_id' => $item['requires_triage'] ? null : $labIntakeQueueId,
+                        'is_active' => true,
+                    ],
                 );
             }
         }
@@ -90,6 +98,7 @@ final class OperationalCatalogSeeder extends Seeder
             ['code' => 'CLINIC', 'name' => 'Clínica médica', 'type' => 'medical', 'is_clinical' => true, 'display_order' => 30],
             ['code' => 'PEDIATRICS', 'name' => 'Pediatria', 'type' => 'medical', 'is_clinical' => true, 'display_order' => 40],
             ['code' => 'ORTHOPEDICS', 'name' => 'Ortopedia', 'type' => 'medical', 'is_clinical' => true, 'display_order' => 50],
+            ['code' => 'LAB_INTAKE', 'name' => 'Recepção de exames', 'type' => 'medical', 'is_clinical' => true, 'display_order' => 60],
         ];
 
         foreach ($departments as $item) {
@@ -124,7 +133,11 @@ final class OperationalCatalogSeeder extends Seeder
                                 ->where('code', $specialtyCode)
                                 ->value('id'),
                         'name' => 'Fila de '.$item['name'],
-                        'prefix' => $item['code'] === 'TRIAGE' ? 'T' : mb_substr($item['code'], 0, 1),
+                        'prefix' => match ($item['code']) {
+                            'TRIAGE' => 'T',
+                            'LAB_INTAKE' => 'E',
+                            default => mb_substr($item['code'], 0, 1),
+                        },
                         'sequence_reset_policy' => 'daily',
                         'priority_strategy' => 'priority_fifo',
                         'minimum_calls_before_absent' => 1,

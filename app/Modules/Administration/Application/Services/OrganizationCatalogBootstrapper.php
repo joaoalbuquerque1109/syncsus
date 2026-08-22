@@ -45,6 +45,10 @@ final readonly class OrganizationCatalogBootstrapper
             ->where('health_unit_id', $unit->getKey())
             ->where('code', 'QUEUE-TRIAGE')
             ->value('id');
+        $labIntakeQueueId = Queue::query()
+            ->where('health_unit_id', $unit->getKey())
+            ->where('code', 'QUEUE-LAB_INTAKE')
+            ->value('id');
 
         foreach ([
             ['code' => 'EMERGENCY', 'name' => 'Urgência e emergência', 'requires_triage' => true, 'allows_provisional_patient' => true, 'display_order' => 10],
@@ -55,7 +59,7 @@ final readonly class OrganizationCatalogBootstrapper
                 ['organization_id' => $organization->getKey(), 'code' => $item['code']],
                 [
                     ...$item,
-                    'default_queue_id' => $item['requires_triage'] ? $triageQueueId : null,
+                    'default_queue_id' => $item['requires_triage'] ? $triageQueueId : $labIntakeQueueId,
                     'is_active' => true,
                 ],
             );

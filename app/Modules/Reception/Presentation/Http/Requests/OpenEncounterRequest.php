@@ -146,6 +146,8 @@ final class OpenEncounterRequest extends FormRequest
             'companion_is_guardian' => $this->boolean('companion_is_guardian'),
             'request_exams' => $this->boolean('request_exams'),
             'exam_requester_id' => $this->filled('exam_requester_id') ? $this->input('exam_requester_id') : null,
+            'department_id' => $this->filled('department_id') ? $this->input('department_id') : null,
+            'queue_id' => $this->filled('queue_id') ? $this->input('queue_id') : null,
         ]);
     }
 }

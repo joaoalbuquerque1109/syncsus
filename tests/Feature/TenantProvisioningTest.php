@@ -80,7 +80,7 @@ final class TenantProvisioningTest extends TestCase
         $this->assertDatabaseCount('specialties', 3);
         $this->assertDatabaseCount('arrival_methods', 4);
         $this->assertDatabaseCount('entry_types', 3);
-        $this->assertDatabaseCount('queues', 4);
+        $this->assertDatabaseCount('queues', 5);
         $this->assertDatabaseCount('panels', 1);
         $this->assertDatabaseHas('security_audit_logs', [
             'action' => 'organization.provisioned',

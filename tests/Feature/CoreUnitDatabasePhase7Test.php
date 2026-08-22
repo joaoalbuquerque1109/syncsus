@@ -58,7 +58,7 @@ final class CoreUnitDatabasePhase7Test extends TestCase
         $this->assertFalse($unit->refresh()->is_active);
         $this->assertTrue(Schema::connection($connection)->hasTable('encounters'));
         $this->assertFalse(Schema::connection($connection)->hasTable('organizations'));
-        $this->assertSame(4, DB::connection($connection)->table('queues')->count());
+        $this->assertSame(5, DB::connection($connection)->table('queues')->count());
         $this->assertSame(1, TenantDatabaseEvent::query()
             ->where('tenant_database_id', $database->getKey())
             ->where('action', 'auto_provisioning_waiting_continuity')
