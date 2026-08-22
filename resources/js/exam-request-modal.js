@@ -10,7 +10,11 @@ export default function examRequestModal() {
             this.html = "";
             try {
                 const response = await window.axios.get(url, {
-                    params: { patient: patientPublicId, modal: 1, request_exams: 1 },
+                    params: {
+                        patient: patientPublicId,
+                        modal: 1,
+                        request_exams: 1,
+                    },
                 });
                 this.html = response.data;
                 this.$nextTick(() => {
