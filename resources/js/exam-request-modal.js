@@ -4,18 +4,16 @@ export default function examRequestModal() {
         loading: false,
         html: "",
 
-        async openFor(patientPublicId, url) {
+        async openFor(url, patientPublicId = null) {
             this.open = true;
             this.loading = true;
             this.html = "";
             try {
-                const response = await window.axios.get(url, {
-                    params: {
-                        patient: patientPublicId,
-                        modal: 1,
-                        request_exams: 1,
-                    },
-                });
+                const params = { modal: 1, request_exams: 1 };
+                if (patientPublicId) {
+                    params.patient = patientPublicId;
+                }
+                const response = await window.axios.get(url, { params });
                 this.html = response.data;
                 this.$nextTick(() => {
                     if (this.$refs.body) {

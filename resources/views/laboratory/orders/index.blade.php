@@ -14,14 +14,41 @@
 @endphp
 
 <x-layout.app title="Requisições de exames">
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-            <p class="text-sm font-semibold text-brand-700">{{ $activeHealthUnit->name }}</p>
-            <h1 class="text-2xl font-extrabold text-slate-950">Requisições de exames</h1>
-            <p class="mt-1 text-sm text-slate-600">Pedidos laboratoriais registrados na recepção e no atendimento médico.</p>
+    <div x-data="examRequestModal()">
+        <template x-teleport="body">
+            <div
+                x-show="open"
+                x-cloak
+                class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 py-10"
+                @keydown.escape.window="close()"
+            >
+                <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl" @click.outside="close()">
+                    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                        <h2 class="text-lg font-extrabold text-slate-900">Nova entrada com exames</h2>
+                        <button type="button" class="grid size-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" @click="close()" aria-label="Fechar">✕</button>
+                    </div>
+                    <div class="max-h-[80vh] overflow-y-auto p-5">
+                        <p x-show="loading" class="py-10 text-center text-sm text-slate-500">Carregando...</p>
+                        <div x-show="!loading" x-ref="body" x-html="html"></div>
+                    </div>
+                </div>
+            </div>
+        </template>
+
+        <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+            <div>
+                <p class="text-sm font-semibold text-brand-700">{{ $activeHealthUnit->name }}</p>
+                <h1 class="text-2xl font-extrabold text-slate-950">Requisições de exames</h1>
+                <p class="mt-1 text-sm text-slate-600">Pedidos laboratoriais registrados na recepção e no atendimento médico.</p>
+            </div>
+            @can('encounters.open')
+                <button
+                    type="button"
+                    class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white"
+                    @click="openFor(@js(route('reception.create')))"
+                >Nova entrada com exames</button>
+            @endcan
         </div>
-        @can('encounters.open')<a href="{{ route('reception.create') }}" class="rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-bold text-white">Nova entrada com exames</a>@endcan
-    </div>
 
     <section class="app-card mb-5 p-5">
         <form method="GET" class="grid gap-4 md:grid-cols-4">
@@ -79,4 +106,5 @@
         </div>
         @if($orders->hasPages())<div class="border-t border-slate-200 px-5 py-4">{{ $orders->links() }}</div>@endif
     </section>
+    </div>
 </x-layout.app>

@@ -315,16 +315,16 @@ final class ReceptionOpeningTest extends TestCase
         $modal->assertSee($patient->displayName());
     }
 
-    public function test_patients_index_shows_the_new_exam_entry_button_for_receptionist(): void
+    public function test_laboratory_orders_index_shows_the_new_exam_entry_button_for_receptionist(): void
     {
-        [$unit, $receptionist, $patient] = $this->context();
+        [$unit, $receptionist] = $this->context();
 
         $this->actingAs($receptionist)
             ->withSession(['active_health_unit_id' => $unit->getKey()])
-            ->get(route('patients.index'))
+            ->get(route('laboratory.orders.index'))
             ->assertOk()
             ->assertSee('Nova entrada com exames')
-            ->assertSee($patient->displayName());
+            ->assertSee('openFor(', false);
     }
 
     public function test_disabled_catalog_exam_cannot_be_requested_by_direct_reception_post(): void
