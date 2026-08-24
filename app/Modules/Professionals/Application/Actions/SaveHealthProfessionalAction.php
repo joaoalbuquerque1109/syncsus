@@ -93,7 +93,7 @@ final class SaveHealthProfessionalAction
      * um subconjunto do credenciamento geral e das unidades autorizadas,
      * mesmo que o formulario envie algo fora disso.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     private function syncUnitSpecialties(HealthProfessional $professional, array $data): void
     {
