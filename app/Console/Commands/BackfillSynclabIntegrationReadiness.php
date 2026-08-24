@@ -28,14 +28,20 @@ final class BackfillSynclabIntegrationReadiness extends Command
             ]);
 
             // So toca em linhas ainda intocadas: nunca foi habilitada e ninguem
-            // preencheu credenciais ou um CNES manualmente - evita sobrescrever
-            // qualquer configuracao real que um administrador ja tenha feito.
+            // preencheu credenciais ou um CNES diferente do proprio da unidade -
+            // evita sobrescrever qualquer configuracao real que um administrador
+            // ja tenha feito. external_tenant_code so conta como "manual" quando
+            // diverge do CNES da propria unidade - varios fluxos (ex.: tela de
+            // catalogo de exames) ja preenchem esse campo automaticamente com o
+            // mesmo CNES, sem que isso seja uma configuracao deliberada.
+            $externalTenantCodeLooksManual = filled($integration->external_tenant_code)
+                && $integration->external_tenant_code !== $unit->cnes_code;
             $untouched = ! $integration->exists
                 || (
                     ! $integration->transmission_enabled
                     && blank($integration->username)
                     && blank($integration->password)
-                    && blank($integration->external_tenant_code)
+                    && ! $externalTenantCodeLooksManual
                 );
             if (! $untouched) {
                 continue;

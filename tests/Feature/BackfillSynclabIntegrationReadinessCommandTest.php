@@ -51,6 +51,58 @@ final class BackfillSynclabIntegrationReadinessCommandTest extends TestCase
         $this->assertSame('configured', $integration->connection_status);
     }
 
+    public function test_backfill_enables_a_stub_whose_external_tenant_code_already_matches_the_unit_cnes(): void
+    {
+        // Reproduz o bug real de producao: a tela de catalogo de exames
+        // (CatalogManagementController) ja preenche external_tenant_code
+        // automaticamente com o CNES da propria unidade ao criar a linha - isso
+        // nao e uma configuracao manual e nao deveria bloquear o backfill.
+        $unit = $this->createHealthUnit('BACKFILL-SYNCLAB-AUTOFILLED');
+        $unit->update(['cnes_code' => '6612550']);
+        $this->activateTenant($unit);
+        LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'base_url' => 'https://synclabweb.unisync.com.br',
+            'external_tenant_code' => '6612550',
+            'is_active' => true,
+            'transmission_enabled' => false,
+            'connection_status' => 'not_configured',
+        ]);
+
+        $this->artisan('sync-sus:backfill-synclab-readiness')->run();
+
+        $this->activateTenant($unit);
+        $integration = LaboratoryIntegration::query()->sole();
+        $this->assertTrue($integration->transmission_enabled);
+        $this->assertSame('configured', $integration->connection_status);
+    }
+
+    public function test_backfill_does_not_overwrite_a_unit_whose_external_tenant_code_diverges_from_its_cnes(): void
+    {
+        $unit = $this->createHealthUnit('BACKFILL-SYNCLAB-DIVERGENT');
+        $unit->update(['cnes_code' => '6612551']);
+        $this->activateTenant($unit);
+        LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'base_url' => 'https://synclabweb.unisync.com.br',
+            'external_tenant_code' => 'SOME-OTHER-CODE',
+            'is_active' => true,
+            'transmission_enabled' => false,
+            'connection_status' => 'not_configured',
+        ]);
+
+        $this->artisan('sync-sus:backfill-synclab-readiness')->run();
+
+        $this->activateTenant($unit);
+        $integration = LaboratoryIntegration::query()->sole();
+        $this->assertFalse($integration->transmission_enabled);
+        $this->assertSame('SOME-OTHER-CODE', $integration->external_tenant_code);
+    }
+
     public function test_backfill_does_not_overwrite_a_unit_that_was_manually_configured(): void
     {
         $unit = $this->createHealthUnit('BACKFILL-SYNCLAB-MANUAL');
