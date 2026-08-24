@@ -16,24 +16,27 @@ final readonly class SwitchActiveHealthUnitAction
 
     public function execute(User $user, string $publicId, Request $request): HealthUnit
     {
+        // A troca de unidade em sessao e um mecanismo exclusivo do administrador
+        // global. Medicos e demais profissionais com vinculo em mais de uma
+        // unidade so podem entrar numa unidade especifica pela tela de login
+        // (ver AuthenticateUserAction) - evita confusao/atendimento cruzado
+        // entre plantoes de unidades diferentes na mesma sessao.
+        if (! $user->isPlatformAdministrator()) {
+            throw new AuthorizationException('A troca de unidade ativa esta disponivel apenas para o administrador global.');
+        }
+
         $cnes = preg_replace('/\D/', '', $publicId);
-        $unit = $user->isPlatformAdministrator()
-            ? HealthUnit::query()
-                ->where(function ($query) use ($publicId, $cnes): void {
-                    $query->where('public_id', $publicId);
-                    if ($cnes !== '' && strlen($cnes) === 7) {
-                        $query->orWhere('cnes_code', $cnes)
-                            ->orWhereHas('organization', fn ($organization) => $organization->where('cnes_code', $cnes));
-                    }
-                })
-                ->where('is_active', true)
-                ->whereHas('organization', fn ($query) => $query->where('is_active', true))
-                ->first()
-            : $user->healthUnits()
-                ->where('health_units.public_id', $publicId)
-                ->where('health_units.is_active', true)
-                ->whereHas('organization', fn ($query) => $query->where('is_active', true))
-                ->first();
+        $unit = HealthUnit::query()
+            ->where(function ($query) use ($publicId, $cnes): void {
+                $query->where('public_id', $publicId);
+                if ($cnes !== '' && strlen($cnes) === 7) {
+                    $query->orWhere('cnes_code', $cnes)
+                        ->orWhereHas('organization', fn ($organization) => $organization->where('cnes_code', $cnes));
+                }
+            })
+            ->where('is_active', true)
+            ->whereHas('organization', fn ($query) => $query->where('is_active', true))
+            ->first();
 
         if ($unit === null) {
             throw new AuthorizationException('Você não possui acesso à unidade selecionada.');

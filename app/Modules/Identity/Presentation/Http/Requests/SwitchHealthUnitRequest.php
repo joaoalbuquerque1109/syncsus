@@ -12,7 +12,9 @@ final class SwitchHealthUnitRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user() !== null;
+        // A troca de unidade em sessao e exclusiva do administrador global -
+        // demais usuarios entram numa unidade especifica pela tela de login.
+        return $this->user()?->isPlatformAdministrator() ?? false;
     }
 
     /** @return array<string, list<string|Closure>> */

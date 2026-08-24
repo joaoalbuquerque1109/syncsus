@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Audit\Infrastructure\Eloquent\SecurityAuditLog;
 use Illuminate\Support\Facades\Hash;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
@@ -150,6 +151,59 @@ final class AuthenticationTest extends TestCase
 
         $this->assertAuthenticatedAs($secondUser);
         $this->assertSame($secondUnit->getKey(), session('active_health_unit_id'));
+    }
+
+    public function test_professional_with_multiple_units_enters_the_specific_unit_typed_by_its_own_cnes(): void
+    {
+        $firstUnit = $this->createHealthUnit('MULTI-A');
+        $secondUnit = HealthUnit::query()->create([
+            'organization_id' => $firstUnit->organization_id,
+            'code' => 'MULTI-B',
+            'cnes_code' => '9988776',
+            'name' => 'Unidade MULTI-B',
+            'is_active' => true,
+        ]);
+        $this->activateTenant($secondUnit);
+        $user = $this->createUserWithUnit($firstUnit, ['must_change_password' => false]);
+        // Simula a tela "Usuarios e acessos" concedendo login na segunda
+        // unidade da mesma organizacao, sem trocar a unidade padrao dele.
+        $user->healthUnits()->attach($secondUnit->getKey());
+
+        $this->post('/login', [
+            'unit_code' => $secondUnit->cnes_code,
+            'email' => $user->email,
+            'password' => 'Initial#Password2026',
+        ])->assertRedirect('/dashboard');
+
+        $this->assertAuthenticatedAs($user);
+        $this->assertSame($secondUnit->getKey(), session('active_health_unit_id'));
+    }
+
+    public function test_professional_cannot_enter_a_sibling_unit_cnes_it_has_no_link_to(): void
+    {
+        $linkedUnit = $this->createHealthUnit('NOLINK-A');
+        $siblingUnit = HealthUnit::query()->create([
+            'organization_id' => $linkedUnit->organization_id,
+            'code' => 'NOLINK-B',
+            'cnes_code' => '9988770',
+            'name' => 'Unidade NOLINK-B',
+            'is_active' => true,
+        ]);
+        $this->activateTenant($siblingUnit);
+        $user = $this->createUserWithUnit($linkedUnit, ['must_change_password' => false]);
+
+        $this->post('/login', [
+            'unit_code' => $siblingUnit->cnes_code,
+            'email' => $user->email,
+            'password' => 'Initial#Password2026',
+        ])->assertSessionHasErrors('email');
+
+        $this->assertGuest();
+        $this->assertDatabaseHas('security_audit_logs', [
+            'user_id' => $user->getKey(),
+            'action' => 'user.login_failed',
+            'context->reason' => 'unit_access_unavailable',
+        ]);
     }
 
     public function test_global_administrator_authenticates_with_administrative_code_without_unit_link(): void

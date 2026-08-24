@@ -36,8 +36,12 @@ final class HealthUnitScopeTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_user_can_switch_to_a_linked_unit(): void
+    public function test_regular_user_cannot_switch_units_in_session_even_when_linked_to_both(): void
     {
+        // A troca de unidade em sessao e exclusiva do administrador global -
+        // um profissional com vinculo em varias unidades so entra numa unidade
+        // especifica pela tela de login (ver AuthenticationTest), nunca trocando
+        // livremente em sessao. Evita atendimento cruzado entre plantoes.
         $firstUnit = $this->createHealthUnit('FIRST');
         $secondUnit = $this->createHealthUnit('SECOND');
         $user = $this->createUserWithUnit($firstUnit, ['must_change_password' => false]);
@@ -46,14 +50,9 @@ final class HealthUnitScopeTest extends TestCase
         $this->actingAs($user)
             ->withSession(['active_health_unit_id' => $firstUnit->getKey()])
             ->put('/active-health-unit', ['health_unit' => $secondUnit->public_id])
-            ->assertSessionHas('success');
+            ->assertForbidden();
 
-        $this->assertSame($secondUnit->getKey(), session('active_health_unit_id'));
-        $this->assertDatabaseHas('security_audit_logs', [
-            'user_id' => $user->getKey(),
-            'health_unit_id' => $secondUnit->getKey(),
-            'action' => 'user.active_health_unit_changed',
-        ]);
+        $this->assertSame($firstUnit->getKey(), session('active_health_unit_id'));
     }
 
     public function test_user_cannot_switch_to_an_unlinked_unit(): void

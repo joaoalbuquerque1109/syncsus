@@ -27,20 +27,34 @@ final readonly class AuthenticateUserAction
         $request->ensureIsNotRateLimited();
 
         $unitCode = mb_strtoupper(trim((string) $request->string('unit_code')));
-        $email = mb_strtolower(trim((string) $request->string('email')));
+        $unitCodeDigits = preg_replace('/\D/', '', $unitCode);
         $isAdministrativeAccess = hash_equals(
             (string) config('sync_sus.admin.access_code'),
             $unitCode,
         );
+        $email = mb_strtolower(trim((string) $request->string('email')));
+
+        // O codigo digitado no login pode ser o CNES de uma unidade especifica
+        // (nao so o da organizacao) - isso permite que um profissional com
+        // vinculo em mais de uma unidade escolha exatamente qual delas entrar
+        // nesta sessao, em vez de sempre cair na unidade padrao dele.
+        $targetHealthUnit = $isAdministrativeAccess
+            ? null
+            : HealthUnit::query()
+                ->where('is_active', true)
+                ->where(function ($query) use ($unitCode, $unitCodeDigits): void {
+                    $query->where('cnes_code', $unitCodeDigits)->orWhere('code', $unitCode);
+                })
+                ->whereHas('organization', fn ($query) => $query->where('is_active', true))
+                ->first();
         $organization = $isAdministrativeAccess
             ? null
-            : Organization::query()
+            : ($targetHealthUnit->organization ?? Organization::query()
                 ->where('is_active', true)
-                ->where(function ($query) use ($unitCode): void {
-                    $query->where('cnes_code', preg_replace('/\D/', '', $unitCode))
-                        ->orWhere('code', $unitCode);
+                ->where(function ($query) use ($unitCode, $unitCodeDigits): void {
+                    $query->where('cnes_code', $unitCodeDigits)->orWhere('code', $unitCode);
                 })
-                ->first();
+                ->first());
         $user = $isAdministrativeAccess
             ? User::query()
                 ->where('platform_admin_slot', 1)
@@ -51,7 +65,7 @@ final readonly class AuthenticateUserAction
                 ->where('organization_id', $organization->getKey())
                 ->where('email', $email)
                 ->first());
-        $selectedHealthUnit = $user === null ? null : $this->resolveHealthUnit($user);
+        $selectedHealthUnit = $user === null ? null : $this->resolveHealthUnit($user, $targetHealthUnit);
         $auditHealthUnitId = $selectedHealthUnit?->getKey();
         $passwordIsValid = $user !== null && Hash::check((string) $request->string('password'), $user->password);
 
@@ -104,10 +118,25 @@ final readonly class AuthenticateUserAction
         return $user;
     }
 
-    private function resolveHealthUnit(User $user): ?HealthUnit
+    private function resolveHealthUnit(User $user, ?HealthUnit $targetHealthUnit): ?HealthUnit
     {
         if ($user->isPlatformAdministrator()) {
             return null;
+        }
+
+        if ($targetHealthUnit !== null) {
+            // O CNES digitado identificou uma unidade especifica: so entra
+            // nela se o usuario realmente tiver esse vinculo. Nunca cai de
+            // volta para a unidade padrao aqui - isso poderia colocar o
+            // profissional silenciosamente numa unidade diferente da que ele
+            // pediu, o exato problema de confusao entre plantoes que este
+            // fluxo existe para evitar.
+            $hasAccess = $user->healthUnits()
+                ->whereKey($targetHealthUnit->getKey())
+                ->where('health_units.is_active', true)
+                ->exists();
+
+            return $hasAccess ? $targetHealthUnit : null;
         }
 
         return $user->healthUnits()

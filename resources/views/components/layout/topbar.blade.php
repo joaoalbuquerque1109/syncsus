@@ -22,47 +22,31 @@
     </div>
 
     <div class="flex min-w-0 items-center gap-3">
-        @if($isPlatformAdministrator || $availableHealthUnits->count() > 1)
+        @if($isPlatformAdministrator)
             <form method="POST" action="{{ route('active-health-unit.update') }}" class="flex min-w-0 items-center gap-2">
                 @csrf
                 @method('PUT')
                 <label class="hidden whitespace-nowrap text-xs font-bold uppercase tracking-wide text-slate-500 xl:block" for="health-unit">
-                    {{ $isPlatformAdministrator ? 'Visualizar unidade' : 'Unidade ativa' }}
+                    Visualizar unidade
                 </label>
-                @if($isPlatformAdministrator)
-                    <input
-                        id="health-unit"
-                        name="health_unit"
-                        list="health-unit-options"
-                        class="field-control min-w-0 max-w-64 flex-1 truncate py-2 text-sm font-bold"
-                        aria-label="Visualizar unidade"
-                        placeholder="CNES atual: {{ $activeHealthUnit->cnes_code ?: $activeHealthUnit->organization->cnes_code }}"
-                        autocomplete="off"
-                        onfocus="this.select()"
-                    >
-                    <datalist id="health-unit-options">
-                        @foreach($availableHealthUnits as $unit)
-                            <option value="{{ $unit->cnes_code ?: $unit->organization->cnes_code }}">
-                                {{ $unit->organization->trade_name }} · {{ $unit->name }}
-                            </option>
-                        @endforeach
-                    </datalist>
-                    <x-button.primary class="min-h-0 shrink-0 px-3 py-2 text-sm">Ir</x-button.primary>
-                @else
-                    <select
-                        id="health-unit"
-                        name="health_unit"
-                        class="field-control min-w-0 max-w-64 truncate py-2 text-sm font-bold"
-                        aria-label="Unidade ativa"
-                        onchange="this.form.submit()"
-                    >
-                        @foreach($availableHealthUnits as $unit)
-                            <option value="{{ $unit->public_id }}" @selected($unit->is($activeHealthUnit))>
-                                {{ $unit->name }}
-                            </option>
-                        @endforeach
-                    </select>
-                @endif
+                <input
+                    id="health-unit"
+                    name="health_unit"
+                    list="health-unit-options"
+                    class="field-control min-w-0 max-w-64 flex-1 truncate py-2 text-sm font-bold"
+                    aria-label="Visualizar unidade"
+                    placeholder="CNES atual: {{ $activeHealthUnit->cnes_code ?: $activeHealthUnit->organization->cnes_code }}"
+                    autocomplete="off"
+                    onfocus="this.select()"
+                >
+                <datalist id="health-unit-options">
+                    @foreach($availableHealthUnits as $unit)
+                        <option value="{{ $unit->cnes_code ?: $unit->organization->cnes_code }}">
+                            {{ $unit->organization->trade_name }} · {{ $unit->name }}
+                        </option>
+                    @endforeach
+                </datalist>
+                <x-button.primary class="min-h-0 shrink-0 px-3 py-2 text-sm">Ir</x-button.primary>
             </form>
         @else
             <span class="hidden rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-bold text-slate-700 sm:inline">
