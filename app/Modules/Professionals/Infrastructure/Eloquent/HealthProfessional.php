@@ -53,6 +53,19 @@ final class HealthProfessional extends CoreModel
             ->withTimestamps();
     }
 
+    /**
+     * Especialidades atendidas em cada unidade autorizada - restrito, na
+     * escrita, a um subconjunto de specialties() (credenciamento geral).
+     *
+     * @return BelongsToMany<Specialty, $this>
+     */
+    public function unitSpecialties(): BelongsToMany
+    {
+        return $this->belongsToMany(Specialty::class, 'health_professional_unit_specialties')
+            ->withPivot(['health_unit_id'])
+            ->withTimestamps();
+    }
+
     public function displayName(): string
     {
         return trim(collect([$this->treatment_name, $this->social_name ?: $this->full_name])->filter()->join(' '));

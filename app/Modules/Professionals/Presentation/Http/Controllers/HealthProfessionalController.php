@@ -70,7 +70,7 @@ final class HealthProfessionalController extends Controller
     {
         $unit = $this->unit($request);
         abort_unless((int) $professional->organization_id === (int) $unit->organization_id, 404);
-        $professional->load(['registrations', 'specialties', 'healthUnits']);
+        $professional->load(['registrations', 'specialties', 'healthUnits', 'unitSpecialties']);
         $this->assignments->hydrateOne($professional);
 
         return view('administration.professionals.form', $this->formData($request, $professional));

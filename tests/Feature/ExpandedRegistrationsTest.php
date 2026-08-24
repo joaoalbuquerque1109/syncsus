@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
+use App\Modules\Professionals\Infrastructure\Eloquent\HealthProfessional;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use Database\Seeders\OperationalCatalogSeeder;
 use Database\Seeders\RolePermissionSeeder;
@@ -97,6 +99,119 @@ final class ExpandedRegistrationsTest extends TestCase
             ->get(route('administration.professionals.edit', $professional))
             ->assertOk()
             ->assertSee('RQE-123');
+    }
+
+    public function test_professional_can_attend_different_specialties_in_different_units(): void
+    {
+        $firstUnit = $this->createHealthUnit('SPEC-A');
+        $secondUnit = HealthUnit::query()->create([
+            'organization_id' => $firstUnit->organization_id,
+            'code' => 'SPEC-B',
+            'cnes_code' => '9988765',
+            'name' => 'Unidade SPEC-B',
+            'is_active' => true,
+        ]);
+        $this->activateTenant($secondUnit);
+        $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $generalClinic = Specialty::query()->where('organization_id', $firstUnit->organization_id)->where('code', 'CLINICA')->sole();
+        $pediatrics = Specialty::query()->where('organization_id', $firstUnit->organization_id)->where('code', 'PEDIATRIA')->sole();
+
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $firstUnit->getKey()])
+            ->post(route('administration.professionals.store'), [
+                'institutional_code' => 'MED-002',
+                'profession_type' => 'doctor',
+                'full_name' => 'Doutor Multi Unidade',
+                'is_active' => '1',
+                'health_unit_ids' => [$firstUnit->getKey(), $secondUnit->getKey()],
+                'specialty_ids' => [$generalClinic->getKey(), $pediatrics->getKey()],
+                'unit_specialty_ids' => [
+                    $firstUnit->getKey() => [$generalClinic->getKey()],
+                    $secondUnit->getKey() => [$pediatrics->getKey(), $generalClinic->getKey()],
+                ],
+                'registrations' => [[
+                    'council_type' => 'CRM',
+                    'registration_number' => '112233',
+                    'state' => 'CE',
+                    'is_primary' => '1',
+                ]],
+            ])
+            ->assertRedirect(route('administration.professionals.index'));
+
+        $professional = HealthProfessional::query()
+            ->where('institutional_code', 'MED-002')->sole();
+        $this->assertDatabaseHas('health_professional_unit_specialties', [
+            'health_professional_id' => $professional->getKey(),
+            'health_unit_id' => $firstUnit->getKey(),
+            'specialty_id' => $generalClinic->getKey(),
+        ]);
+        $this->assertDatabaseMissing('health_professional_unit_specialties', [
+            'health_professional_id' => $professional->getKey(),
+            'health_unit_id' => $firstUnit->getKey(),
+            'specialty_id' => $pediatrics->getKey(),
+        ]);
+        $this->assertDatabaseHas('health_professional_unit_specialties', [
+            'health_professional_id' => $professional->getKey(),
+            'health_unit_id' => $secondUnit->getKey(),
+            'specialty_id' => $pediatrics->getKey(),
+        ]);
+        $this->assertDatabaseHas('health_professional_unit_specialties', [
+            'health_professional_id' => $professional->getKey(),
+            'health_unit_id' => $secondUnit->getKey(),
+            'specialty_id' => $generalClinic->getKey(),
+        ]);
+        $this->assertDatabaseCount('health_professional_unit_specialties', 3);
+
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $firstUnit->getKey()])
+            ->get(route('administration.professionals.edit', $professional))
+            ->assertOk()
+            ->assertSee('initialUnitSpecialties', false)
+            ->assertSee((string) $pediatrics->getKey(), false);
+    }
+
+    public function test_unit_specialty_outside_authorized_units_or_general_credentials_is_silently_dropped(): void
+    {
+        $authorizedUnit = $this->createHealthUnit('SPEC-C');
+        $notAuthorizedUnit = $this->createHealthUnit('SPEC-D');
+        $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $generalClinic = Specialty::query()->where('organization_id', $authorizedUnit->organization_id)->where('code', 'CLINICA')->sole();
+        $notCredentialedSpecialty = Specialty::query()->where('organization_id', $authorizedUnit->organization_id)->where('code', 'ORTOPEDIA')->sole();
+
+        $this->actingAs($administrator)
+            ->withSession(['active_health_unit_id' => $authorizedUnit->getKey()])
+            ->post(route('administration.professionals.store'), [
+                'institutional_code' => 'MED-003',
+                'profession_type' => 'doctor',
+                'full_name' => 'Doutora Filtro Defensivo',
+                'is_active' => '1',
+                'health_unit_ids' => [$authorizedUnit->getKey()],
+                'specialty_ids' => [$generalClinic->getKey()],
+                'unit_specialty_ids' => [
+                    $authorizedUnit->getKey() => [$generalClinic->getKey(), $notCredentialedSpecialty->getKey()],
+                    $notAuthorizedUnit->getKey() => [$generalClinic->getKey()],
+                ],
+                'registrations' => [[
+                    'council_type' => 'CRM',
+                    'registration_number' => '445566',
+                    'state' => 'CE',
+                    'is_primary' => '1',
+                ]],
+            ])
+            ->assertRedirect(route('administration.professionals.index'));
+
+        $professional = HealthProfessional::query()
+            ->where('institutional_code', 'MED-003')->sole();
+        $this->assertDatabaseHas('health_professional_unit_specialties', [
+            'health_professional_id' => $professional->getKey(),
+            'health_unit_id' => $authorizedUnit->getKey(),
+            'specialty_id' => $generalClinic->getKey(),
+        ]);
+        $this->assertDatabaseCount('health_professional_unit_specialties', 1);
     }
 
     public function test_expanded_patient_registration_and_clinical_history_are_persisted(): void

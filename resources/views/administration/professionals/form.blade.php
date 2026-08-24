@@ -6,6 +6,13 @@
     $selectedServicePoints = old('service_point_ids', $professional?->servicePoints?->modelKeys() ?? []);
     $primarySpecialty = old('primary_specialty_id', $professional?->specialties?->firstWhere('pivot.is_primary', true)?->getKey());
     $existingRegistrations = $professional?->registrations?->values() ?? collect();
+    $initialUnitSpecialties = old('unit_specialty_ids');
+    if (! is_array($initialUnitSpecialties)) {
+        $initialUnitSpecialties = $professional?->unitSpecialties
+            ?->groupBy('pivot.health_unit_id')
+            ->map(fn ($group) => $group->pluck('id')->values()->all())
+            ->all() ?? [];
+    }
 @endphp
 
 <x-layout.app :title="$editing ? 'Editar profissional' : 'Novo profissional'">
@@ -102,15 +109,25 @@
             </div>
         </x-card>
 
-        <x-card class="p-5 lg:p-6">
+        <x-card
+            class="p-5 lg:p-6"
+            x-data="professionalUnitSpecialties({
+                units: @js($healthUnits->map(fn ($unit) => ['id' => $unit->getKey(), 'name' => $unit->name])->values()),
+                specialties: @js($specialties->map(fn ($specialty) => ['id' => $specialty->getKey(), 'name' => $specialty->name])->values()),
+                selectedUnitIds: @js(array_map('intval', $selectedUnits)),
+                selectedSpecialtyIds: @js(array_map('intval', $selectedSpecialties)),
+                initialUnitSpecialties: @js($initialUnitSpecialties),
+            })"
+        >
             <h2 class="text-lg font-extrabold">Especialidades e unidades</h2>
+            <p class="mt-1 text-sm text-slate-500">A especialidade atendida em cada unidade só pode ser escolhida entre as especialidades marcadas abaixo como credenciamento geral do profissional.</p>
             <div class="mt-4 grid gap-6 lg:grid-cols-2">
                 <div class="space-y-3">
                     <p class="font-bold">Especialidades</p>
                     @foreach($specialties as $specialty)
                         @php($pivot = $professional?->specialties?->firstWhere('id', $specialty->getKey())?->pivot)
                         <div class="grid grid-cols-[auto_1fr_8rem] items-end gap-3 rounded-lg border border-slate-200 p-3">
-                            <input type="checkbox" name="specialty_ids[]" value="{{ $specialty->getKey() }}" @checked(in_array($specialty->getKey(), array_map('intval', $selectedSpecialties), true))>
+                            <input type="checkbox" name="specialty_ids[]" value="{{ $specialty->getKey() }}" x-model="specialtyIds" @change="onGlobalSpecialtyChange()" @checked(in_array($specialty->getKey(), array_map('intval', $selectedSpecialties), true))>
                             <div><strong class="block text-sm">{{ $specialty->name }}</strong><label class="text-xs text-slate-500">RQE <input class="field-control mt-1" name="specialty_rqe[{{ $specialty->getKey() }}]" value="{{ old('specialty_rqe.'.$specialty->getKey(), $pivot?->rqe_number) }}"></label></div>
                             <label class="text-xs font-bold"><input type="radio" name="primary_specialty_id" value="{{ $specialty->getKey() }}" @checked((int)$primarySpecialty === (int)$specialty->getKey())> Principal</label>
                             <input type="date" class="field-control col-start-2" name="specialty_registered_at[{{ $specialty->getKey() }}]" value="{{ old('specialty_registered_at.'.$specialty->getKey(), $pivot?->registered_at) }}">
@@ -119,7 +136,32 @@
                 </div>
                 <div>
                     <p class="font-bold">Unidades autorizadas *</p>
-                    <div class="mt-3 space-y-2">@foreach($healthUnits as $unit)<label class="flex items-center gap-3 rounded-lg border border-slate-200 p-3"><input type="checkbox" name="health_unit_ids[]" value="{{ $unit->getKey() }}" @checked(in_array($unit->getKey(), array_map('intval', $selectedUnits), true))> {{ $unit->name }}</label>@endforeach</div>
+                    <div class="mt-3 space-y-3">
+                        @foreach($healthUnits as $unit)
+                            <div class="rounded-lg border border-slate-200 p-3">
+                                <label class="flex items-center gap-3">
+                                    <input type="checkbox" name="health_unit_ids[]" value="{{ $unit->getKey() }}" x-model="unitIds" @checked(in_array($unit->getKey(), array_map('intval', $selectedUnits), true))>
+                                    {{ $unit->name }}
+                                </label>
+                                <div class="mt-3 space-y-2 border-t border-slate-100 pt-3" x-show="isUnitAuthorized({{ $unit->getKey() }})" x-cloak>
+                                    <p class="text-xs font-bold uppercase text-slate-500">Especialidade nesta unidade</p>
+                                    <p class="text-xs text-slate-500" x-show="availableSpecialtiesFor().length === 0">Marque ao menos uma especialidade geral para atribuir aqui.</p>
+                                    <template x-for="specialty in availableSpecialtiesFor()" :key="specialty.id">
+                                        <label class="flex items-center gap-2 text-sm">
+                                            <input
+                                                type="checkbox"
+                                                :name="`unit_specialty_ids[{{ $unit->getKey() }}][]`"
+                                                :value="specialty.id"
+                                                :checked="hasUnitSpecialty({{ $unit->getKey() }}, specialty.id)"
+                                                @change="toggleUnitSpecialty({{ $unit->getKey() }}, specialty.id, $event.target.checked)"
+                                            >
+                                            <span x-text="specialty.name"></span>
+                                        </label>
+                                    </template>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
                 </div>
             </div>
         </x-card>

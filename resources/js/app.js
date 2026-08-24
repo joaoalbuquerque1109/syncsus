@@ -10,6 +10,7 @@ import examOrderItems from "./exam-order-items";
 import laboratoryExamSelector from "./laboratory-exam-selector";
 import examGroupItems from "./exam-group-items";
 import examRequestModal from "./exam-request-modal";
+import professionalUnitSpecialties from "./professional-unit-specialties";
 
 window.Alpine = Alpine;
 
@@ -23,4 +24,5 @@ Alpine.data("examOrderItems", examOrderItems);
 Alpine.data("laboratoryExamSelector", laboratoryExamSelector);
 Alpine.data("examGroupItems", examGroupItems);
 Alpine.data("examRequestModal", examRequestModal);
+Alpine.data("professionalUnitSpecialties", professionalUnitSpecialties);
 Alpine.start();

@@ -25,6 +25,7 @@ abstract class TestCase extends BaseTestCase
         'role_has_permissions', 'health_unit_user',
         'health_professionals', 'professional_registrations',
         'health_professional_specialty', 'health_professional_health_unit',
+        'health_professional_unit_specialties',
         'patients', 'patient_identifiers', 'patient_operation_keys', 'patient_unit_participations',
         'patient_unit_migration_conflicts', 'core_number_sequences', 'diagnosis_codes', 'sus_procedures',
         'exams', 'exam_groups', 'exam_group_items', 'public_lookup_index',

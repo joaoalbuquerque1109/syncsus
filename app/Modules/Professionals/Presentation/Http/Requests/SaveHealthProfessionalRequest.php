@@ -114,6 +114,13 @@ final class SaveHealthProfessionalRequest extends FormRequest
                 'integer', 'distinct',
                 Rule::exists('core.specialties', 'id')->where('organization_id', $organizationId),
             ],
+            // Especialidade por unidade: a Action so persiste os pares cujo
+            // setor e especialidade tambem estejam em health_unit_ids/
+            // specialty_ids deste mesmo request - validacao de forma aqui,
+            // filtragem autoritativa na Action.
+            'unit_specialty_ids' => ['nullable', 'array'],
+            'unit_specialty_ids.*' => ['nullable', 'array'],
+            'unit_specialty_ids.*.*' => ['nullable', 'integer'],
             'primary_specialty_id' => [
                 'nullable', 'integer',
                 Rule::exists('core.specialties', 'id')->where('organization_id', $organizationId),

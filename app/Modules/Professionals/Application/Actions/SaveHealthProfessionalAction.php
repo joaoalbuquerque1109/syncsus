@@ -50,6 +50,7 @@ final class SaveHealthProfessionalAction
 
             $professional->healthUnits()->sync($data['health_unit_ids']);
             $this->syncSpecialties($professional, $data);
+            $this->syncUnitSpecialties($professional, $data);
             $this->syncRegistrations($professional, $data);
 
             return $professional->fresh(['user', 'healthUnits', 'specialties', 'registrations'])
@@ -83,6 +84,50 @@ final class SaveHealthProfessionalAction
             ];
         }
         $professional->specialties()->sync($payload);
+    }
+
+    /**
+     * So persiste pares (unidade, especialidade) cuja unidade esteja em
+     * health_unit_ids e cuja especialidade esteja em specialty_ids deste
+     * mesmo request - garante que a especialidade por unidade seja sempre
+     * um subconjunto do credenciamento geral e das unidades autorizadas,
+     * mesmo que o formulario envie algo fora disso.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function syncUnitSpecialties(HealthProfessional $professional, array $data): void
+    {
+        DB::connection('core')->table('health_professional_unit_specialties')
+            ->where('health_professional_id', $professional->getKey())
+            ->delete();
+
+        $allowedUnitIds = array_map('intval', $data['health_unit_ids'] ?? []);
+        $allowedSpecialtyIds = array_map('intval', $data['specialty_ids'] ?? []);
+        $unitSpecialtyIds = is_array($data['unit_specialty_ids'] ?? null) ? $data['unit_specialty_ids'] : [];
+        $now = now();
+        $rows = [];
+        foreach ($unitSpecialtyIds as $unitId => $specialtyIds) {
+            $unitId = (int) $unitId;
+            if (! in_array($unitId, $allowedUnitIds, true) || ! is_array($specialtyIds)) {
+                continue;
+            }
+            foreach ($specialtyIds as $specialtyId) {
+                $specialtyId = (int) $specialtyId;
+                if (! in_array($specialtyId, $allowedSpecialtyIds, true)) {
+                    continue;
+                }
+                $rows[$unitId.'-'.$specialtyId] = [
+                    'health_professional_id' => $professional->getKey(),
+                    'health_unit_id' => $unitId,
+                    'specialty_id' => $specialtyId,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+        }
+        if ($rows !== []) {
+            DB::connection('core')->table('health_professional_unit_specialties')->insert(array_values($rows));
+        }
     }
 
     /** @param array<string, mixed> $data */
