@@ -11,9 +11,16 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('health_professional_unit_specialties', function (Blueprint $table): void {
-            $table->foreignId('health_professional_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('health_unit_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('specialty_id')->constrained()->restrictOnDelete();
+            // Nomes de constraint explicitos e curtos: o nome default do Laravel
+            // (tabela_coluna_foreign) passa de 64 caracteres para esta tabela e
+            // o MySQL rejeita a migration (SQLite, usado nos testes, nao tem
+            // esse limite - por isso so quebrou em producao).
+            $table->foreignId('health_professional_id')
+                ->constrained(indexName: 'hpus_professional_fk')->cascadeOnDelete();
+            $table->foreignId('health_unit_id')
+                ->constrained(indexName: 'hpus_unit_fk')->cascadeOnDelete();
+            $table->foreignId('specialty_id')
+                ->constrained(indexName: 'hpus_specialty_fk')->restrictOnDelete();
             $table->timestamps();
 
             $table->primary(
