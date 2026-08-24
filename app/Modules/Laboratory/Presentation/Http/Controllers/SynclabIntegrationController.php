@@ -95,11 +95,10 @@ final class SynclabIntegrationController extends Controller
             $password = (string) ($data['password'] ?? '') ?: (string) $integration->password;
             $enabled = $request->boolean('transmission_enabled');
             $resultsEnabled = $request->boolean('result_sync_enabled');
-            if ($enabled && ($username === '' || $password === '')) {
-                throw ValidationException::withMessages([
-                    'username' => 'Usuário e senha do Synclab são obrigatórios para habilitar o envio.',
-                ]);
-            }
+            // O envio ao Synclab (addrequisicao) nao usa usuario/senha - a unidade
+            // e identificada pelo CNES na propria URL. Usuario/senha continuam
+            // opcionais aqui apenas para um eventual override futuro, sem bloquear
+            // a habilitacao do envio.
             if ($resultsEnabled && blank($integration->result_api_token_hash)) {
                 throw ValidationException::withMessages([
                     'result_sync_enabled' => 'Gere o token do webhook antes de habilitar a recepção de resultados.',

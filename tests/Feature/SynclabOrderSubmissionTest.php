@@ -63,7 +63,7 @@ final class SynclabOrderSubmissionTest extends TestCase
             $exam = data_get($payload, 'pedido_lab.exames.0', []);
 
             return $request->url() === 'https://synclabweb.unisync.com.br/app/addrequisicao/6612547'
-                && $request->hasHeader('Authorization')
+                && ! $request->hasHeader('Authorization')
                 && data_get($payload, 'pedido_lab.ordem_servico') === (string) $order->getKey()
                 && data_get($payload, 'pedido_lab.usuario_web_id') === (string) $order->created_by
                 && data_get($payload, 'pedido_lab.pedido.profissional') === 'Dra. Solicitante'
@@ -291,8 +291,6 @@ final class SynclabOrderSubmissionTest extends TestCase
             'health_unit_id' => $unit->getKey(),
             'provider' => 'synclab',
             'base_url' => 'https://synclabweb.unisync.com.br',
-            'username' => 'test-user',
-            'password' => 'test-password',
             'settings' => ['agreement' => 'SUS'],
             'is_active' => true,
             'transmission_enabled' => true,

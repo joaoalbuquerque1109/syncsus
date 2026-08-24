@@ -58,8 +58,7 @@ final readonly class RetryLaboratoryOrderTransmissionAction
             }
             if (! config('sync_sus.synclab.enabled')
                 || ! $transmission->integration->is_active
-                || ! $transmission->integration->transmission_enabled
-                || ! $transmission->integration->hasCredentials()) {
+                || ! $transmission->integration->transmission_enabled) {
                 throw ValidationException::withMessages([
                     'transmission' => 'Configure e habilite a integração Synclab desta unidade antes do reenvio.',
                 ]);

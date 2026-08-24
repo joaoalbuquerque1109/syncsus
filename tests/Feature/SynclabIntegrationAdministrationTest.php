@@ -56,7 +56,7 @@ final class SynclabIntegrationAdministrationTest extends TestCase
             ->assertDontSee('integration-secret');
     }
 
-    public function test_credentials_are_required_before_enabling_transmission(): void
+    public function test_transmission_can_be_enabled_without_credentials(): void
     {
         $unit = $this->createHealthUnit('CENTRAL');
         $this->seed(RolePermissionSeeder::class);
@@ -70,9 +70,11 @@ final class SynclabIntegrationAdministrationTest extends TestCase
                 'cnes_code' => '6612547',
                 'transmission_enabled' => '1',
             ])
-            ->assertSessionHasErrors('username');
+            ->assertRedirect(route('administration.synclab.edit'));
 
-        $this->assertDatabaseCount('laboratory_integrations', 0);
+        $integration = LaboratoryIntegration::query()->sole();
+        $this->assertTrue($integration->transmission_enabled);
+        $this->assertFalse($integration->hasCredentials());
     }
 
     public function test_manager_rotates_result_token_without_persisting_plaintext_and_enables_reception(): void

@@ -20,8 +20,6 @@ final readonly class SynclabClient implements LaboratoryProviderClient
         LaboratoryOrderPayload $payload,
     ): LaboratorySubmissionResult {
         $baseUrl = rtrim((string) $integration->base_url, '/');
-        $username = (string) $integration->username;
-        $password = (string) $integration->password;
         $cnes = preg_replace('/\D/', '', (string) data_get(
             $payload->toArray(),
             'pedido_lab.pedido.cnesUnidadeExecutante',
@@ -30,15 +28,17 @@ final readonly class SynclabClient implements LaboratoryProviderClient
         if (! filter_var($baseUrl, FILTER_VALIDATE_URL) || ! str_starts_with($baseUrl, 'https://')) {
             throw new InvalidLaboratoryOrder('A URL HTTPS do Synclab nao foi configurada corretamente.');
         }
-        if (strlen($cnes) !== 7 || $username === '' || $password === '') {
-            throw new InvalidLaboratoryOrder('O CNES e as credenciais do Synclab sao obrigatorios.');
+        if (strlen($cnes) !== 7) {
+            throw new InvalidLaboratoryOrder('O CNES da unidade nao foi configurado corretamente.');
         }
 
+        // O endpoint addrequisicao identifica a unidade unicamente pelo CNES na
+        // propria URL - nao ha usuario/senha no contrato real (confirmado com o
+        // fornecedor). Nao enviar Authorization aqui e deliberado.
         $response = $this->http
             ->baseUrl($baseUrl)
             ->acceptJson()
             ->asJson()
-            ->withBasicAuth($username, $password)
             ->connectTimeout((int) config('sync_sus.synclab.connect_timeout_seconds'))
             ->timeout((int) config('sync_sus.synclab.timeout_seconds'))
             ->post('/app/addrequisicao/'.$cnes, $payload->toArray());

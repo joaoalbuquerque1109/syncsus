@@ -86,6 +86,16 @@ final class TenantProvisioningTest extends TestCase
             'action' => 'organization.provisioned',
             'health_unit_id' => $unit->getKey(),
         ]);
+        $this->assertDatabaseCount('laboratory_integrations', 1);
+        $this->assertDatabaseHas('laboratory_integrations', [
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'external_tenant_code' => '6612547',
+            'transmission_enabled' => true,
+            'is_active' => true,
+            'username' => null,
+            'password' => null,
+        ]);
     }
 
     public function test_non_platform_user_cannot_access_tenant_provisioning(): void

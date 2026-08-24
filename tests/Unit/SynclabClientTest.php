@@ -19,8 +19,6 @@ final class SynclabClientTest extends TestCase
         ]);
         $integration = new LaboratoryIntegration([
             'base_url' => 'https://synclab.example',
-            'username' => 'user',
-            'password' => 'secret',
         ]);
 
         $result = app(SynclabClient::class)->submitOrder(
@@ -35,15 +33,13 @@ final class SynclabClientTest extends TestCase
         $this->assertSame(201, $result->httpStatus);
     }
 
-    public function test_client_uses_basic_auth_and_health_unit_cnes(): void
+    public function test_client_sends_no_authorization_header_and_uses_health_unit_cnes(): void
     {
         Http::fake([
             'https://synclab.example/app/addrequisicao/6612547' => Http::response(['ok' => true], 200),
         ]);
         $integration = new LaboratoryIntegration([
             'base_url' => 'https://synclab.example/',
-            'username' => 'user',
-            'password' => 'secret',
         ]);
 
         $result = app(SynclabClient::class)->submitOrder(
@@ -56,7 +52,7 @@ final class SynclabClientTest extends TestCase
 
         $this->assertTrue($result->accepted);
         Http::assertSent(fn ($request): bool => $request->url() === 'https://synclab.example/app/addrequisicao/6612547'
-            && $request->hasHeader('Authorization', 'Basic '.base64_encode('user:secret'))
+            && ! $request->hasHeader('Authorization')
             && $request['pedido_lab']['ordem_servico'] === '123');
     }
 }
