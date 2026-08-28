@@ -153,7 +153,18 @@ final class MedicalConsultationFlowTest extends TestCase
             ->assertJsonPath('data.0.edit_url', route('medical.show', $consultation));
         $this->actingAs($administrator)->withSession($session)
             ->get(route('medical.show', $consultation))
-            ->assertOk();
+            ->assertOk()
+            ->assertSee('Transferir')
+            ->assertSee('canTransfer: true', false)
+            ->assertSee('isAdmin: true', false);
+        // Medico continua sem queues.transfer (decisao confirmada) - so ve a
+        // opcao de marcar "nao encontrado"/cancelar o proprio atendimento.
+        $this->actingAs($doctor)->withSession($session)
+            ->get(route('medical.show', $consultation))
+            ->assertOk()
+            ->assertSee('Transferir')
+            ->assertSee('canTransfer: false', false)
+            ->assertSee('canCancel: true', false);
         $this->actingAs($administrator)->withSession($session)
             ->put(route('medical.draft', $consultation), [
                 'version' => 1,

@@ -8,6 +8,9 @@ export default function receptionWizard(config) {
         departmentId: config.departmentId || "",
         queueId: config.queueId || "",
         arrivalMethodId: config.arrivalMethodId || "",
+        entryTypeId: config.entryTypeId || "",
+        entryTypes: config.entryTypes || [],
+        isModal: Boolean(config.isModal),
         queues: config.queues,
         arrivalMethods: config.arrivalMethods,
 
@@ -16,6 +19,21 @@ export default function receptionWizard(config) {
                 (queue) =>
                     String(queue.department_id) === String(this.departmentId),
             );
+        },
+
+        // Setor/fila so podem ficar em branco (com fallback automatico para a
+        // fila de recepcao de exames) quando o tipo de entrada escolhido nao
+        // exige triagem - pular a fila pra um tipo que exige triagem pularia a
+        // triagem em si, o que nao e seguro. Sem tipo selecionado ainda, o
+        // padrao e exigir (mais seguro que assumir opcional).
+        get departmentQueueRequired() {
+            if (!this.isModal) {
+                return true;
+            }
+            const entryType = this.entryTypes.find(
+                (item) => String(item.id) === String(this.entryTypeId),
+            );
+            return entryType ? Boolean(entryType.requires_triage) : true;
         },
 
         get requiresVehicle() {

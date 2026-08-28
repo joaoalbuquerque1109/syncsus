@@ -84,6 +84,12 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
         $this->assertSame(EncounterStatus::WaitingMedical, $encounter->current_status);
 
         $this->actingAs($user)->withSession($session)
+            ->get(route('reception.receipt', $encounter))
+            ->assertOk()
+            ->assertSee('Cancelar atendimento')
+            ->assertSee('isAdmin: false', false);
+
+        $this->actingAs($user)->withSession($session)
             ->post(route('reception.cancel', $encounter), [
                 'version' => $encounter->lock_version,
                 'reason' => 'Atendimento aberto de forma equivocada.',
@@ -99,6 +105,138 @@ final class TenantEntryCancellationAndVisibilityTest extends TestCase
             'status' => 'cancelled',
         ]);
         $this->assertDatabaseHas('audit_logs', ['action' => 'encounter.cancelled']);
+    }
+
+    public function test_platform_administrator_can_close_an_incomplete_encounter_at_any_stage(): void
+    {
+        $unit = $this->createHealthUnit();
+        $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
+        $receptionist = $this->createUserWithUnit($unit);
+        $receptionist->assignRole('receptionist');
+        $patient = $this->patient($unit, $receptionist->getKey(), 'P-CLOSE-1');
+        $triageQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $emergency = EntryType::query()->where('code', 'EMERGENCY')->sole();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.store'), $this->receptionPayload($patient, $emergency, $triageQueue))
+            ->assertRedirect();
+        $encounter = Encounter::query()->sole();
+        $this->assertSame(EncounterStatus::WaitingTriage, $encounter->current_status);
+
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $this->actingAs($administrator)->withSession($session)
+            ->get(route('reception.receipt', $encounter))
+            ->assertOk()
+            ->assertSee('Encerrar atendimento')
+            ->assertSee('isAdmin: true', false);
+
+        $this->actingAs($administrator)->withSession($session)
+            ->postJson(route('reception.cancel', $encounter), [
+                'version' => $encounter->lock_version,
+                'reason' => 'Encerrado pelo administrador para teste, atendimento incompleto.',
+                'confirmation' => true,
+                'target_status' => 'cancelled',
+            ])
+            ->assertOk()
+            ->assertJson(['redirect' => route('reception.receipt', $encounter)]);
+        $this->assertDatabaseHas('encounters', [
+            'id' => $encounter->getKey(),
+            'current_status' => 'cancelled',
+            'closed_by' => $administrator->getKey(),
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'encounter.cancelled']);
+    }
+
+    public function test_receptionist_can_mark_an_administrative_stage_encounter_as_not_found(): void
+    {
+        $unit = $this->createHealthUnit();
+        $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
+        $receptionist = $this->createUserWithUnit($unit);
+        $receptionist->assignRole('receptionist');
+        $patient = $this->patient($unit, $receptionist->getKey(), 'P-NOTFOUND-1');
+        $triageQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $emergency = EntryType::query()->where('code', 'EMERGENCY')->sole();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.store'), $this->receptionPayload($patient, $emergency, $triageQueue))
+            ->assertRedirect();
+        $encounter = Encounter::query()->sole();
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.cancel', $encounter), [
+                'version' => $encounter->lock_version,
+                'reason' => 'Paciente nao se apresentou apos a chamada na recepcao.',
+                'confirmation' => true,
+                'target_status' => 'left_without_notice',
+            ])
+            ->assertRedirect();
+        $this->assertDatabaseHas('encounters', [
+            'id' => $encounter->getKey(),
+            'current_status' => 'left_without_notice',
+        ]);
+        $this->assertDatabaseHas('queue_entries', [
+            'encounter_id' => $encounter->getKey(),
+            'status' => 'cancelled',
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['action' => 'encounter.marked_not_found']);
+    }
+
+    public function test_triage_professional_can_mark_not_found_only_on_their_own_assigned_encounter(): void
+    {
+        $unit = $this->createHealthUnit();
+        $this->seed([RolePermissionSeeder::class, OperationalCatalogSeeder::class]);
+        $assigned = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $assigned->assignRole('triage_professional');
+        $this->registerTriageProfessional($assigned, $unit);
+        $other = $this->createUserWithUnit($unit, ['must_change_password' => false]);
+        $other->assignRole('triage_professional');
+        $this->registerTriageProfessional($other, $unit);
+        $receptionist = $this->createUserWithUnit($unit);
+        $receptionist->assignRole('receptionist');
+        $patient = $this->patient($unit, $receptionist->getKey(), 'P-NOTFOUND-2');
+        $triageQueue = Queue::query()->where('health_unit_id', $unit->getKey())->where('code', 'QUEUE-TRIAGE')->sole();
+        $emergency = EntryType::query()->where('code', 'EMERGENCY')->sole();
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($receptionist)->withSession($session)
+            ->post(route('reception.store'), $this->receptionPayload($patient, $emergency, $triageQueue))
+            ->assertRedirect();
+        $encounter = Encounter::query()->sole();
+        $entry = $encounter->queueEntries()->sole();
+        $servicePoint = $triageQueue->servicePoints()->sole();
+        $this->actingAs($assigned)->withSession($session)
+            ->postJson(route('queue-entries.call', $entry), ['version' => $entry->version(), 'service_point' => $servicePoint->public_id])
+            ->assertOk();
+        $entry->refresh();
+        $this->actingAs($assigned)->withSession($session)
+            ->postJson(route('triage.start', $entry), ['version' => $entry->version()])
+            ->assertOk();
+        $encounter->refresh();
+
+        $this->actingAs($other)->withSession($session)
+            ->post(route('reception.cancel', $encounter), [
+                'version' => $encounter->lock_version,
+                'reason' => 'Tentativa de outro profissional de triagem.',
+                'confirmation' => true,
+                'target_status' => 'left_without_notice',
+            ])
+            ->assertForbidden();
+
+        $this->actingAs($assigned)->withSession($session)
+            ->post(route('reception.cancel', $encounter), [
+                'version' => $encounter->lock_version,
+                'reason' => 'Paciente saiu da sala de triagem antes de ser chamado novamente.',
+                'confirmation' => true,
+                'target_status' => 'left_without_notice',
+            ])
+            ->assertRedirect();
+        $this->assertDatabaseHas('encounters', [
+            'id' => $encounter->getKey(),
+            'current_status' => 'left_without_notice',
+        ]);
     }
 
     public function test_nurse_and_doctor_only_see_their_operational_queues_and_doctor_specialties(): void

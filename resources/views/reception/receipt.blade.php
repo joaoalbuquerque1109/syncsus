@@ -24,23 +24,27 @@
                 <div class="mt-6 rounded-lg bg-amber-50 p-4 text-sm text-amber-900"><strong>Atenção:</strong> aguarde a chamada pelo painel e mantenha este comprovante em mãos.</div>
             </div>
         </x-card>
-        @if(!$encounter->currentStatusEnum()->isFinal() && auth()->user()->canAny(['encounters.cancel', 'encounters.cancel_clinical']))
+        @if(!$encounter->currentStatusEnum()->isFinal() && $canCancelEncounter)
             <x-card class="mt-5 border-red-200 p-5 print:hidden">
-                <h2 class="font-extrabold text-red-800">Cancelar atendimento</h2>
-                <p class="mt-1 text-sm text-slate-600">O cancelamento retira o paciente das filas e fica registrado na auditoria.</p>
-                <form method="POST" action="{{ route('reception.cancel', $encounter) }}" class="mt-4 space-y-3">
-                    @csrf
-                    <input type="hidden" name="version" value="{{ $encounter->lock_version }}">
-                    <x-form.textarea name="reason" label="Motivo do cancelamento" rows="3" required>{{ old('reason') }}</x-form.textarea>
-                    <label class="flex items-start gap-2 text-sm font-semibold text-slate-700">
-                        <input type="checkbox" name="confirmation" value="1" required class="mt-1">
-                        Confirmo que desejo cancelar este atendimento.
-                    </label>
-                    <button class="rounded-lg bg-red-700 px-4 py-2.5 text-sm font-bold text-white">Cancelar atendimento</button>
-                </form>
+                <h2 class="font-extrabold text-red-800">{{ $isPlatformAdministrator ? 'Encerrar atendimento' : 'Cancelar atendimento' }}</h2>
+                <p class="mt-1 text-sm text-slate-600">O paciente sai das filas ativas e o motivo fica registrado na auditoria. Se ele não foi localizado, use a opção "Paciente não encontrado".</p>
+                <button
+                    type="button"
+                    class="mt-4 rounded-lg bg-red-700 px-4 py-2.5 text-sm font-bold text-white"
+                    @click="$store.encounterActionModal.openFor({
+                        title: @js('Atendimento '.$encounter->encounter_number),
+                        canTransfer: false,
+                        canCancel: true,
+                        isAdmin: @js($isPlatformAdministrator),
+                        cancelUrl: @js(route('reception.cancel', $encounter)),
+                        encounterVersion: {{ $encounter->lock_version }},
+                    })"
+                >{{ $isPlatformAdministrator ? 'Encerrar atendimento' : 'Cancelar atendimento' }}</button>
             </x-card>
         @elseif($encounter->currentStatusEnum() === \App\Modules\Reception\Domain\Enums\EncounterStatus::Cancelled)
             <x-alert type="danger" class="mt-5">Atendimento cancelado: {{ $encounter->cancellation_reason }}</x-alert>
+        @elseif($encounter->currentStatusEnum() === \App\Modules\Reception\Domain\Enums\EncounterStatus::LeftWithoutNotice)
+            <x-alert type="danger" class="mt-5">Paciente não encontrado: {{ $encounter->cancellation_reason }}</x-alert>
         @endif
     </div>
 </x-layout.app>

@@ -26,6 +26,9 @@
         departmentId: @js(old('department_id', '')),
         queueId: @js(old('queue_id', '')),
         arrivalMethodId: @js(old('arrival_method_id', '')),
+        entryTypeId: @js(old('entry_type_id', '')),
+        entryTypes: @js($entryTypes->map(fn ($type) => ['id' => $type->id, 'requires_triage' => $type->requires_triage])->values()),
+        isModal: @js($isModal ?? false),
         step: {{ $errorStep }}
     })"
 >
@@ -54,7 +57,7 @@
         <x-card class="p-5 lg:p-7" x-show="step === 1">
             <h2 class="text-lg font-extrabold text-slate-900">Dados da chegada</h2>
             <div class="mt-5 grid gap-4 md:grid-cols-2">
-                <x-form.select name="entry_type_id" label="Tipo de entrada" required>
+                <x-form.select name="entry_type_id" label="Tipo de entrada" required x-model="entryTypeId">
                     <option value="">Selecione</option>
                     @foreach($entryTypes as $type)<option value="{{ $type->id }}" @selected((string) old('entry_type_id') === (string) $type->id)>{{ $type->name }}</option>@endforeach
                 </x-form.select>
@@ -112,16 +115,17 @@
         <x-card class="p-5 lg:p-7" x-show="step === 3" x-cloak>
             <h2 class="text-lg font-extrabold text-slate-900">Destino e acompanhante</h2>
             <div class="mt-5 grid gap-4 md:grid-cols-2">
-                <x-form.select name="department_id" label="Setor de destino" :required="! ($isModal ?? false)" x-model="departmentId">
-                    <option value="">{{ ($isModal ?? false) ? 'Selecione (opcional)' : 'Selecione' }}</option>
+                <x-form.select name="department_id" label="Setor de destino" :required="! ($isModal ?? false)" x-bind:required="departmentQueueRequired" x-model="departmentId">
+                    <option value="">Selecione</option>
                     @foreach($departments->where('is_clinical', true) as $department)<option value="{{ $department->id }}" @selected((string) old('department_id') === (string) $department->id)>{{ $department->name }}</option>@endforeach
                 </x-form.select>
-                <x-form.select name="queue_id" label="Fila inicial" :required="! ($isModal ?? false)" x-model="queueId">
+                <x-form.select name="queue_id" label="Fila inicial" :required="! ($isModal ?? false)" x-bind:required="departmentQueueRequired" x-model="queueId">
                     <option value="">Selecione o setor primeiro</option>
                     <template x-for="queue in filteredQueues" :key="queue.id"><option :value="queue.id" x-text="queue.name"></option></template>
                 </x-form.select>
                 @if($isModal ?? false)
-                    <p class="text-xs text-slate-500 md:col-span-2">Se não escolher setor e fila, a recepção de exames padrão da unidade será usada automaticamente.</p>
+                    <p class="text-xs text-slate-500 md:col-span-2" x-show="!departmentQueueRequired">Se não escolher setor e fila, a recepção de exames padrão da unidade será usada automaticamente.</p>
+                    <p class="text-xs font-semibold text-amber-700 md:col-span-2" x-show="departmentQueueRequired">Obrigatório para este tipo de entrada, que exige triagem.</p>
                 @endif
                 <x-form.select name="specialty_id" label="Especialidade">
                     <option value="">Não definida</option>

@@ -23,6 +23,9 @@ final readonly class CancelEncounterAction
 {
     public function __construct(private RecordAuditEventAction $audit) {}
 
+    /** @var list<EncounterStatus> */
+    private const ALLOWED_TARGET_STATUSES = [EncounterStatus::Cancelled, EncounterStatus::LeftWithoutNotice];
+
     public function execute(
         Encounter $encounter,
         int $expectedVersion,
@@ -30,8 +33,16 @@ final readonly class CancelEncounterAction
         User $user,
         HealthUnit $unit,
         Request $request,
+        EncounterStatus $targetStatus = EncounterStatus::Cancelled,
     ): Encounter {
-        return DB::transaction(function () use ($encounter, $expectedVersion, $reason, $user, $unit, $request): Encounter {
+        // Cancelamento administrativo e "paciente nao encontrado" usam a mesma
+        // cascata (libera fila, cancela rascunho de triagem/consulta) - so o
+        // status final e o motivo de auditoria mudam. Nao serve para levar o
+        // atendimento a um desfecho clinico (Admitted/Discharged/etc.), que tem
+        // fluxo proprio em CompleteMedicalConsultationAction.
+        abort_unless(in_array($targetStatus, self::ALLOWED_TARGET_STATUSES, true), 422);
+
+        return DB::transaction(function () use ($encounter, $expectedVersion, $reason, $user, $unit, $request, $targetStatus): Encounter {
             $locked = Encounter::query()
                 ->with(['queueEntries', 'triageAssessment', 'medicalConsultation'])
                 ->whereKey($encounter->getKey())
@@ -49,7 +60,7 @@ final readonly class CancelEncounterAction
                     'reason' => 'Atendimentos finalizados nao podem ser cancelados.',
                 ]);
             }
-            $this->authorizeCancellation($locked, $from, $user);
+            abort_unless($this->canCancel($locked, $user), 403);
 
             $now = now();
             $triage = $locked->triageAssessment;
@@ -100,7 +111,7 @@ final readonly class CancelEncounterAction
             }
 
             $locked->update([
-                'current_status' => EncounterStatus::Cancelled,
+                'current_status' => $targetStatus,
                 'cancellation_reason' => $reason,
                 'closed_at' => $now,
                 'closed_by' => $user->getKey(),
@@ -110,14 +121,14 @@ final readonly class CancelEncounterAction
             ]);
             $locked->statusHistory()->create([
                 'from_status' => $from,
-                'to_status' => EncounterStatus::Cancelled,
+                'to_status' => $targetStatus,
                 'reason' => $reason,
                 'metadata' => ['source' => 'reception'],
                 'changed_by' => $user->getKey(),
                 'changed_at' => $now,
             ]);
             $this->audit->execute(
-                'encounter.cancelled',
+                $targetStatus === EncounterStatus::LeftWithoutNotice ? 'encounter.marked_not_found' : 'encounter.cancelled',
                 $request,
                 $user,
                 ['from_status' => $from->value, 'reason' => $reason],
@@ -136,10 +147,20 @@ final readonly class CancelEncounterAction
         });
     }
 
-    private function authorizeCancellation(Encounter $encounter, EncounterStatus $status, User $user): void
+    /**
+     * Mesma regra usada para autorizar o cancelamento/"nao encontrado" real,
+     * exposta como consulta booleana para telas (fila, triagem, atendimento
+     * medico) decidirem se mostram o botao - evita duplicar esta regra de
+     * negocio em cada controller que precisa saber se o usuario pode agir
+     * sobre o atendimento.
+     */
+    public function canCancel(Encounter $encounter, User $user): bool
     {
         if ($user->isPlatformAdministrator()) {
-            return;
+            return true;
+        }
+        if ($encounter->currentStatusEnum()->isFinal()) {
+            return false;
         }
 
         $administrativeStatuses = [
@@ -149,19 +170,16 @@ final readonly class CancelEncounterAction
             EncounterStatus::WaitingMedical,
             EncounterStatus::CalledToMedical,
         ];
-        if (in_array($status, $administrativeStatuses, true)) {
-            abort_unless($user->can('encounters.cancel'), 403);
-
-            return;
+        if (in_array($encounter->currentStatusEnum(), $administrativeStatuses, true)) {
+            return $user->can('encounters.cancel');
+        }
+        if (! $user->can('encounters.cancel_clinical')) {
+            return false;
+        }
+        if ($encounter->currentStatusEnum() === EncounterStatus::InTriage) {
+            return $encounter->triageAssessment?->professional_id === $user->getKey();
         }
 
-        abort_unless($user->can('encounters.cancel_clinical'), 403);
-        if ($status === EncounterStatus::InTriage) {
-            abort_unless($encounter->triageAssessment?->professional_id === $user->getKey(), 403);
-
-            return;
-        }
-
-        abort_unless($encounter->medicalConsultation?->professional_id === $user->getKey(), 403);
+        return $encounter->medicalConsultation?->professional_id === $user->getKey();
     }
 }

@@ -21,7 +21,10 @@
                     absent: @js(route('queue-entries.absent', ['entry' => '__ENTRY__'])),
                     return: @js(route('queue-entries.return', ['entry' => '__ENTRY__'])),
                     transfer: @js(route('queue-entries.transfer', ['entry' => '__ENTRY__']))
-                }
+                },
+                encounterCancelUrl: @js(route('reception.cancel', ['encounter' => '__ENCOUNTER__'])),
+                destinationQueues: @js($queues->reject(fn ($queue) => $queue->is($selectedQueue))->map(fn ($queue) => ['id' => $queue->public_id, 'name' => $queue->name])->values()),
+                isAdmin: @js(auth()->user()->isPlatformAdministrator())
             })"
         >
             <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -84,17 +87,6 @@
                         @endif
                     </div>
                 </div>
-                @can('queues.transfer')
-                    <div class="mt-4 max-w-sm">
-                        <label class="field-label" for="transfer-queue">Fila de destino para transferência</label>
-                        <select id="transfer-queue" class="field-control" x-model="transferQueue">
-                            <option value="">Selecione quando necessário</option>
-                            @foreach($queues->reject(fn ($queue) => $queue->is($selectedQueue)) as $queue)
-                                <option value="{{ $queue->public_id }}">{{ $queue->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                @endcan
             </x-card>
 
             <div x-show="message" x-cloak class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800" x-text="message"></div>
@@ -176,9 +168,7 @@
                                                 <button type="button" x-show="entry.can_absent" @click="markAbsent(entry)" :disabled="busyEntry === entry.public_id" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50">Ausência</button>
                                                 <button type="button" x-show="entry.can_return" @click="returnEntry(entry)" :disabled="busyEntry === entry.public_id" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50">Retornar</button>
                                             @endcan
-                                            @can('queues.transfer')
-                                                <button type="button" x-show="entry.can_transfer" @click="transfer(entry)" :disabled="busyEntry === entry.public_id" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50">Transferir</button>
-                                            @endcan
+                                            <button type="button" x-show="entry.can_transfer || entry.can_cancel_encounter" @click="openActionModal(entry)" :disabled="busyEntry === entry.public_id" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold disabled:opacity-50">Transferir</button>
                                         </div>
                                     </td>
                                 </tr>

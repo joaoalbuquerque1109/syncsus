@@ -11,8 +11,11 @@ import laboratoryExamSelector from "./laboratory-exam-selector";
 import examGroupItems from "./exam-group-items";
 import examRequestModal from "./exam-request-modal";
 import professionalUnitSpecialties from "./professional-unit-specialties";
+import encounterActionModal from "./encounter-action-modal";
 
 window.Alpine = Alpine;
+
+Alpine.store("encounterActionModal", encounterActionModal());
 
 Alpine.data("receptionWizard", receptionWizard);
 Alpine.data("queueBoard", queueBoard);

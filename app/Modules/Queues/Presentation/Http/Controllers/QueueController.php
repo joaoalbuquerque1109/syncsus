@@ -15,6 +15,7 @@ use App\Modules\Queues\Domain\Enums\QueueEntryStatus;
 use App\Modules\Queues\Infrastructure\Eloquent\Panel;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
+use App\Modules\Reception\Application\Actions\CancelEncounterAction;
 use App\Support\Text\NormalizesBrazilianData;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,8 @@ use Illuminate\View\View;
 
 final class QueueController extends Controller
 {
+    public function __construct(private readonly CancelEncounterAction $cancelAction) {}
+
     public function index(Request $request, QueueVisibilityService $visibility): View
     {
         $unit = $request->attributes->get('active_health_unit');
@@ -184,6 +187,9 @@ final class QueueController extends Controller
             'can_transfer' => in_array($entry->statusEnum(), [QueueEntryStatus::Waiting, QueueEntryStatus::Called, QueueEntryStatus::Absent], true),
             'can_edit' => $editUrl !== null,
             'edit_url' => $editUrl,
+            'encounter_public_id' => $entry->encounter->public_id,
+            'encounter_version' => (int) $entry->encounter->lock_version,
+            'can_cancel_encounter' => $this->cancelAction->canCancel($entry->encounter, $user),
         ];
     }
 

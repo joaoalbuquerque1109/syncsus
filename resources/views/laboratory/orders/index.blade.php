@@ -30,7 +30,10 @@
                     <div class="max-h-[80vh] overflow-y-auto p-5">
                         <p x-show="loading" class="py-10 text-center text-sm text-slate-500">Carregando...</p>
                         <p x-show="error" x-text="error" class="py-10 text-center text-sm font-semibold text-red-700"></p>
-                        <div x-show="!loading && !error" x-ref="body"></div>
+                        <div x-show="!loading && !error">
+                            <p x-show="submitError" x-text="submitError" class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700"></p>
+                            <div x-ref="body"></div>
+                        </div>
                     </div>
                 </div>
             </div>

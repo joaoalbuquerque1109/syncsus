@@ -51,7 +51,14 @@ final class QueueFlowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.ticket', 'T001')
             ->assertJsonPath('data.0.risk', 'Amarelo')
-            ->assertJsonPath('data.0.risk_color', 'yellow');
+            ->assertJsonPath('data.0.risk_color', 'yellow')
+            ->assertJsonPath('data.0.encounter_public_id', $entry->encounter->public_id)
+            ->assertJsonPath('data.0.encounter_version', $entry->encounter->lock_version)
+            // O atendimento ainda esta em WaitingTriage (estagio administrativo) -
+            // triage_professional so tem encounters.cancel_clinical, entao ainda
+            // nao pode agir sobre ele por ali (precisa estar em InTriage e ser o
+            // profissional responsavel).
+            ->assertJsonPath('data.0.can_cancel_encounter', false);
 
         $this->actingAs($user)->withSession($session)->postJson(route('queue-entries.call', $entry), [
             'version' => 1,

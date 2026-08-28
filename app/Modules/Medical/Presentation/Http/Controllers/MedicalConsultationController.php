@@ -36,6 +36,7 @@ use App\Modules\Patients\Application\Actions\LogPatientAccessAction;
 use App\Modules\Queues\Application\Services\QueueVisibilityService;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
+use App\Modules\Reception\Application\Actions\CancelEncounterAction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -76,6 +77,7 @@ final class MedicalConsultationController extends Controller
         MedicalConsultation $consultation,
         LogPatientAccessAction $access,
         MedicalConsultationContextLoader $contextLoader,
+        CancelEncounterAction $cancelAction,
     ): View {
         [$user, $unit] = $this->context($request);
         $this->ensureUnit($consultation, $unit);
@@ -89,6 +91,10 @@ final class MedicalConsultationController extends Controller
             'consultation' => $consultation,
             'specialties' => Specialty::query()->where('organization_id', $unit->organization_id)
                 ->where('is_active', true)->orderBy('display_order')->get(),
+            'canTransferQueue' => $user->can('queues.transfer'),
+            'transferQueues' => Queue::query()->where('health_unit_id', $unit->getKey())->where('is_active', true)->whereKeyNot($consultation->queueEntry->queue_id)->orderBy('display_order')->get(['id', 'public_id', 'name']),
+            'canCancelEncounter' => $cancelAction->canCancel($consultation->encounter, $user),
+            'isPlatformAdministrator' => $user->isPlatformAdministrator(),
         ]);
     }
 

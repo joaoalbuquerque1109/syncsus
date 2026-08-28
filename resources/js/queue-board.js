@@ -6,7 +6,6 @@ export default function queueBoard(config) {
         query: "",
         status: "",
         servicePoint: config.defaultServicePoint || "",
-        transferQueue: "",
         message: "",
         error: "",
         updatedAt: "",
@@ -135,18 +134,30 @@ export default function queueBoard(config) {
             this.perform(entry, "return", { reason });
         },
 
-        transfer(entry) {
-            if (!this.transferQueue) {
-                this.showError("Selecione a fila de destino.");
-                return;
-            }
-            const reason = window.prompt("Motivo da transferência:");
-            if (!reason) return;
-            this.perform(entry, "transfer", {
-                destination_queue: this.transferQueue,
-                reason,
-                preserve_priority: true,
-            });
+        openActionModal(entry) {
+            window.Alpine.store("encounterActionModal").openFor(
+                {
+                    title: `Senha ${entry.ticket} · ${entry.patient}`,
+                    canTransfer: Boolean(entry.can_transfer),
+                    canCancel: Boolean(entry.can_cancel_encounter),
+                    isAdmin: Boolean(config.isAdmin),
+                    destinationQueues: config.destinationQueues || [],
+                    transferUrl: config.actions.transfer.replace(
+                        "__ENTRY__",
+                        entry.public_id,
+                    ),
+                    entryVersion: entry.version,
+                    cancelUrl: config.encounterCancelUrl.replace(
+                        "__ENCOUNTER__",
+                        entry.encounter_public_id,
+                    ),
+                    encounterVersion: entry.encounter_version,
+                },
+                (response) => {
+                    this.message = response.data?.message || "Ação concluída.";
+                    this.refresh();
+                },
+            );
         },
     };
 }

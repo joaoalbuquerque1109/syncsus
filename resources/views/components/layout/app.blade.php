@@ -26,5 +26,6 @@
             </main>
         </div>
     </div>
+    <x-encounter.action-modal />
 </body>
 </html>

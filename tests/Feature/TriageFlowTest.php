@@ -112,7 +112,18 @@ final class TriageFlowTest extends TestCase
             ->assertJsonPath('data.0.edit_url', route('triage.show', $assessment));
         $this->actingAs($administrator)->withSession($session)
             ->get(route('triage.show', $assessment))
-            ->assertOk();
+            ->assertOk()
+            ->assertSee('Transferir')
+            ->assertSee('canCancel: true', false)
+            ->assertSee('isAdmin: true', false);
+        // O profissional responsavel tambem ve o botao (pode transferir e marcar
+        // nao encontrado no proprio atendimento), sem ser admin.
+        $this->actingAs($professional)->withSession($session)
+            ->get(route('triage.show', $assessment))
+            ->assertOk()
+            ->assertSee('Transferir')
+            ->assertSee('canCancel: true', false)
+            ->assertSee('isAdmin: false', false);
         $this->actingAs($administrator)->withSession($session)
             ->put(route('triage.draft', $assessment), [
                 'version' => 1,

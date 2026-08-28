@@ -365,6 +365,40 @@ final class ReceptionOpeningTest extends TestCase
         $this->assertDatabaseCount('encounters', 0);
     }
 
+    public function test_ajax_submission_from_the_modal_receives_a_json_redirect_instead_of_a_302(): void
+    {
+        [$unit, $user, $patient] = $this->context();
+        $payload = $this->payload($patient);
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $response = $this->actingAs($user)->withSession($session)
+            ->postJson(route('reception.store'), $payload);
+
+        $encounter = Encounter::query()->sole();
+        $response->assertOk()
+            ->assertJson(['redirect' => route('reception.receipt', $encounter)]);
+    }
+
+    public function test_ajax_submission_validation_failure_returns_json_errors_the_modal_can_display(): void
+    {
+        [$unit, $user, $patient] = $this->context();
+        $payload = [
+            'idempotency_key' => (string) Str::ulid(),
+            'patient_public_id' => $patient->public_id,
+            'entry_type_id' => EntryType::query()->where('code', 'EMERGENCY')->value('id'),
+            'arrival_method_id' => ArrivalMethod::query()->where('code', 'WALK_IN')->value('id'),
+            'entry_reason' => 'Emergência sem fila selecionada via AJAX',
+            'administrative_priority' => 'none',
+        ];
+        $session = ['active_health_unit_id' => $unit->getKey()];
+
+        $this->actingAs($user)->withSession($session)
+            ->postJson(route('reception.store'), $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('queue_id');
+        $this->assertDatabaseCount('encounters', 0);
+    }
+
     public function test_reception_create_modal_variant_renders_only_the_wizard_fragment(): void
     {
         [$unit, $receptionist, $patient] = $this->context();

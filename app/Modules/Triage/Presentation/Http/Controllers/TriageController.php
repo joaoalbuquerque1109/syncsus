@@ -12,6 +12,7 @@ use App\Modules\Patients\Application\Actions\LogPatientAccessAction;
 use App\Modules\Queues\Application\Services\QueueVisibilityService;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 use App\Modules\Queues\Infrastructure\Eloquent\QueueEntry;
+use App\Modules\Reception\Application\Actions\CancelEncounterAction;
 use App\Modules\Triage\Application\Actions\CompleteTriageAction;
 use App\Modules\Triage\Application\Actions\CreateTriageAddendumAction;
 use App\Modules\Triage\Application\Actions\RecordVitalSignsAction;
@@ -64,6 +65,7 @@ final class TriageController extends Controller
         TriageAssessment $triage,
         LogPatientAccessAction $access,
         TriageAssessmentContextLoader $contextLoader,
+        CancelEncounterAction $cancelAction,
     ): View {
         [$user, $unit] = $this->context($request);
         abort_unless($triage->encounter()->where('health_unit_id', $unit->getKey())->exists(), 404);
@@ -78,6 +80,10 @@ final class TriageController extends Controller
             'protocols' => TriageProtocol::query()->with(['flowcharts' => fn ($query) => $query->where('is_active', true)->with(['discriminators' => fn ($query) => $query->where('is_active', true)->orderBy('display_order')])->orderBy('display_order')])->where('is_active', true)->get(),
             'riskLevels' => RiskLevel::query()->where('is_active', true)->orderByDesc('priority_weight')->get(),
             'destinationQueues' => Queue::query()->with('department')->where('health_unit_id', $unit->getKey())->whereHas('department', fn ($query) => $query->where('type', 'medical'))->where('is_active', true)->whereKeyNot($triage->queueEntry->queue_id)->orderBy('display_order')->get(),
+            'canTransferQueue' => $user->can('queues.transfer'),
+            'transferQueues' => Queue::query()->where('health_unit_id', $unit->getKey())->where('is_active', true)->whereKeyNot($triage->queueEntry->queue_id)->orderBy('display_order')->get(['id', 'public_id', 'name']),
+            'canCancelEncounter' => $cancelAction->canCancel($triage->encounter, $user),
+            'isPlatformAdministrator' => $user->isPlatformAdministrator(),
         ]);
     }
 

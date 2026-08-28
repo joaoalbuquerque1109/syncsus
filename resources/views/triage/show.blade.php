@@ -19,6 +19,23 @@
                 </div>
                 <h1 class="mt-2 text-2xl font-extrabold text-slate-950">Triagem — {{ $patient->displayName() }}</h1>
                 <p class="mt-1 text-sm text-slate-600">{{ $triage->professional->name }} · {{ $triage->servicePoint?->name ?? 'Ponto não informado' }} · iniciada em {{ $triage->started_at->format('d/m/Y H:i') }}</p>
+                @if($canTransferQueue || $canCancelEncounter)
+                    <button
+                        type="button"
+                        class="mt-3 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold hover:bg-slate-50"
+                        @click="$store.encounterActionModal.openFor({
+                            title: @js('Senha '.$ticket.' · '.$patient->displayName()),
+                            canTransfer: @js($canTransferQueue),
+                            canCancel: @js($canCancelEncounter),
+                            isAdmin: @js($isPlatformAdministrator),
+                            destinationQueues: @js($transferQueues->map(fn ($queue) => ['id' => $queue->public_id, 'name' => $queue->name])->values()),
+                            transferUrl: @js(route('queue-entries.transfer', $triage->queueEntry)),
+                            entryVersion: {{ $triage->queueEntry->version() }},
+                            cancelUrl: @js(route('reception.cancel', $triage->encounter)),
+                            encounterVersion: {{ $triage->encounter->lock_version }},
+                        })"
+                    >Transferir</button>
+                @endif
             </div>
             @if(!$isDraft && $triage->riskLevel)
                 <div class="rounded-xl border px-5 py-3 text-right" style="border-color: {{ match($triage->riskLevel->color_key) { 'red' => '#dc2626', 'orange' => '#ea580c', 'yellow' => '#ca8a04', 'green' => '#16a34a', default => '#2563eb' } }}">

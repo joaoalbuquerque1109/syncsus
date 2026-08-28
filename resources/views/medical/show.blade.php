@@ -59,11 +59,30 @@
                     {{ $editable ? 'Em atendimento' : 'Finalizado' }}
                 </span>
             </div>
-            @if($editable)
-                <button type="button" @click="tab = 'destination'" class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-extrabold text-white hover:bg-emerald-700">
-                    Finalizar atendimento
-                </button>
-            @endif
+            <div class="flex flex-wrap gap-2">
+                @if($canTransferQueue || $canCancelEncounter)
+                    <button
+                        type="button"
+                        class="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold hover:bg-slate-50"
+                        @click="$store.encounterActionModal.openFor({
+                            title: @js('Senha '.$consultation->queueEntry->ticket_number.' · '.$patient->displayName()),
+                            canTransfer: @js($canTransferQueue),
+                            canCancel: @js($canCancelEncounter),
+                            isAdmin: @js($isPlatformAdministrator),
+                            destinationQueues: @js($transferQueues->map(fn ($queue) => ['id' => $queue->public_id, 'name' => $queue->name])->values()),
+                            transferUrl: @js(route('queue-entries.transfer', $consultation->queueEntry)),
+                            entryVersion: {{ $consultation->queueEntry->version() }},
+                            cancelUrl: @js(route('reception.cancel', $encounter)),
+                            encounterVersion: {{ $encounter->lock_version }},
+                        })"
+                    >Transferir</button>
+                @endif
+                @if($editable)
+                    <button type="button" @click="tab = 'destination'" class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-extrabold text-white hover:bg-emerald-700">
+                        Finalizar atendimento
+                    </button>
+                @endif
+            </div>
         </div>
 
         @if($errors->any())
