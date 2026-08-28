@@ -17,7 +17,12 @@ RUN composer install \
     --no-scripts
 
 FROM php:8.5-fpm-alpine AS app
-RUN apk add --no-cache ca-certificates icu-libs libzip libpng oniguruma \
+# Atualiza pacotes ja presentes na imagem base (ex.: openssl/libssl3/libcrypto3)
+# para as versoes com correcao de CVE mais recentes do indice Alpine no
+# momento do build - a imagem base php:8.5-fpm-alpine nao vem sempre com os
+# ultimos patches de seguranca do Alpine.
+RUN apk upgrade --no-cache \
+    && apk add --no-cache ca-certificates icu-libs libzip libpng oniguruma \
     && update-ca-certificates \
     && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS icu-dev libzip-dev libpng-dev oniguruma-dev \
     && docker-php-ext-install bcmath intl pcntl pdo_mysql zip \
