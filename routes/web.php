@@ -17,6 +17,7 @@ use App\Modules\Identity\Presentation\Http\Controllers\EmployeeRegistrationContr
 use App\Modules\Identity\Presentation\Http\Controllers\PasswordController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\ExamGroupManagementController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryOrderController;
+use App\Modules\Laboratory\Presentation\Http\Controllers\LaboratoryResultController;
 use App\Modules\Laboratory\Presentation\Http\Controllers\SynclabIntegrationController;
 use App\Modules\Medical\Presentation\Http\Controllers\DiagnosisCodeSearchController;
 use App\Modules\Medical\Presentation\Http\Controllers\LaboratoryExamSearchController;
@@ -117,6 +118,10 @@ Route::middleware(['auth', 'active'])->group(function (): void {
             Route::get('/{order}', [LaboratoryOrderController::class, 'show'])->middleware('permission:laboratory.orders.view')->name('show');
             Route::post('/{order}/cancel', [LaboratoryOrderController::class, 'cancel'])->middleware('permission:laboratory.orders.cancel')->name('cancel');
             Route::post('/{order}/retry', [LaboratoryOrderController::class, 'retry'])->middleware('permission:administration.manage')->name('retry');
+        });
+        Route::prefix('laboratory/results')->name('laboratory.results.')->middleware('permission:laboratory.orders.view')->group(function (): void {
+            Route::get('/', [LaboratoryResultController::class, 'index'])->name('index');
+            Route::get('/{result}/pdf', [LaboratoryResultController::class, 'print'])->name('print');
         });
         Route::get('/queues/{queue}/entries', [QueueController::class, 'entries'])->middleware('permission:queues.view')->name('queues.entries');
         Route::prefix('queue-entries/{entry}')->name('queue-entries.')->group(function (): void {

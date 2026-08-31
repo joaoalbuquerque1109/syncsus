@@ -10,6 +10,7 @@ use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Administration\Infrastructure\Eloquent\TenantDatabase;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
+use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
 use App\Support\Tenancy\TenantConnectionManager;
 use App\Support\Tenancy\TenantDatabaseLifecycle;
 use App\Support\Tenancy\TenantDatabaseState;
@@ -93,6 +94,7 @@ final class TenantProvisioningTest extends TestCase
             'external_tenant_code' => '6612547',
             'transmission_enabled' => true,
             'is_active' => true,
+            'result_sync_enabled' => true,
             'username' => null,
             'password' => null,
         ]);
@@ -423,6 +425,13 @@ final class TenantProvisioningTest extends TestCase
             'health_unit_id' => $unit->getKey(),
             'user_id' => $administrator->getKey(),
         ], 'core');
+        $this->assertDatabaseHas('laboratory_integrations', [
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'is_active' => true,
+            'transmission_enabled' => true,
+            'result_sync_enabled' => true,
+        ]);
 
         $this->actingAs($administrator)
             ->put(route('administration.tenants.toggle-active', $unit))
@@ -434,6 +443,37 @@ final class TenantProvisioningTest extends TestCase
             'health_unit_id' => $unit->getKey(),
             'user_id' => $administrator->getKey(),
         ], 'core');
+    }
+
+    public function test_reactivating_a_unit_does_not_overwrite_a_manually_configured_integration(): void
+    {
+        $administrator = $this->createPlatformAdministrator();
+        $administrator->assignRole('administrator');
+        $unit = $this->createHealthUnit('TOGGLE-MANUAL-SYNCLAB');
+        $this->activateTenant($unit);
+        LaboratoryIntegration::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'provider' => 'synclab',
+            'base_url' => 'https://custom.example.com',
+            'username' => 'manually-set-user',
+            'password' => 'manually-set-password',
+            'is_active' => true,
+            'transmission_enabled' => false,
+            'result_sync_enabled' => false,
+            'connection_status' => 'disabled',
+        ]);
+        $unit->update(['is_active' => false]);
+
+        $this->actingAs($administrator)
+            ->put(route('administration.tenants.toggle-active', $unit))
+            ->assertRedirect(route('administration.tenants.index'));
+
+        $this->activateTenant($unit);
+        $integration = LaboratoryIntegration::query()->sole();
+        $this->assertFalse($integration->transmission_enabled);
+        $this->assertFalse($integration->result_sync_enabled);
+        $this->assertSame('https://custom.example.com', $integration->base_url);
     }
 
     public function test_non_administrator_cannot_toggle_a_health_unit(): void

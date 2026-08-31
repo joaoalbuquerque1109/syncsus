@@ -15,10 +15,14 @@ use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryResultIngestion;
 use App\Support\Tenancy\TenantConnectionManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 final class SynclabResultWebhookController extends Controller
 {
+    private const RESULT_PDF_DISK = 'local_private';
+
     public function __invoke(
         Request $request,
         SynclabResultPayloadHasher $hasher,
@@ -27,8 +31,14 @@ final class SynclabResultWebhookController extends Controller
     ): JsonResponse {
         $integration = $request->attributes->get('laboratory_integration');
         abort_unless($integration instanceof LaboratoryIntegration, 401);
-        $payload = $request->all();
-        $contentHash = $hasher->contentHash($payload);
+        // O laudo em PDF chega como multipart (campo "resultado_anexo"), separado
+        // dos campos de texto - um UploadedFile não serializa em JSON, então não
+        // pode entrar no mesmo array que vira `payload` (encrypted:array) nem no
+        // hash de conteúdo sem antes extrair só os bytes/hash do arquivo.
+        $file = $request->file('resultado_anexo');
+        $payload = $request->except('resultado_anexo');
+        $pdfHash = $file instanceof UploadedFile ? hash_file('sha256', $file->getRealPath()) : null;
+        $contentHash = $hasher->contentHash($payload + ['_pdf_hash' => $pdfHash]);
         $externalOrderNumber = trim((string) ($payload['codigo_pedido'] ?? ''));
         $externalExamCode = trim((string) ($payload['codigo_exame'] ?? ''));
         $externalResultReference = trim((string) ($payload['referencia_resultado'] ?? '')) ?: null;
@@ -107,6 +117,7 @@ final class SynclabResultWebhookController extends Controller
                 $validationPayload[$identifierField] = (string) $validationPayload[$identifierField];
             }
         }
+        $validationPayload['resultado_anexo'] = $file;
         $validator = Validator::make($validationPayload, [
             'codigo_pedido' => ['required', 'string', 'max:128'],
             'codigo_exame' => ['required', 'string', 'max:128'],
@@ -115,6 +126,7 @@ final class SynclabResultWebhookController extends Controller
             'observacoes' => ['nullable', 'string', 'max:10000'],
             'data_resultado' => ['required', 'date'],
             'referencia_resultado' => ['nullable', 'string', 'max:191'],
+            'resultado_anexo' => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
         ]);
         if ($validator->fails()) {
             $ingestion->update([
@@ -135,6 +147,18 @@ final class SynclabResultWebhookController extends Controller
                 'ingestion_id' => $ingestion->public_id,
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        if ($file instanceof UploadedFile && $pdfHash !== null) {
+            $path = sprintf('laboratory-results/%d/%s.pdf', $integration->getKey(), $ingestion->public_id);
+            Storage::disk(self::RESULT_PDF_DISK)->put($path, (string) file_get_contents($file->getRealPath()));
+            $ingestion->update([
+                'result_pdf_disk' => self::RESULT_PDF_DISK,
+                'result_pdf_path' => $path,
+                'result_pdf_hash' => $pdfHash,
+                'result_pdf_size' => $file->getSize(),
+                'result_pdf_original_filename' => $file->getClientOriginalName(),
+            ]);
         }
 
         $audit->execute($ingestion, 'laboratory.result_received');

@@ -396,6 +396,50 @@ final class MedicalConsultationFlowTest extends TestCase
         $this->assertNull($transmission->external_order_number);
     }
 
+    public function test_print_link_appears_in_the_exams_tab_only_when_the_result_has_a_pdf(): void
+    {
+        Storage::fake('local_private');
+        [$unit, $doctor, $entry] = $this->context();
+        $consultation = $this->start($unit, $doctor, $entry);
+        $item = ExamOrder::query()->create([
+            'organization_id' => $unit->organization_id,
+            'health_unit_id' => $unit->getKey(),
+            'encounter_id' => $consultation->encounter_id,
+            'medical_consultation_id' => $consultation->getKey(),
+            'requested_by' => $doctor->getKey(),
+            'created_by' => $doctor->getKey(),
+            'origin' => 'medical',
+            'status' => 'pending',
+            'priority' => 'routine',
+            'clinical_indication' => 'Investigação laboratorial.',
+            'requested_at' => now(),
+        ])->items()->create([
+            'exam_name' => 'Hemograma completo',
+            'group' => 'laboratory',
+            'priority' => 'routine',
+            'status' => 'resulted',
+        ]);
+        Storage::disk('local_private')->put('laboratory-results/print-link-test.pdf', '%PDF-1.4 conteúdo fake');
+        $result = $item->result()->create([
+            'source' => 'synclab',
+            'result_text' => 'Resultado',
+            'recorded_by' => null,
+            'resulted_at' => now(),
+            'content_hash' => hash('sha256', 'print-link-test'),
+            'result_pdf_disk' => 'local_private',
+            'result_pdf_path' => 'laboratory-results/print-link-test.pdf',
+            'result_pdf_hash' => hash('sha256', 'conteudo'),
+            'result_pdf_size' => 20,
+            'result_pdf_original_filename' => 'laudo.pdf',
+        ]);
+
+        $this->actingAs($doctor)
+            ->withSession(['active_health_unit_id' => $unit->getKey()])
+            ->get(route('medical.show', $consultation))
+            ->assertOk()
+            ->assertSee(route('laboratory.results.print', $result), false);
+    }
+
     public function test_disabled_catalog_exam_cannot_be_requested_by_direct_medical_post(): void
     {
         [$unit, $doctor, $entry] = $this->context();

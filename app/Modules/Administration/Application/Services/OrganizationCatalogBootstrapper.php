@@ -9,12 +9,15 @@ use App\Modules\Administration\Infrastructure\Eloquent\EntryType;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Administration\Infrastructure\Eloquent\Organization;
 use App\Modules\Administration\Infrastructure\Eloquent\Specialty;
-use App\Modules\Laboratory\Infrastructure\Eloquent\LaboratoryIntegration;
+use App\Modules\Laboratory\Application\Services\SynclabIntegrationReadiness;
 use App\Modules\Queues\Infrastructure\Eloquent\Queue;
 
 final readonly class OrganizationCatalogBootstrapper
 {
-    public function __construct(private HealthUnitFlowBootstrapper $flow) {}
+    public function __construct(
+        private HealthUnitFlowBootstrapper $flow,
+        private SynclabIntegrationReadiness $synclabReadiness,
+    ) {}
 
     public function bootstrap(Organization $organization, HealthUnit $unit): void
     {
@@ -66,20 +69,6 @@ final readonly class OrganizationCatalogBootstrapper
             );
         }
 
-        // Toda unidade real ja chega com CNES cadastrado no Synclab antes de
-        // existir no SyncHosp (exceto a unidade de demonstracao do super
-        // administrador) - o envio de requisicoes so precisa do CNES na URL,
-        // sem usuario/senha, entao a integracao pode nascer pronta.
-        LaboratoryIntegration::query()->firstOrCreate(
-            ['health_unit_id' => $unit->getKey(), 'provider' => 'synclab'],
-            [
-                'organization_id' => $organization->getKey(),
-                'base_url' => rtrim((string) config('sync_sus.synclab.base_url'), '/'),
-                'external_tenant_code' => $unit->cnes_code,
-                'is_active' => true,
-                'transmission_enabled' => true,
-                'connection_status' => 'configured',
-            ],
-        );
+        $this->synclabReadiness->ensureReady($unit);
     }
 }

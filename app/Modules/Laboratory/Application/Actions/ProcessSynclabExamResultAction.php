@@ -95,6 +95,10 @@ final readonly class ProcessSynclabExamResultAction
                 'conclusao' => $payload['conclusao'] ?? null,
                 'observacoes' => $payload['observacoes'] ?? null,
                 'data_resultado' => $payload['data_resultado'],
+                // Sem isso, um laudo em PDF corrigido (mesmos campos de texto, PDF
+                // diferente) seria identificado como o mesmo conteúdo e descartado
+                // como duplicata - o Synclab não sinaliza correção por outro meio.
+                'pdf_hash' => $ingestion->result_pdf_hash,
             ];
             $resultHash = $this->hasher->contentHash($resultContent);
             $existingResult = $item->result()->lockForUpdate()->first();
@@ -129,6 +133,11 @@ final readonly class ProcessSynclabExamResultAction
                 'resulted_at' => CarbonImmutable::parse((string) $payload['data_resultado']),
                 'notes' => $payload['observacoes'] ?? null,
                 'content_hash' => $resultHash,
+                'result_pdf_disk' => $ingestion->result_pdf_disk,
+                'result_pdf_path' => $ingestion->result_pdf_path,
+                'result_pdf_hash' => $ingestion->result_pdf_hash,
+                'result_pdf_size' => $ingestion->result_pdf_size,
+                'result_pdf_original_filename' => $ingestion->result_pdf_original_filename,
             ]);
             $item->update(['status' => 'resulted']);
             $ingestion->update([

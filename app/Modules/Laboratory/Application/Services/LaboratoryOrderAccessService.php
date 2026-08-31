@@ -7,9 +7,37 @@ namespace App\Modules\Laboratory\Application\Services;
 use App\Modules\Administration\Infrastructure\Eloquent\HealthUnit;
 use App\Modules\Identity\Infrastructure\Eloquent\User;
 use App\Modules\Medical\Infrastructure\Eloquent\ExamOrder;
+use Illuminate\Database\Eloquent\Builder;
 
 final class LaboratoryOrderAccessService
 {
+    /**
+     * Mesma regra de visibilidade de canView(), em forma de filtro de query -
+     * usado por telas que listam pedidos/resultados em vez de checar um só.
+     *
+     * @param  Builder<ExamOrder>  $query
+     * @return Builder<ExamOrder>
+     */
+    public function applyVisibilityScope(Builder $query, User $user, HealthUnit $unit): Builder
+    {
+        $query->where('organization_id', $unit->organization_id)
+            ->where('health_unit_id', $unit->getKey());
+
+        if ($user->isPlatformAdministrator()) {
+            return $query;
+        }
+
+        if ($user->hasRole('manager')) {
+            return $user->can('administration.manage') ? $query : $query->whereRaw('1 = 0');
+        }
+
+        if ($user->hasRole('receptionist')) {
+            return $query->where('origin', 'reception');
+        }
+
+        return $query->where('requested_by', $user->getKey());
+    }
+
     public function canView(User $user, ExamOrder $order, HealthUnit $unit): bool
     {
         if (! $this->belongsToUnit($order, $unit)) {

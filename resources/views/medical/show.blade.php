@@ -410,9 +410,18 @@
                                     @endif
                                 @endcan
                             </div>
+                            @php $itemStatusLabels = ['requested' => 'Pendente', 'resulted' => 'Pronto', 'cancelled' => 'Cancelado']; @endphp
                             @foreach($order->items as $item)
                                 <div class="mt-3 rounded-lg bg-slate-50 p-4">
-                                    <div class="flex flex-wrap justify-between gap-2"><strong>{{ $item->exam_name }}</strong><span class="text-xs font-bold uppercase">{{ $item->status }}</span></div>
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <strong>{{ $item->exam_name }}</strong>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs font-bold uppercase">{{ $itemStatusLabels[$item->status] ?? $item->status }}</span>
+                                            @if($item->result?->result_pdf_path)
+                                                <a href="{{ route('laboratory.results.print', $item->result) }}" target="_blank" rel="noopener" class="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white">Imprimir</a>
+                                            @endif
+                                        </div>
+                                    </div>
                                     @if($item->result)
                                         <div class="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
                                             <div class="flex flex-wrap justify-between gap-2">

@@ -20,7 +20,9 @@ use App\Modules\Patients\Domain\Enums\PatientStatus;
 use App\Modules\Patients\Infrastructure\Eloquent\Patient;
 use App\Modules\Reception\Infrastructure\Eloquent\Encounter;
 use Database\Seeders\OperationalCatalogSeeder;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\Concerns\RefreshCoreAndTenantDatabase;
 use Tests\TestCase;
@@ -283,6 +285,83 @@ final class ExamResultIngestionTest extends TestCase
         Queue::fake();
         $this->assertSame(0, app(DispatchReceivedLaboratoryResultsAction::class)->execute());
         Queue::assertNothingPushed();
+    }
+
+    public function test_multipart_result_with_pdf_attachment_is_stored_and_linked_to_the_final_result(): void
+    {
+        Queue::fake();
+        Storage::fake('local_private');
+        [, $transmission, $item, $token] = $this->resultContext('RESULT-PDF');
+        $file = UploadedFile::fake()->create('laudo.pdf', 500);
+
+        $this->withHeader('X-Synclab-Result-Token', $token)
+            ->post('/api/v1/laboratory/synclab/results', [
+                ...$this->payload($transmission),
+                'resultado_anexo' => $file,
+            ])
+            ->assertAccepted()
+            ->assertJsonPath('status', 'received');
+
+        $ingestion = LaboratoryResultIngestion::query()->sole();
+        $this->assertSame('local_private', $ingestion->result_pdf_disk);
+        $this->assertNotNull($ingestion->result_pdf_path);
+        $this->assertSame(64, strlen((string) $ingestion->result_pdf_hash));
+        Storage::disk('local_private')->assertExists((string) $ingestion->result_pdf_path);
+
+        app(ProcessSynclabExamResultAction::class)->execute((int) $ingestion->getKey());
+
+        $result = $item->result()->sole();
+        $this->assertSame($ingestion->result_pdf_path, $result->result_pdf_path);
+        $this->assertSame($ingestion->result_pdf_hash, $result->result_pdf_hash);
+        $this->assertSame('laudo.pdf', $result->result_pdf_original_filename);
+    }
+
+    public function test_non_pdf_attachment_is_rejected_without_being_stored(): void
+    {
+        Queue::fake();
+        Storage::fake('local_private');
+        [, $transmission, , $token] = $this->resultContext('RESULT-BADFILE');
+        $file = UploadedFile::fake()->create('laudo.txt', 10);
+
+        $this->withHeader('X-Synclab-Result-Token', $token)
+            ->post('/api/v1/laboratory/synclab/results', [
+                ...$this->payload($transmission),
+                'resultado_anexo' => $file,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonPath('status', 'rejected');
+
+        $ingestion = LaboratoryResultIngestion::query()->sole();
+        $this->assertSame('rejected', $ingestion->status->value);
+        $this->assertNull($ingestion->result_pdf_path);
+        Storage::disk('local_private')->assertDirectoryEmpty('laboratory-results');
+    }
+
+    public function test_resend_with_same_reference_but_a_different_pdf_is_flagged_for_manual_review(): void
+    {
+        Queue::fake();
+        Storage::fake('local_private');
+        [, $transmission, , $token] = $this->resultContext('RESULT-PDF-CORRECTION');
+        $payload = $this->payload($transmission, 'RESULT-PDF-REF');
+
+        $this->withHeader('X-Synclab-Result-Token', $token)
+            ->post('/api/v1/laboratory/synclab/results', [
+                ...$payload,
+                'resultado_anexo' => UploadedFile::fake()->createWithContent('laudo-v1.pdf', str_repeat('A', 1000)),
+            ])
+            ->assertAccepted();
+
+        $this->withHeader('X-Synclab-Result-Token', $token)
+            ->post('/api/v1/laboratory/synclab/results', [
+                ...$payload,
+                'resultado_anexo' => UploadedFile::fake()->createWithContent('laudo-v2.pdf', str_repeat('B', 1000)),
+            ])
+            ->assertStatus(409)
+            ->assertJsonPath('status', 'conflict');
+
+        $conflict = LaboratoryResultIngestion::query()->latest('id')->firstOrFail();
+        $this->assertSame('manual_review', $conflict->status->value);
+        $this->assertSame('idempotency_conflict', $conflict->error_code);
     }
 
     /** @return array{LaboratoryIntegration, LaboratoryOrderTransmission, ExamOrderItem, string} */

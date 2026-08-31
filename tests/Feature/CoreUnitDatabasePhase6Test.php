@@ -69,7 +69,10 @@ final class CoreUnitDatabasePhase6Test extends TestCase
 
         $before = $migrator->inspect($database);
         $this->assertSame('drifted', $before['status']);
-        $this->assertSame(['2026_08_11_000000_create_tenant_schema_baseline'], $before['pending']);
+        $this->assertSame([
+            '2026_08_11_000000_create_tenant_schema_baseline',
+            '2026_08_28_162511_add_result_pdf_columns_to_exam_results_and_ingestions',
+        ], $before['pending']);
 
         $after = $migrator->migrate($database, $actor);
         $this->assertSame('ready', $after['status']);
